@@ -1,0 +1,6 @@
+# @package _global_.broker
+type: paper
+initial_cash: 1_000_000
+settlement_days: 1
+slippage_model: percentage
+slippage_pct: 0.001

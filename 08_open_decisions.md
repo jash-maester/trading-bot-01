@@ -6,10 +6,6 @@ with any default, override it before kicking off.
 ## Market scope
 
 - **Default:** Indian equities only (NSE).
-- **Alternatives:** add US + NSE; add NSE F&O.
-- **Why the default:** NSE-only keeps the cost model, calendar, and
-  broker path coherent. Expanding to US adds FX risk and a second
-  regulatory surface.
 
 ## Data frequency
 

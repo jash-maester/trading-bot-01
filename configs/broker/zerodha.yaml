@@ -1,0 +1,5 @@
+# @package _global_.broker
+type: zerodha
+enabled: false
+# See docs/going_live.md for setup instructions.
+# API credentials are read from env vars (KITE_API_KEY, KITE_API_SECRET).

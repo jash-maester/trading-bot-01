@@ -1,0 +1,9 @@
+# @package _global_.model
+name: mlp_baseline
+encoder: tcn
+tcn:
+  num_channels: [64, 64, 64]
+  kernel_size: 3
+  dropout: 0.1
+embed_dim: 128
+use_graph: false

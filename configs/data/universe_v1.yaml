@@ -1,0 +1,10 @@
+# @package _global_.data
+# Populated by scripts/build_universe.py — do not edit by hand.
+start_date: "2014-01-01"
+end_date: "2024-12-31"
+universe: nifty50_sectoral
+parquet_root: data/ohlcv
+raw_cache: data/raw
+lookback_days: 60
+universe_version: 1
+universe_snapshot_path: data/raw/universe_v1.parquet

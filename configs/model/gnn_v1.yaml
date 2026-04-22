@@ -1,0 +1,15 @@
+# @package _global_.model
+name: gnn_v1
+encoder: tcn
+tcn:
+  num_channels: [64, 64, 64]
+  kernel_size: 3
+  dropout: 0.1
+embed_dim: 128
+use_graph: true
+graph:
+  hidden_dim: 128
+  num_heads: 4
+  dropout: 0.1
+  drop_edge_prob: 0.1
+  layers: 2

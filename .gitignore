@@ -1,2 +1,74 @@
+# Archives
 *.zip
+*.tar.gz
 
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+.uv/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+
+# Ruff
+.ruff_cache/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb~
+
+# Data (raw cache and processed — keep layout, exclude content)
+data/raw/
+data/ohlcv/
+data/processed/
+*.parquet
+*.parquet.sha256
+
+# MLflow local store
+mlruns/
+mlartifacts/
+
+# Docker volumes (local bind mounts if any)
+pgdata/
+
+# Secrets / env
+.env
+*.pem
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Hydra outputs
+outputs/
+multirun/

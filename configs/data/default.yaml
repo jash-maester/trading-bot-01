@@ -1,0 +1,7 @@
+# @package _global_.data
+start_date: "2014-01-01"
+end_date: "2024-12-31"
+universe: nifty50_sectoral
+parquet_root: data/ohlcv
+raw_cache: data/raw
+lookback_days: 60
