@@ -1,0 +1,8 @@
+# @package _global_.env
+lookback_days: 60
+initial_cash: 1_000_000
+transaction_cost_model: zerodha_equity_delivery
+reward: differential_sharpe
+turnover_penalty: 0.001
+min_trade_value: 500
+episode_length: 252
