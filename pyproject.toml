@@ -60,3 +60,14 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"
+
+# ---------------------------------------------------------------------------
+# PyTorch backend — uv 0.11+ detects the right wheel automatically.
+#   "auto"  → CUDA on Linux (picks highest available cu1xx), MPS on macOS
+#
+# If you need a specific CUDA version, override in your local uv.toml:
+#   [tool.uv]
+#   torch-backend = "cu130"   # or "cu128" if cu130 wheels aren't published yet
+# ---------------------------------------------------------------------------
+[tool.uv]
+torch-backend = "auto"
