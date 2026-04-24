@@ -28,7 +28,7 @@ dependencies = [
     "torch-geometric>=2.5",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=8",
     "pytest-xdist>=3",

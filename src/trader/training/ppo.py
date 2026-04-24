@@ -53,21 +53,23 @@ def _obs_to_tensor(
 
 def _batch_obs(
     obs_buf: list[dict[str, np.ndarray]],
-    device: torch.device,
 ) -> dict[str, torch.Tensor]:
-    """Flatten (n_steps, n_envs) obs buffer into (n_steps*n_envs,) tensors."""
+    """Flatten (n_steps, n_envs) obs buffer → (n_steps*n_envs,) **CPU** tensors.
+
+    Keeping the full rollout on CPU avoids blowing VRAM with thousands of
+    (60 × N × F) feature windows at once.  Each minibatch is moved to the
+    GPU on-demand inside the update loop via `.to(device)`.
+    """
     if not obs_buf:
         return {}
     keys = obs_buf[0].keys()
     result: dict[str, torch.Tensor] = {}
     for k in keys:
         arrays = [step[k] for step in obs_buf]
-        # arrays: list of (n_envs, ...) → stack → (n_steps, n_envs, ...)
-        stacked = np.stack(arrays, axis=0)
-        # flatten first two dims
+        stacked = np.stack(arrays, axis=0)          # [T, E, ...]
         shape = stacked.shape
         flat = stacked.reshape(shape[0] * shape[1], *shape[2:])
-        result[k] = torch.tensor(flat, device=device)
+        result[k] = torch.tensor(flat)              # CPU — no device arg
     return result
 
 
@@ -202,8 +204,9 @@ class PPOTrainer:
                 rewards, values_full, dones, cfg.gamma, cfg.gae_lambda
             )
 
-            # ── Flatten to batch ──────────────────────────────────────────────
-            obs_batch = _batch_obs(obs_buf, self.device)
+            # ── Flatten to batch (CPU) ────────────────────────────────────────
+            obs_batch = _batch_obs(obs_buf)
+            torch.cuda.empty_cache()   # release rollout temporaries before update
             b_actions = torch.tensor(
                 np.stack(actions_buf).reshape(self._batch_size, -1), device=self.device
             )
@@ -227,22 +230,33 @@ class PPOTrainer:
             v_losses: list[float] = []
             entropy_losses: list[float] = []
 
+            # BF16 autocast: halves activation memory on CUDA, no grad-scaler
+            # needed (BF16 has sufficient dynamic range unlike FP16).
+            use_amp = self.device.type == "cuda"
+            amp_ctx = torch.autocast(
+                device_type=self.device.type,
+                dtype=torch.bfloat16,
+                enabled=use_amp,
+            )
+
             b_inds = np.arange(self._batch_size)
             for _ in range(cfg.n_epochs):
                 np.random.shuffle(b_inds)
                 for start in range(0, self._batch_size, self._minibatch_size):
                     mb_inds = b_inds[start : start + self._minibatch_size]
 
-                    mb_obs = {k: v[mb_inds] for k, v in obs_batch.items()}
+                    # Move only this minibatch to GPU — the rest stays on CPU
+                    mb_obs = {k: v[mb_inds].to(self.device) for k, v in obs_batch.items()}
                     mb_act = b_actions[mb_inds]
                     mb_old_lp = b_log_probs[mb_inds]
                     mb_adv = b_advantages[mb_inds]
                     mb_ret = b_returns[mb_inds]
                     mb_val = b_values[mb_inds]
 
-                    _, new_lp, entropy, new_val = self.model.get_action_and_value(  # type: ignore[operator]
-                        mb_obs, mb_act
-                    )
+                    with amp_ctx:
+                        _, new_lp, entropy, new_val = self.model.get_action_and_value(  # type: ignore[operator]
+                            mb_obs, mb_act
+                        )
 
                     if cfg.normalize_advantage:
                         mb_adv = (mb_adv - mb_adv.mean()) / (mb_adv.std() + 1e-8)

@@ -2378,7 +2378,7 @@ dependencies = [
     { name = "yfinance" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "hypothesis" },
     { name = "ipykernel" },
@@ -2393,12 +2393,9 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
     { name = "gymnasium", specifier = ">=0.29" },
     { name = "hydra-core", specifier = ">=1.3" },
-    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6" },
-    { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=6" },
     { name = "kaggle", specifier = ">=1.6" },
     { name = "loguru", specifier = ">=0.7" },
     { name = "mlflow", specifier = ">=2.14" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "omegaconf", specifier = ">=2.3" },
     { name = "pandas", specifier = ">=2.2" },
@@ -2406,9 +2403,6 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.1" },
     { name = "pyarrow", specifier = ">=16" },
     { name = "pydantic", specifier = ">=2.7" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "torch", specifier = ">=2.3" },
     { name = "torch-geometric", specifier = ">=2.5" },
@@ -2416,7 +2410,16 @@ requires-dist = [
     { name = "typer", specifier = ">=0.12" },
     { name = "yfinance", specifier = ">=0.2.40" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6" },
+    { name = "ipykernel", specifier = ">=6" },
+    { name = "mypy", specifier = ">=1.10" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-xdist", specifier = ">=3" },
+    { name = "ruff", specifier = ">=0.5" },
+]
 
 [[package]]
 name = "traitlets"
