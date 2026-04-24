@@ -25,6 +25,7 @@ dependencies = [
     "loguru>=0.7",
     "mlflow>=2.14",
     "tqdm>=4.66",
+    "torch-geometric>=2.5",
 ]
 
 [project.optional-dependencies]

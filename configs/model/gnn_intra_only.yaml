@@ -1,0 +1,19 @@
+# @package _global_.model
+# Ablation: GNN with only intra-sector edges (no sector nodes, no inter-sector).
+# Sits between mlp_baseline (no graph) and gnn_v1 (full graph).
+name: gnn_intra_only
+encoder: tcn
+tcn:
+  num_channels: [64, 64, 64, 64]
+  kernel_size: 3
+  dropout: 0.1
+embed_dim: 64
+use_graph: true
+graph:
+  num_sectors: 8
+  hidden_dim: 64
+  num_heads: 2
+  dropout: 0.1
+  drop_edge_prob: 0.1
+  layers: 2
+  relations: intra_only

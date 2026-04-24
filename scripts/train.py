@@ -2,8 +2,14 @@
 """Train the RL policy with PPO.
 
 Usage:
-    python scripts/train.py train=ppo_baseline seed=42
-    python scripts/train.py train=ppo_baseline seed=42 train.total_steps=200000
+    # No-graph MLP baseline (M5):
+    python scripts/train.py model=mlp_baseline seed=42
+
+    # Full hetero-GNN (M6):
+    python scripts/train.py model=gnn_v1 seed=42
+
+    # Intra-sector-only GNN ablation (M6):
+    python scripts/train.py model=gnn_intra_only seed=42
 """
 from __future__ import annotations
 
@@ -18,6 +24,7 @@ from omegaconf import DictConfig
 def main(cfg: DictConfig) -> None:
     import hydra.utils
     import mlflow
+    import torch.nn as nn
     from gymnasium.vector import SyncVectorEnv
 
     from trader.data.features import FEATURE_COLS
@@ -67,16 +74,41 @@ def main(cfg: DictConfig) -> None:
     envs = SyncVectorEnv([make_env(seed + i) for i in range(n_envs)])
 
     # ── Model ─────────────────────────────────────────────────────────────────
+    num_channels_raw = cfg.model.tcn.get("num_channels")
+    num_channels = (
+        [int(c) for c in num_channels_raw] if num_channels_raw is not None else None
+    )
     model_cfg = ModelConfig(
         in_features=len(FEATURE_COLS),
         n_tickers=N,
         embed_dim=int(cfg.model.embed_dim),
+        num_channels=num_channels,
         kernel_size=int(cfg.model.tcn.kernel_size),
         dropout=float(cfg.model.tcn.dropout),
     )
-    model = ActorCritic(model_cfg)
+
+    model: nn.Module
+    use_graph = bool(cfg.model.get("use_graph", False))
+    if use_graph:
+        from trader.models.graph import GNNActorCritic, GNNConfig
+
+        gc = cfg.model.graph
+        gnn_cfg = GNNConfig(
+            num_sectors=int(gc.get("num_sectors", 8)),
+            num_layers=int(gc.get("layers", 2)),
+            num_heads=int(gc.get("num_heads", 2)),
+            dropout=float(gc.get("dropout", 0.1)),
+            drop_edge_prob=float(gc.get("drop_edge_prob", 0.1)),
+            relations=str(gc.get("relations", "all")),
+        )
+        model = GNNActorCritic(model_cfg, gnn_cfg)
+        logger.info(f"Model: GNNActorCritic (relations={gnn_cfg.relations})")
+    else:
+        model = ActorCritic(model_cfg)
+        logger.info("Model: ActorCritic (no graph)")
+
     n_params = sum(p.numel() for p in model.parameters())
-    logger.info(f"Model: {n_params:,} parameters")
+    logger.info(f"Parameters: {n_params:,}")
 
     # ── PPO config ────────────────────────────────────────────────────────────
     ppo_cfg = PPOConfig(
@@ -105,7 +137,8 @@ def main(cfg: DictConfig) -> None:
     )
     mlflow.set_experiment("trading_bot")
 
-    with mlflow.start_run(run_name=f"ppo_baseline_seed{seed}") as run:
+    model_name = str(cfg.model.get("name", "ppo"))
+    with mlflow.start_run(run_name=f"{model_name}_seed{seed}") as run:
         from omegaconf import OmegaConf
 
         mlflow.log_params(

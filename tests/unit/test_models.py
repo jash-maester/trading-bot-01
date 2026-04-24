@@ -104,7 +104,7 @@ def test_critic_head_output_shape() -> None:
 
 def _make_obs(B: int = 2, N: int = 5, L: int = 60, F: int = 15) -> dict[str, torch.Tensor]:
     return {
-        "features": torch.randn(B, N, L, F),
+        "features": torch.randn(B, L, N, F),
         "mask": torch.ones(B, N, dtype=torch.int8),
         "sector_ids": torch.zeros(B, N, dtype=torch.int32),
         "portfolio": torch.softmax(torch.randn(B, N + 1), dim=-1),

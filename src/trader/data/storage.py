@@ -77,6 +77,13 @@ class OhlcvStore:
             return pl.DataFrame()
 
         result = pl.concat(frames)
+
+        # Normalise to pl.Date — yfinance/pandas writes parquet dates as
+        # datetime[ns]; keeping that through the pipeline causes join failures
+        # when the skeleton (built from Python date objects) is pl.Date.
+        if result["date"].dtype != pl.Date:
+            result = result.with_columns(pl.col("date").cast(pl.Date))
+
         if start is not None:
             result = result.filter(pl.col("date") >= start.date())
         if end is not None:

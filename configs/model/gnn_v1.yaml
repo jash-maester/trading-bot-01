@@ -1,15 +1,19 @@
 # @package _global_.model
+# Full heterogeneous GNN: intra-sector + membership + inter-sector edges.
+# Ablation: compare against mlp_baseline (no graph) and gnn_intra_only.
 name: gnn_v1
 encoder: tcn
 tcn:
-  num_channels: [64, 64, 64]
+  num_channels: [64, 64, 64, 64]   # 4 blocks, dilations 1/2/4/8 → out_dim = 64
   kernel_size: 3
   dropout: 0.1
-embed_dim: 128
+embed_dim: 64                       # fallback only; TCN uses num_channels above
 use_graph: true
 graph:
-  hidden_dim: 128
-  num_heads: 4
+  num_sectors: 8                    # matches SECTOR_IDS in universe.py (1-indexed)
+  hidden_dim: 64                    # overridden to encoder.out_dim at runtime
+  num_heads: 2
   dropout: 0.1
   drop_edge_prob: 0.1
   layers: 2
+  relations: all

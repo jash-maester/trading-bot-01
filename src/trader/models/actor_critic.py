@@ -61,9 +61,10 @@ class ActorCritic(nn.Module):
         value       : (B,)
         log_std     : (N+1,)  — for constructing the Normal distribution
         """
-        features = obs["features"].float()    # [B, N, L, F]
-        portfolio = obs["portfolio"].float()  # [B, N+1]
-        t_frac = obs["t_frac"].float()        # [B] or scalar
+        features = obs["features"].float()              # [B, L, N, F]  env convention
+        features = features.permute(0, 2, 1, 3)         # → [B, N, L, F] for TCN
+        portfolio = obs["portfolio"].float()             # [B, N+1]
+        t_frac = obs["t_frac"].float()                   # [B] or scalar
 
         if t_frac.dim() == 0:
             t_frac = t_frac.unsqueeze(0)

@@ -1,6 +1,17 @@
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
+# Permanently blacklisted tickers — never fetched, never traded.
+# ---------------------------------------------------------------------------
+# TATAMOTORS.NS: went through a demerger; yfinance 404s on historical data.
+#                Removed from all lists to prevent fetch errors and bad data.
+BLACKLISTED_TICKERS: frozenset[str] = frozenset(
+    [
+        "TATAMOTORS.NS",
+    ]
+)
+
+# ---------------------------------------------------------------------------
 # NIFTY 50 constituents (reference date: 2024-01-01)
 # ---------------------------------------------------------------------------
 
@@ -45,7 +56,6 @@ NIFTY_50: list[str] = [
     "SBILIFE.NS",
     "SBIN.NS",
     "SUNPHARMA.NS",
-    "TATAMOTORS.NS",
     "TATASTEEL.NS",
     "TCS.NS",
     "TECHM.NS",
@@ -76,7 +86,7 @@ SECTOR_MAP: dict[str, list[str]] = {
         "IDFCFIRSTB.NS",
         "AUBANK.NS",
         "BANDHANBNK.NS",
-        "CANARABANK.NS",
+        "CANBK.NS",
         "RBLBANK.NS",
         "YESBANK.NS",
         "BAJFINANCE.NS",
@@ -100,12 +110,11 @@ SECTOR_MAP: dict[str, list[str]] = {
         "TATAELXSI.NS",
         "MASTEK.NS",
         "CYIENT.NS",
-        "BIRLASOFT.NS",
+        "BSOFT.NS",
         "SONATSOFTW.NS",
         "OFSS.NS",
-        "HEXAWARE.NS",
-        "NIIT.NS",
-        "ZENSAR.NS",
+        "NIITLTD.NS",
+        "ZENSARTECH.NS",
     ],
     "pharma": [
         "SUNPHARMA.NS",
@@ -132,7 +141,6 @@ SECTOR_MAP: dict[str, list[str]] = {
     "auto": [
         "MARUTI.NS",
         "M&M.NS",
-        "TATAMOTORS.NS",
         "BAJAJ-AUTO.NS",
         "HEROMOTOCO.NS",
         "EICHERMOT.NS",
@@ -146,7 +154,7 @@ SECTOR_MAP: dict[str, list[str]] = {
         "TIINDIA.NS",
         "BHARATFORG.NS",
         "ENDURANCE.NS",
-        "AMARARAJA.NS",
+        "ARE&M.NS",
         "EXIDEIND.NS",
         "OLECTRA.NS",
         "SUNDARMFIN.NS",
@@ -192,7 +200,6 @@ SECTOR_MAP: dict[str, list[str]] = {
         "RVNL.NS",
         "IRCON.NS",
         "NBCC.NS",
-        "RAILVIKAS.NS",
         "TITAGARH.NS",
     ],
     "fmcg": [
@@ -207,12 +214,12 @@ SECTOR_MAP: dict[str, list[str]] = {
         "EMAMILTD.NS",
         "TATACONSUM.NS",
         "RADICO.NS",
-        "VARUNBEV.NS",
+        "VBL.NS",
         "UBL.NS",
-        "MCDOWELL-N.NS",
+        "MCDHOLDING.NS",
         "GILLETTE.NS",
         "PGHH.NS",
-        "ZOMATO.NS",
+        "ETERNAL.NS",
         "NYKAA.NS",
         "DEVYANI.NS",
         "WESTLIFE.NS",
@@ -231,7 +238,6 @@ SECTOR_MAP: dict[str, list[str]] = {
         "APLAPOLLO.NS",
         "RATNAMANI.NS",
         "JINDALSTEL.NS",
-        "JSPL.NS",
         "WELSPUNLIV.NS",
         "GPPL.NS",
         "ADANIENT.NS",
@@ -259,16 +265,19 @@ SECTOR_IDS: dict[str, int] = {
 
 
 def all_tickers() -> list[str]:
-    """Return deduped union of NIFTY 50 + all sectoral lists, NIFTY 50 first."""
+    """Return deduped union of NIFTY 50 + all sectoral lists, NIFTY 50 first.
+
+    Blacklisted tickers are always excluded regardless of where they appear.
+    """
     seen: set[str] = set()
     result: list[str] = []
     for t in NIFTY_50:
-        if t not in seen:
+        if t not in seen and t not in BLACKLISTED_TICKERS:
             seen.add(t)
             result.append(t)
     for tickers in SECTOR_MAP.values():
         for t in tickers:
-            if t not in seen:
+            if t not in seen and t not in BLACKLISTED_TICKERS:
                 seen.add(t)
                 result.append(t)
     return result
