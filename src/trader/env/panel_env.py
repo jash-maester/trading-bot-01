@@ -66,6 +66,22 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         self._dates: list[Any] = sorted(panel["date"].unique().to_list())
         self._feat_cols: list[str] = [c for c in feature_columns if c in panel.columns]
 
+        # Auto-clamp episode_length so val/test panels (which are shorter than
+        # train) don't crash.  Need: lookback + episode_length + 1 ≤ n_dates.
+        _max_ep = len(self._dates) - lookback - 1
+        if _max_ep < 1:
+            raise ValueError(
+                f"Panel too short for any episode: {len(self._dates)} days, "
+                f"need at least lookback+2={lookback + 2}"
+            )
+        if episode_length > _max_ep:
+            from loguru import logger as _log
+            _log.warning(
+                f"episode_length={episode_length} capped to {_max_ep} "
+                f"(panel has {len(self._dates)} days, lookback={lookback})"
+            )
+            episode_length = _max_ep
+
         # Pre-build per-(col, ticker) dense time-series arrays for O(1) access
         self._arrays = _build_ticker_arrays(
             panel, self._universe, self._dates, self._feat_cols
@@ -111,12 +127,8 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
 
         N = len(self._universe)
         min_idx = self._lookback
-        max_idx = len(self._dates) - self._episode_length - 1
-        if max_idx < min_idx:
-            raise ValueError(
-                f"Panel too short: {len(self._dates)} days for "
-                f"lookback={self._lookback} + episode={self._episode_length}"
-            )
+        # episode_length was already clamped in __init__; this should never fire
+        max_idx = max(min_idx, len(self._dates) - self._episode_length - 1)
 
         self._start_idx = int(self._np_rng.integers(min_idx, max_idx + 1))
         self._t = 0
