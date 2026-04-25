@@ -27,6 +27,11 @@ def main(cfg: DictConfig) -> None:
     import torch.nn as nn
     from gymnasium.vector import SyncVectorEnv
 
+    from trader.data.feature_stats import (
+        compute_feature_stats,
+        save_stats,
+        stats_to_tensors,
+    )
     from trader.data.features import FEATURE_COLS
     from trader.data.universe import all_tickers
     from trader.env.reward import DifferentialSharpe, LogReturn
@@ -52,6 +57,21 @@ def main(cfg: DictConfig) -> None:
 
     universe = all_tickers()
     N = len(universe)
+
+    # ── Feature normalisation stats ───────────────────────────────────────────
+    # Computed once from the TRAIN panel so the model sees zero-mean unit-var
+    # inputs.  Without this, conv weights are dominated by the largest-scale
+    # features (dollar_volume_20 ≈ 1e9, atr_14 ≈ 100) and the model is blind
+    # to the small-scale signals (log returns, RSI, vol).  Stats are saved
+    # alongside the panel for reproducibility.
+    feat_stats = compute_feature_stats(train_panel, FEATURE_COLS)
+    save_stats(feat_stats, panels_root / "train.feature_stats.json")
+    feat_mean, feat_std = stats_to_tensors(feat_stats, FEATURE_COLS)
+    logger.info(
+        f"Feature stats: mean range [{feat_mean.min().item():.4g}, "
+        f"{feat_mean.max().item():.4g}]  std range "
+        f"[{feat_std.min().item():.4g}, {feat_std.max().item():.4g}]"
+    )
 
     # ── Reward function (read from cfg.env.reward; default: log_return) ────────
     _REWARD_MAP = {"differential_sharpe": DifferentialSharpe, "log_return": LogReturn}
@@ -109,10 +129,10 @@ def main(cfg: DictConfig) -> None:
             drop_edge_prob=float(gc.get("drop_edge_prob", 0.1)),
             relations=str(gc.get("relations", "all")),
         )
-        model = GNNActorCritic(model_cfg, gnn_cfg)
+        model = GNNActorCritic(model_cfg, gnn_cfg, feat_mean=feat_mean, feat_std=feat_std)
         logger.info(f"Model: GNNActorCritic (relations={gnn_cfg.relations})")
     else:
-        model = ActorCritic(model_cfg)
+        model = ActorCritic(model_cfg, feat_mean=feat_mean, feat_std=feat_std)
         logger.info("Model: ActorCritic (no graph)")
 
     n_params = sum(p.numel() for p in model.parameters())

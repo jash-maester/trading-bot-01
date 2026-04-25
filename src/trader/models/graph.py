@@ -382,7 +382,13 @@ class GNNActorCritic(nn.Module):
     dimension (``TCNEncoder.out_dim``), regardless of what the config declares.
     """
 
-    def __init__(self, model_cfg: ModelConfig, gnn_cfg: GNNConfig) -> None:
+    def __init__(
+        self,
+        model_cfg: ModelConfig,
+        gnn_cfg: GNNConfig,
+        feat_mean: torch.Tensor | None = None,
+        feat_std: torch.Tensor | None = None,
+    ) -> None:
         super().__init__()
         self.encoder = TCNEncoder(
             in_features=model_cfg.in_features,
@@ -390,6 +396,8 @@ class GNNActorCritic(nn.Module):
             num_channels=model_cfg.num_channels,
             kernel_size=model_cfg.kernel_size,
             dropout=model_cfg.dropout,
+            feat_mean=feat_mean,
+            feat_std=feat_std,
         )
         d = self.encoder.out_dim
         # Align GNN embed_dim with encoder output; silently overrides config value.

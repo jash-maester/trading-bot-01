@@ -31,7 +31,12 @@ class ActorCritic(nn.Module):
     action distributions and value estimates.
     """
 
-    def __init__(self, cfg: ModelConfig) -> None:
+    def __init__(
+        self,
+        cfg: ModelConfig,
+        feat_mean: torch.Tensor | None = None,
+        feat_std: torch.Tensor | None = None,
+    ) -> None:
         super().__init__()
         self.cfg = cfg
         self.encoder = TCNEncoder(
@@ -40,6 +45,8 @@ class ActorCritic(nn.Module):
             num_channels=cfg.num_channels,
             kernel_size=cfg.kernel_size,
             dropout=cfg.dropout,
+            feat_mean=feat_mean,
+            feat_std=feat_std,
         )
         d = self.encoder.out_dim
         self.actor = ActorHead(d, hidden=cfg.head_hidden)
@@ -101,6 +108,8 @@ class ActorCritic(nn.Module):
         cls,
         obs_space: Any,
         cfg_overrides: dict[str, Any] | None = None,
+        feat_mean: torch.Tensor | None = None,
+        feat_std: torch.Tensor | None = None,
     ) -> ActorCritic:
         """Construct from a gymnasium observation space."""
         feat_shape = obs_space["features"].shape   # (lookback, N, F)
@@ -112,4 +121,4 @@ class ActorCritic(nn.Module):
             n_tickers=n_tickers,
             **overrides,
         )
-        return cls(cfg)
+        return cls(cfg, feat_mean=feat_mean, feat_std=feat_std)

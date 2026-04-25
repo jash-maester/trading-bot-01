@@ -6,6 +6,36 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class FeatureNormalizer(nn.Module):
+    """Fixed per-feature standardisation: ``(x - mean) / std``.
+
+    Stats are stored as buffers (so they save/load with the model) and are
+    NOT updated during training.  This is critical: features in this project
+    span ~11 orders of magnitude in raw scale, so without standardisation
+    the TCN's first conv layer is dominated by `dollar_volume_20` and the
+    model is effectively blind to the returns / RSI / vol features.
+
+    Parameters
+    ----------
+    mean, std : Tensor of shape ``(F,)``
+        Computed once from the **training** panel via
+        ``trader.data.feature_stats.compute_feature_stats``.
+    """
+
+    def __init__(self, mean: torch.Tensor, std: torch.Tensor) -> None:
+        super().__init__()
+        self.register_buffer("mean", mean.float())
+        self.register_buffer("std", std.float().clamp_min(1e-6))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x can be any shape ending in F.  Broadcasting handles the rest.
+        # `register_buffer` is typed as Tensor | Module by torch stubs,
+        # so help mypy with explicit casts.
+        mean: torch.Tensor = self.mean  # type: ignore[assignment]
+        std: torch.Tensor = self.std    # type: ignore[assignment]
+        return (x - mean) / std
+
+
 class _CausalConv1d(nn.Module):
     """Left-pad so the output length equals the input length (causal)."""
 
@@ -58,10 +88,21 @@ class TCNEncoder(nn.Module):
         num_channels: list[int] | None = None,
         kernel_size: int = 3,
         dropout: float = 0.1,
+        feat_mean: torch.Tensor | None = None,
+        feat_std: torch.Tensor | None = None,
     ) -> None:
         super().__init__()
         channels = num_channels if num_channels is not None else [embed_dim] * 4
         dilations = [1, 2, 4, 8][: len(channels)]
+
+        # ── Optional input normaliser ─────────────────────────────────────
+        # Strongly recommended. Without it the conv weights are pulled hard
+        # toward whichever raw feature has the largest magnitude.
+        self.input_norm: FeatureNormalizer | None
+        if feat_mean is not None and feat_std is not None:
+            self.input_norm = FeatureNormalizer(feat_mean, feat_std)
+        else:
+            self.input_norm = None
 
         blocks: list[nn.Module] = []
         in_ch = in_features
@@ -72,6 +113,9 @@ class TCNEncoder(nn.Module):
         self.out_dim = in_ch
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: [B, N, L, F]
+        if self.input_norm is not None:
+            x = self.input_norm(x)
         B, N, L, F = x.shape
         h = x.reshape(B * N, L, F).permute(0, 2, 1)   # [B*N, F, L]
         h = self.blocks(h)                              # [B*N, d, L]

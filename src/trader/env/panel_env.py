@@ -92,6 +92,35 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
             panel, self._universe, self._dates, self._feat_cols
         )
 
+        # ── Stacked [T, N, ...] arrays for vectorised step / obs ───────────────
+        # The per-(col, ticker) dict was kept for compatibility but is far too
+        # slow on the hot path: 60 × 163 × 15 dict lookups per step.  A single
+        # numpy slice over a pre-stacked tensor is ~50× faster.
+        T = len(self._dates)
+        F = len(self._feat_cols)
+        self._stacked_features = np.zeros((T, N, F), dtype=np.float32)
+        for fi, col in enumerate(self._feat_cols):
+            for ni, ticker in enumerate(self._universe):
+                key = (col, ticker)
+                if key in self._arrays:
+                    self._stacked_features[:, ni, fi] = self._arrays[key]
+
+        # Price / volume / metadata stacks ([T, N])
+        def _stack(col: str, dtype: type[np.generic]) -> np.ndarray:
+            arr = np.zeros((T, N), dtype=dtype)
+            for ni, ticker in enumerate(self._universe):
+                key = (col, ticker)
+                if key in self._arrays:
+                    arr[:, ni] = self._arrays[key]
+            return arr
+
+        self._stk_open = _stack("open", np.float64)
+        self._stk_close = _stack("close", np.float64)
+        self._stk_atr = _stack("atr_14", np.float64)
+        self._stk_dollar_vol = _stack("dollar_volume_20", np.float64)
+        self._stk_mask = _stack("is_tradeable", np.bool_)
+        self._stk_sector_ids = _stack("sector_id", np.int32)
+
         _sid_max = panel["sector_id"].max() if "sector_id" in panel.columns else None
         S: int = int(_sid_max) if isinstance(_sid_max, (int, float)) else 0
         F = len(self._feat_cols)
@@ -184,17 +213,20 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         )
         fill_prices = np.where(opens > 0, opens * (1.0 + slip), 0.0)
 
-        costs_paid = 0.0
-        for i in range(len(self._universe)):
-            if abs(delta_shares[i]) < 0.5:
-                continue
-            trade_val = abs(delta_shares[i]) * fill_prices[i]
-            is_buy = delta_shares[i] > 0
-            n_sold = 1 if (not is_buy and self._shares[i] > 0) else 0
-            c = self._cost_model.cost(trade_val, is_buy, n_scrips_sold=n_sold)
-            signed_cash = -delta_shares[i] * fill_prices[i]  # positive when selling
-            self._cash += signed_cash - c
-            costs_paid += c
+        # Vectorised cost / cash accounting.  The previous loop was the
+        # single biggest CPU hot-spot in step() — N=163 Python iterations
+        # every day across 16 envs × 252 steps × ~2000 updates.
+        traded = np.abs(delta_shares) >= 0.5
+        trade_val = np.where(traded, np.abs(delta_shares) * fill_prices, 0.0)
+        is_buy = delta_shares > 0
+        n_sold = np.where(
+            traded & (~is_buy) & (self._shares > 0), 1, 0
+        ).astype(np.int64)
+
+        cost_per_leg = self._cost_model.cost_vec(trade_val, is_buy, n_sold)
+        signed_cash = np.where(traded, -delta_shares * fill_prices, 0.0)
+        self._cash += float(signed_cash.sum() - cost_per_leg.sum())
+        costs_paid = float(cost_per_leg.sum())
 
         self._shares = target_shares
 
@@ -216,10 +248,14 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
 
         obs = self._build_obs()
 
-        sector_exp: dict[int, float] = {}
-        for i, sid in enumerate(self._sector_ids_at(day_idx)):
-            w = float(self._shares[i] * closes[i]) / max(new_nav, 1e-8)
-            sector_exp[int(sid)] = sector_exp.get(int(sid), 0.0) + w
+        # Vectorised sector exposure (np.bincount over sector ids)
+        sids = self._stk_sector_ids[day_idx]
+        weights = self._shares * closes / max(new_nav, 1e-8)
+        n_sec = int(sids.max()) + 1 if sids.size else 0
+        sec_w = np.bincount(sids, weights=weights, minlength=n_sec) if n_sec else np.zeros(0)
+        sector_exp: dict[int, float] = {
+            int(s): float(sec_w[s]) for s in range(n_sec) if sec_w[s] != 0.0
+        }
 
         info: dict[str, Any] = {
             "nav": new_nav,
@@ -242,39 +278,42 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
 
     def _build_obs(self) -> dict[str, np.ndarray]:
         day_idx = self._start_idx + self._t
-        N = len(self._universe)
-        F = len(self._feat_cols)
-
-        feat_arr = np.zeros((self._lookback, N, F), dtype=np.float32)
         start = day_idx - self._lookback
-        for fi, col in enumerate(self._feat_cols):
-            for ni, ticker in enumerate(self._universe):
-                key = (col, ticker)
-                if key in self._arrays:
-                    feat_arr[:, ni, fi] = self._arrays[key][start:day_idx]
 
-        mask = self._mask_at(day_idx)
-        prev_closes = self._price_at(day_idx - 1, "close")
+        # Single slice into the pre-stacked [T, N, F] tensor (no Python loop).
+        feat_arr = self._stacked_features[start:day_idx]   # [L, N, F]
+
+        mask = self._stk_mask[day_idx]
+        prev_closes = self._stk_close[day_idx - 1]
         current_nav = max(self._cash + float(np.sum(self._shares * prev_closes)), 1e-8)
         eq_w = (self._shares * prev_closes) / current_nav
-        portfolio = np.concatenate([[self._cash / current_nav], eq_w]).astype(
-            np.float32
-        )
+        portfolio = np.concatenate(
+            [[self._cash / current_nav], eq_w]
+        ).astype(np.float32)
         portfolio = np.clip(portfolio, 0.0, 1.0)
 
         return {
             "features": feat_arr,
             "mask": mask.astype(np.int8),
-            "sector_ids": self._sector_ids_at(day_idx).astype(np.int32),
+            "sector_ids": self._stk_sector_ids[day_idx].astype(np.int32),
             "portfolio": portfolio,
             "cash": np.array(self._cash, dtype=np.float32),
             "nav": np.array(current_nav, dtype=np.float32),
             "t_frac": np.array(self._t / self._episode_length, dtype=np.float32),
         }
 
-    # ── fast array accessors ──────────────────────────────────────────────────
+    # ── fast array accessors (vectorised — kept for backward compatibility) ───
 
     def _price_at(self, day_idx: int, col: str) -> np.ndarray:
+        if col == "open":
+            return np.asarray(self._stk_open[day_idx], dtype=np.float64).copy()
+        if col == "close":
+            return np.asarray(self._stk_close[day_idx], dtype=np.float64).copy()
+        if col == "atr_14":
+            return np.asarray(self._stk_atr[day_idx], dtype=np.float64).copy()
+        if col == "dollar_volume_20":
+            return np.asarray(self._stk_dollar_vol[day_idx], dtype=np.float64).copy()
+        # Fallback: dict path (rarely needed)
         N = len(self._universe)
         arr = np.zeros(N, dtype=np.float64)
         for ni, ticker in enumerate(self._universe):
@@ -287,22 +326,10 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         return self._price_at(day_idx, col)
 
     def _mask_at(self, day_idx: int) -> np.ndarray:
-        N = len(self._universe)
-        arr = np.zeros(N, dtype=bool)
-        for ni, ticker in enumerate(self._universe):
-            key = ("is_tradeable", ticker)
-            if key in self._arrays and 0 <= day_idx < len(self._arrays[key]):
-                arr[ni] = bool(self._arrays[key][day_idx])
-        return arr
+        return np.asarray(self._stk_mask[day_idx], dtype=np.bool_).copy()
 
     def _sector_ids_at(self, day_idx: int) -> np.ndarray:
-        N = len(self._universe)
-        arr = np.zeros(N, dtype=np.int32)
-        for ni, ticker in enumerate(self._universe):
-            key = ("sector_id", ticker)
-            if key in self._arrays and 0 <= day_idx < len(self._arrays[key]):
-                arr[ni] = int(self._arrays[key][day_idx])
-        return arr
+        return np.asarray(self._stk_sector_ids[day_idx], dtype=np.int32).copy()
 
 
 # ── module helpers ────────────────────────────────────────────────────────────
