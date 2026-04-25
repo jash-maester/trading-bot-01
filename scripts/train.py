@@ -29,6 +29,7 @@ def main(cfg: DictConfig) -> None:
 
     from trader.data.features import FEATURE_COLS
     from trader.data.universe import all_tickers
+    from trader.env.reward import DifferentialSharpe, LogReturn
     from trader.models.actor_critic import ActorCritic, ModelConfig
     from trader.training.eval_metrics import aggregate_metrics
     from trader.training.ppo import PPOConfig, PPOTrainer
@@ -52,6 +53,12 @@ def main(cfg: DictConfig) -> None:
     universe = all_tickers()
     N = len(universe)
 
+    # ── Reward function (read from cfg.env.reward; default: log_return) ────────
+    _REWARD_MAP = {"differential_sharpe": DifferentialSharpe, "log_return": LogReturn}
+    reward_name = str(cfg.env.get("reward", "log_return"))
+    reward_fn = _REWARD_MAP.get(reward_name, LogReturn)()
+    logger.info(f"Reward function: {reward_name} ({type(reward_fn).__name__})")
+
     env_kwargs = dict(
         panel_path=train_panel,
         universe=universe,
@@ -60,6 +67,7 @@ def main(cfg: DictConfig) -> None:
         episode_length=int(cfg.env.episode_length),
         initial_cash=float(cfg.env.initial_cash),
         turnover_penalty=float(cfg.env.turnover_penalty),
+        reward_fn=reward_fn,
     )
 
     def make_env(env_seed: int) -> object:

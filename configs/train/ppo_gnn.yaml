@@ -3,7 +3,7 @@
 total_steps: 10_000_000
 n_envs: 16
 n_steps: 256
-n_minibatches: 64      # doubled: smaller per-minibatch step for stable GNN updates
+n_minibatches: 32      # same as MLP baseline; eval() mode already fixes GNN stability
 n_epochs: 4
 learning_rate: 5.0e-5  # reduced from 3e-4 — GNN attention layers have larger grads
 gamma: 0.995

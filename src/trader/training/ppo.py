@@ -184,7 +184,34 @@ class PPOTrainer:
                 for pg in self.optimizer.param_groups:
                     pg["lr"] = cfg.learning_rate * frac
 
+            # ── BF16 autocast context ─────────────────────────────────────────
+            # Created BEFORE the rollout so that BOTH log_prob_old (rollout) and
+            # log_prob_new (update) are computed under identical floating-point
+            # precision.  Mixing FP32 rollout with BF16 update causes systematic
+            # log_prob differences in GNN models (2+ attention layers accumulate
+            # ~6–16 % relative error per output element), driving clip_frac → 1
+            # and approx_kl → 100+ even with identical weights on update step 1.
+            # MLP is less affected because its shallower compute graph accumulates
+            # less rounding error.  Using BF16 throughout is correct: no grad
+            # scaler needed (BF16 dynamic range >> FP16), and rollout is inside
+            # torch.no_grad() so there is no activation memory overhead.
+            use_amp = self.device.type == "cuda"
+            amp_ctx = torch.autocast(
+                device_type=self.device.type,
+                dtype=torch.bfloat16,
+                enabled=use_amp,
+            )
+
             # ── Rollout collection ────────────────────────────────────────────
+            # eval() disables DropEdge and all attention/feature dropout so that
+            # log_prob_old is a deterministic function of the model weights.
+            # log_prob_new in the update step is computed the same way (model
+            # stays in eval() throughout the iteration), so the importance ratio
+            # exp(new_lp - old_lp) reflects only weight changes — not random
+            # dropout masks.  Without this, GNN clip_frac collapses to 1.000
+            # from the very first update because the two log_prob calls use
+            # different graph topologies.
+            self.model.eval()
             obs_buf: list[dict[str, np.ndarray]] = []
             actions_buf: list[np.ndarray] = []
             log_probs_buf: list[np.ndarray] = []
@@ -192,18 +219,23 @@ class PPOTrainer:
             rewards_buf: list[np.ndarray] = []
             dones_buf: list[np.ndarray] = []
 
-            with torch.no_grad():
+            with torch.no_grad(), amp_ctx:
                 for _ in range(cfg.n_steps):
                     obs_buf.append({k: v.cpu().numpy() for k, v in obs.items()})
                     dones_buf.append(done.copy())
 
                     action, log_prob, _, value = self.model.get_action_and_value(obs)  # type: ignore[operator]
-                    actions_buf.append(action.cpu().numpy())
-                    log_probs_buf.append(log_prob.cpu().numpy())
-                    values_buf.append(value.cpu().numpy())
+                    # BF16 tensors cannot be converted to numpy directly — cast to
+                    # float32 first.  BF16 values are exactly representable in float32
+                    # so no precision is lost; when mb_act is re-evaluated in BF16 in
+                    # the update step the cast back is lossless and round-trips cleanly.
+                    action_f32 = action.float()
+                    actions_buf.append(action_f32.cpu().numpy())
+                    log_probs_buf.append(log_prob.float().cpu().numpy())
+                    values_buf.append(value.float().cpu().numpy())
 
                     obs_np_step, reward, terminated, truncated, info = self.envs.step(
-                        action.cpu().numpy()
+                        action_f32.cpu().numpy()
                     )
                     done = np.logical_or(terminated, truncated).astype(np.float32)
                     rewards_buf.append(np.array(reward, dtype=np.float32))
@@ -230,7 +262,7 @@ class PPOTrainer:
                     obs = _obs_to_tensor(obs_np_step, self.device)
 
                 # Bootstrap value for last obs
-                next_value = self.model.get_value(obs).cpu().numpy()  # type: ignore[operator]
+                next_value = self.model.get_value(obs).float().cpu().numpy()  # type: ignore[operator]
 
             # ── GAE ───────────────────────────────────────────────────────────
             rewards = np.stack(rewards_buf)       # [T, E]
@@ -277,15 +309,6 @@ class PPOTrainer:
             pg_losses: list[float] = []
             v_losses: list[float] = []
             entropy_losses: list[float] = []
-
-            # BF16 autocast: halves activation memory on CUDA, no grad-scaler
-            # needed (BF16 has sufficient dynamic range unlike FP16).
-            use_amp = self.device.type == "cuda"
-            amp_ctx = torch.autocast(
-                device_type=self.device.type,
-                dtype=torch.bfloat16,
-                enabled=use_amp,
-            )
 
             b_inds = np.arange(self._batch_size)
             for _ in range(cfg.n_epochs):
@@ -379,6 +402,7 @@ class PPOTrainer:
             if update % cfg.checkpoint_interval == 0:
                 self._save_checkpoint(update)
 
+        self.model.train()  # restore train mode after the loop
         return episode_metrics
 
     def _log_mlflow(self, step: int, metrics: dict[str, float]) -> None:

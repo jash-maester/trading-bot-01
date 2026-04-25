@@ -11,7 +11,7 @@ import polars as pl
 from gymnasium import Env, spaces
 
 from trader.env.costs import CostModel, ZerodhaEquityDeliveryCostModel
-from trader.env.reward import DifferentialSharpe, RewardFn
+from trader.env.reward import LogReturn, RewardFn
 
 _SLIPPAGE_K = 0.1
 
@@ -52,7 +52,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         super().__init__()
 
         self._cost_model: CostModel = cost_model or ZerodhaEquityDeliveryCostModel()
-        self._reward_fn: RewardFn = reward_fn or DifferentialSharpe()
+        self._reward_fn: RewardFn = reward_fn or LogReturn()
         self._lookback = lookback
         # NOTE: self._episode_length is assigned AFTER the panel-length clamp below.
         self._initial_cash = initial_cash
