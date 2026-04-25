@@ -50,7 +50,7 @@ REMOTE_DIR ?= /home/jash/trading-agent/Trading_Bot
 # Syncs source code, configs, scripts, docker, tests — nothing that is
 # generated locally (venv, caches, downloaded data, model artefacts).
 sync:
-	rsync -azvh --progress \
+	rsync -azvh --progress --checksum \
 		--exclude='.venv/' \
 		--exclude='.git/' \
 		--exclude='__pycache__/' \
@@ -69,7 +69,7 @@ sync:
 # Like sync, but also transfers the data/ directory (panels + raw cache).
 # Use once after build_features.py if you don't want to re-download on server.
 sync-data:
-	rsync -azvh --progress \
+	rsync -azvh --progress --checksum \
 		--exclude='.venv/' \
 		--exclude='.git/' \
 		--exclude='__pycache__/' \
