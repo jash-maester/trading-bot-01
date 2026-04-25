@@ -3,15 +3,15 @@
 total_steps: 10_000_000
 n_envs: 16
 n_steps: 256
-n_minibatches: 32
+n_minibatches: 64      # doubled: smaller per-minibatch step for stable GNN updates
 n_epochs: 4
-learning_rate: 3.0e-4
+learning_rate: 5.0e-5  # reduced from 3e-4 — GNN attention layers have larger grads
 gamma: 0.995
 gae_lambda: 0.95
 clip_coef: 0.2
 ent_coef: 0.001        # reduced from 0.01 — entropy was dominating pg signal
 vf_coef: 0.5
-max_grad_norm: 0.5
+max_grad_norm: 0.2     # tighter than MLP (0.5) — GNN grad norms are much larger
 anneal_lr: true
 normalize_rewards: true  # RunningMeanStd reward scaling before GAE
 log_interval: 10
