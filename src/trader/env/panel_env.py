@@ -1,4 +1,5 @@
 """PanelTradingEnv — a Gymnasium env that steps one trading day at a time."""
+
 from __future__ import annotations
 
 import math
@@ -53,7 +54,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         self._cost_model: CostModel = cost_model or ZerodhaEquityDeliveryCostModel()
         self._reward_fn: RewardFn = reward_fn or DifferentialSharpe()
         self._lookback = lookback
-        self._episode_length = episode_length
+        # NOTE: self._episode_length is assigned AFTER the panel-length clamp below.
         self._initial_cash = initial_cash
         self._allow_short = allow_short
         self._max_weight = max_weight_per_name
@@ -76,11 +77,15 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
             )
         if episode_length > _max_ep:
             from loguru import logger as _log
+
             _log.warning(
                 f"episode_length={episode_length} capped to {_max_ep} "
                 f"(panel has {len(self._dates)} days, lookback={lookback})"
             )
             episode_length = _max_ep
+
+        # Assign AFTER clamping so self._episode_length reflects the capped value.
+        self._episode_length = episode_length
 
         # Pre-build per-(col, ticker) dense time-series arrays for O(1) access
         self._arrays = _build_ticker_arrays(
@@ -147,7 +152,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         mask = self._mask_at(day_idx)
         target_w = masked_softmax(action.astype(np.float64), mask, self._max_weight)
 
-        eq_target_frac = target_w[1:]           # (N,)
+        eq_target_frac = target_w[1:]  # (N,)
 
         opens = self._price_at(day_idx, "open")
         closes = self._price_at(day_idx, "close")
@@ -156,9 +161,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         dollar_vol = self._col_at(day_idx, "dollar_volume_20")
 
         # NAV before today's trades (marked at yesterday's close)
-        current_nav = max(
-            self._cash + float(np.sum(self._shares * prev_closes)), 1e-8
-        )
+        current_nav = max(self._cash + float(np.sum(self._shares * prev_closes)), 1e-8)
 
         # Target integer shares
         target_equity_value = current_nav * np.where(mask, eq_target_frac, 0.0)
@@ -173,7 +176,12 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         adv_20 = np.where(closes > 0, dollar_vol / np.maximum(closes, 1e-8), 1.0)
         adv_20 = np.maximum(adv_20, 1.0)
         atr_frac = np.where(closes > 0, atrs / np.maximum(closes, 1e-8), 0.0)
-        slip = _SLIPPAGE_K * atr_frac * np.sqrt(np.abs(delta_shares) / adv_20) * np.sign(delta_shares)
+        slip = (
+            _SLIPPAGE_K
+            * atr_frac
+            * np.sqrt(np.abs(delta_shares) / adv_20)
+            * np.sign(delta_shares)
+        )
         fill_prices = np.where(opens > 0, opens * (1.0 + slip), 0.0)
 
         costs_paid = 0.0
@@ -184,7 +192,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
             is_buy = delta_shares[i] > 0
             n_sold = 1 if (not is_buy and self._shares[i] > 0) else 0
             c = self._cost_model.cost(trade_val, is_buy, n_scrips_sold=n_sold)
-            signed_cash = -delta_shares[i] * fill_prices[i]   # positive when selling
+            signed_cash = -delta_shares[i] * fill_prices[i]  # positive when selling
             self._cash += signed_cash - c
             costs_paid += c
 
@@ -219,8 +227,10 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
             "gross_exposure": float(np.sum(self._shares * closes)) / max(new_nav, 1e-8),
             "sector_exposure": sector_exp,
             "weights": np.concatenate(
-                [[self._cash / max(new_nav, 1e-8)],
-                 self._shares * closes / max(new_nav, 1e-8)]
+                [
+                    [self._cash / max(new_nav, 1e-8)],
+                    self._shares * closes / max(new_nav, 1e-8),
+                ]
             ).astype(np.float32),
             "date": self._dates[day_idx],
             "costs_paid": costs_paid,
@@ -245,11 +255,11 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
 
         mask = self._mask_at(day_idx)
         prev_closes = self._price_at(day_idx - 1, "close")
-        current_nav = max(
-            self._cash + float(np.sum(self._shares * prev_closes)), 1e-8
-        )
+        current_nav = max(self._cash + float(np.sum(self._shares * prev_closes)), 1e-8)
         eq_w = (self._shares * prev_closes) / current_nav
-        portfolio = np.concatenate([[self._cash / current_nav], eq_w]).astype(np.float32)
+        portfolio = np.concatenate([[self._cash / current_nav], eq_w]).astype(
+            np.float32
+        )
         portfolio = np.clip(portfolio, 0.0, 1.0)
 
         return {
@@ -354,7 +364,7 @@ def masked_softmax(
     max_weight:
         Per-name weight cap applied after softmax.
     """
-    full_mask = np.concatenate([[True], mask])   # cash always allowed
+    full_mask = np.concatenate([[True], mask])  # cash always allowed
     clipped = np.clip(logits, -10.0, 10.0)
     clipped = np.where(full_mask, clipped, -np.inf)
 

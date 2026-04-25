@@ -111,6 +111,10 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"Parameters: {n_params:,}")
 
     # ── PPO config ────────────────────────────────────────────────────────────
+    # model_name is resolved here (before PPOConfig) so the checkpoint dir is
+    # namespaced per run — parallel runs must never share a checkpoint dir.
+    model_name = str(cfg.model.get("name", "ppo"))
+    run_tag = f"{model_name}_seed{seed}"
     ppo_cfg = PPOConfig(
         total_steps=int(cfg.train.total_steps),
         n_envs=n_envs,
@@ -125,10 +129,11 @@ def main(cfg: DictConfig) -> None:
         max_grad_norm=float(cfg.train.max_grad_norm),
         learning_rate=float(cfg.train.learning_rate),
         anneal_lr=bool(cfg.train.anneal_lr),
+        normalize_rewards=bool(cfg.train.get("normalize_rewards", True)),
         log_interval=int(cfg.train.log_interval),
         eval_interval=int(cfg.train.eval_interval),
         checkpoint_interval=int(cfg.train.checkpoint_interval),
-        checkpoint_dir=Path(hydra.utils.get_original_cwd()) / "checkpoints",
+        checkpoint_dir=Path(hydra.utils.get_original_cwd()) / "checkpoints" / run_tag,
     )
 
     # ── MLflow run ────────────────────────────────────────────────────────────
@@ -136,8 +141,6 @@ def main(cfg: DictConfig) -> None:
         f"http://localhost:{cfg.get('mlflow_port', 5555)}"
     )
     mlflow.set_experiment("trading_bot")
-
-    model_name = str(cfg.model.get("name", "ppo"))
     with mlflow.start_run(run_name=f"{model_name}_seed{seed}") as run:
         from omegaconf import OmegaConf
 

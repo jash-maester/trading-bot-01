@@ -14,6 +14,42 @@ from loguru import logger
 from trader.training.eval_metrics import EpisodeMetrics, compute_episode_metrics
 
 
+class RunningMeanStd:
+    """Welford online algorithm for tracking reward scale across rollouts.
+
+    Only the variance (scale) is tracked — the mean is intentionally NOT
+    subtracted so that the sign of the reward is preserved.  Dividing by the
+    running std rescales rewards to ~unit variance without shifting positive
+    returns to zero.
+    """
+
+    def __init__(self, epsilon: float = 1e-4) -> None:
+        self.mean: float = 0.0
+        self.var: float = 1.0
+        self.count: float = epsilon
+
+    def update(self, x: np.ndarray) -> None:
+        """Update stats with a flat array of new reward samples."""
+        batch_mean = float(np.mean(x))
+        batch_var = float(np.var(x))
+        batch_count = float(x.size)
+        total = self.count + batch_count
+        delta = batch_mean - self.mean
+        self.mean += delta * batch_count / total
+        m_a = self.var * self.count
+        m_b = batch_var * batch_count
+        self.var = (m_a + m_b + delta ** 2 * self.count * batch_count / total) / total
+        self.count = total
+
+    @property
+    def std(self) -> float:
+        return float(np.sqrt(self.var) + 1e-8)
+
+    def normalize(self, x: np.ndarray) -> np.ndarray:
+        """Divide by running std — preserves sign, rescales magnitude."""
+        return x / self.std
+
+
 @dataclass
 class PPOConfig:
     total_steps: int = 200_000
@@ -31,6 +67,7 @@ class PPOConfig:
     anneal_lr: bool = True
     target_kl: float | None = 0.02
     normalize_advantage: bool = True
+    normalize_rewards: bool = True   # divide rewards by running std before GAE
     checkpoint_dir: Path = field(default_factory=lambda: Path("checkpoints"))
     eval_interval: int = 50       # update iterations between evals
     checkpoint_interval: int = 100
@@ -121,6 +158,9 @@ class PPOTrainer:
         self._batch_size = cfg.n_steps * cfg.n_envs
         self._minibatch_size = self._batch_size // cfg.n_minibatches
 
+        # Persistent across updates so the std estimate stabilises over time.
+        self._reward_rms = RunningMeanStd()
+
     def train(self) -> list[EpisodeMetrics]:
         cfg = self.cfg
         n_updates = cfg.total_steps // self._batch_size
@@ -199,6 +239,14 @@ class PPOTrainer:
                 [values_t, next_value[np.newaxis]], axis=0
             )                                     # [T+1, E]
             dones = np.stack(dones_buf)           # [T, E]
+
+            # Reward normalisation — divide by running std to keep gradient
+            # scale stable across the full training run.  Mean is NOT
+            # subtracted so the sign of the reward (positive = good trade,
+            # negative = bad trade) is preserved.
+            if cfg.normalize_rewards:
+                self._reward_rms.update(rewards.flatten())
+                rewards = self._reward_rms.normalize(rewards)
 
             advantages, returns = compute_gae(
                 rewards, values_full, dones, cfg.gamma, cfg.gae_lambda
@@ -304,12 +352,14 @@ class PPOTrainer:
                 recent = episode_metrics[-10:] if episode_metrics else []
                 mean_sharpe = float(np.mean([m.sharpe for m in recent])) if recent else 0.0
                 mean_cagr = float(np.mean([m.cagr for m in recent])) if recent else 0.0
+                reward_std = self._reward_rms.std if self.cfg.normalize_rewards else 1.0
                 logger.info(
                     f"update={update}/{n_updates}  step={global_step:,}"
                     f"  sps={sps}  sharpe={mean_sharpe:.3f}  cagr={mean_cagr:.3f}"
                     f"  pg={np.mean(pg_losses):.4f}  vf={np.mean(v_losses):.4f}"
                     f"  ent={np.mean(entropy_losses):.4f}"
                     f"  clip_frac={np.mean(clip_fracs):.3f}"
+                    f"  rew_std={reward_std:.4f}"
                 )
                 self._log_mlflow(
                     global_step,
@@ -322,6 +372,7 @@ class PPOTrainer:
                         "charts/clip_fraction": float(np.mean(clip_fracs)),
                         "charts/approx_kl": float(np.mean(approx_kls)),
                         "charts/sps": sps,
+                        "charts/reward_std": reward_std,
                     },
                 )
 
