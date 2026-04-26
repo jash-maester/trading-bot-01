@@ -3,6 +3,11 @@ lookback_days: 60
 initial_cash: 1_000_000
 transaction_cost_model: zerodha_equity_delivery
 reward: log_return
+# When true, env subtracts the daily equal-weight benchmark from the
+# portfolio log return BEFORE passing it to reward_fn.  Reward becomes
+# "excess return" — agent is rewarded only when it beats the universe
+# average.  Default false to preserve baseline behaviour.
+use_excess_returns: false
 turnover_penalty: 0.001
 min_trade_value: 500
 episode_length: 252
