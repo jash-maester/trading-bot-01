@@ -102,6 +102,17 @@ def test_log_return_reward_passthrough() -> None:
     fn.reset()  # should not raise
 
 
+def test_excess_log_return_passthrough() -> None:
+    """ExcessLogReturn is functionally identical to LogReturn — the env
+    is the one that subtracts the benchmark before calling it."""
+    from trader.env.reward import ExcessLogReturn
+
+    fn = ExcessLogReturn()
+    assert fn(0.05) == pytest.approx(0.05)
+    assert fn(-0.02) == pytest.approx(-0.02)
+    fn.reset()  # should not raise
+
+
 # ── masked_softmax ────────────────────────────────────────────────────────────
 
 

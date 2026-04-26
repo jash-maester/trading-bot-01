@@ -14,6 +14,7 @@ from trader.env.costs import CostModel, ZerodhaEquityDeliveryCostModel
 from trader.env.reward import LogReturn, RewardFn
 
 _SLIPPAGE_K = 0.1
+_NAV_HIST_LEN = 21      # holds 20 daily returns (NAV[t-20:t+1])
 
 
 class PanelTradingEnv(Env):  # type: ignore[type-arg]
@@ -47,12 +48,14 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         allow_short: bool = False,
         max_weight_per_name: float = 0.10,
         turnover_penalty: float = 0.0,
+        use_excess_returns: bool = False,
         seed: int | None = None,
     ) -> None:
         super().__init__()
 
         self._cost_model: CostModel = cost_model or ZerodhaEquityDeliveryCostModel()
         self._reward_fn: RewardFn = reward_fn or LogReturn()
+        self._use_excess_returns = bool(use_excess_returns)
         self._lookback = lookback
         # NOTE: self._episode_length is assigned AFTER the panel-length clamp below.
         self._initial_cash = initial_cash
@@ -121,6 +124,15 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         self._stk_mask = _stack("is_tradeable", np.bool_)
         self._stk_sector_ids = _stack("sector_id", np.int32)
 
+        # Equal-weight benchmark log return per day, used when
+        # `use_excess_returns=True`. Computed cross-sectionally: mean of
+        # `log_return_1d` across tradeable stocks each day.  Kept in raw
+        # space (no normalisation) — that's a model-side concern.
+        log_ret_raw = _stack("log_return_1d", np.float64)        # [T, N]
+        trd_f = self._stk_mask.astype(np.float64)
+        trd_count = np.maximum(trd_f.sum(axis=1), 1.0)
+        self._benchmark_log_ret = (log_ret_raw * trd_f).sum(axis=1) / trd_count  # [T]
+
         _sid_max = panel["sector_id"].max() if "sector_id" in panel.columns else None
         S: int = int(_sid_max) if isinstance(_sid_max, (int, float)) else 0
         F = len(self._feat_cols)
@@ -134,6 +146,10 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
                 "cash": spaces.Box(0.0, np.inf, (), np.float32),
                 "nav": spaces.Box(0.0, np.inf, (), np.float32),
                 "t_frac": spaces.Box(0.0, 1.0, (), np.float32),
+                # Critic enrichment: portfolio-level summary stats
+                "recent_return_1d": spaces.Box(-np.inf, np.inf, (), np.float32),
+                "recent_vol_20d": spaces.Box(0.0, np.inf, (), np.float32),
+                "nav_log_progress": spaces.Box(-np.inf, np.inf, (), np.float32),
             }
         )
         self.action_space = spaces.Box(-10.0, 10.0, (N + 1,), np.float32)
@@ -144,6 +160,9 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         self._prev_nav = initial_cash
         self._t = 0
         self._start_idx = lookback  # safe default
+        # Rolling NAV history for recent_return / recent_vol obs.  Size
+        # _NAV_HIST_LEN holds (LEN-1) = 20 daily log returns.
+        self._nav_history = np.full(_NAV_HIST_LEN, initial_cash, dtype=np.float64)
 
         self._np_rng = np.random.default_rng(seed)
 
@@ -169,6 +188,10 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         self._cash = float(self._initial_cash)
         self._shares = np.zeros(N, dtype=np.float64)
         self._prev_nav = self._initial_cash
+        # Reset rolling NAV history to flat baseline so recent stats start at 0.
+        self._nav_history = np.full(
+            _NAV_HIST_LEN, self._initial_cash, dtype=np.float64
+        )
         self._reward_fn.reset()
 
         return self._build_obs(), {}
@@ -239,8 +262,19 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         new_eq_w = (self._shares * closes) / max(new_nav, 1e-8)
         turnover = float(np.sum(np.abs(new_eq_w - prev_eq_w)))
 
-        reward = float(self._reward_fn(log_return)) - self._turnover_penalty * turnover
+        # Optional: subtract equal-weight benchmark from log_return so the
+        # reward function sees *excess* return.  This gives the agent a
+        # direct incentive to beat the universe equal-weight rather than
+        # just earn positive returns in a bull market.
+        reward_input = log_return
+        if self._use_excess_returns:
+            reward_input -= float(self._benchmark_log_ret[day_idx])
+        reward = float(self._reward_fn(reward_input)) - self._turnover_penalty * turnover
         self._prev_nav = new_nav
+        # Roll NAV history forward by one step (drop oldest, append new).
+        # `np.roll` would also work but a slice is faster and allocation-free.
+        self._nav_history[:-1] = self._nav_history[1:]
+        self._nav_history[-1] = new_nav
 
         self._t += 1
         truncated = self._t >= self._episode_length
@@ -292,6 +326,17 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         ).astype(np.float32)
         portfolio = np.clip(portfolio, 0.0, 1.0)
 
+        # ── Portfolio-level summary stats for the critic ─────────────────────
+        # log_rets length = _NAV_HIST_LEN - 1 = 20.  At reset all entries equal
+        # initial_cash so the diff is exactly zero — recent_return and
+        # recent_vol are both 0.0 in the first observation, which is correct.
+        log_rets = np.diff(np.log(np.maximum(self._nav_history, 1e-8)))
+        recent_return_1d = float(log_rets[-1])
+        recent_vol_20d = float(np.std(log_rets))
+        nav_log_progress = float(
+            np.log(max(current_nav, 1e-8) / max(self._initial_cash, 1e-8))
+        )
+
         return {
             "features": feat_arr,
             "mask": mask.astype(np.int8),
@@ -300,6 +345,9 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
             "cash": np.array(self._cash, dtype=np.float32),
             "nav": np.array(current_nav, dtype=np.float32),
             "t_frac": np.array(self._t / self._episode_length, dtype=np.float32),
+            "recent_return_1d": np.array(recent_return_1d, dtype=np.float32),
+            "recent_vol_20d": np.array(recent_vol_20d, dtype=np.float32),
+            "nav_log_progress": np.array(nav_log_progress, dtype=np.float32),
         }
 
     # ── fast array accessors (vectorised — kept for backward compatibility) ───

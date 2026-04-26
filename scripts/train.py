@@ -34,7 +34,7 @@ def main(cfg: DictConfig) -> None:
     )
     from trader.data.features import FEATURE_COLS
     from trader.data.universe import all_tickers
-    from trader.env.reward import DifferentialSharpe, LogReturn
+    from trader.env.reward import DifferentialSharpe, ExcessLogReturn, LogReturn
     from trader.models.actor_critic import ActorCritic, ModelConfig
     from trader.training.eval_metrics import aggregate_metrics
     from trader.training.ppo import PPOConfig, PPOTrainer
@@ -74,10 +74,23 @@ def main(cfg: DictConfig) -> None:
     )
 
     # ── Reward function (read from cfg.env.reward; default: log_return) ────────
-    _REWARD_MAP = {"differential_sharpe": DifferentialSharpe, "log_return": LogReturn}
+    _REWARD_MAP = {
+        "differential_sharpe": DifferentialSharpe,
+        "log_return": LogReturn,
+        "excess_log_return": ExcessLogReturn,
+    }
     reward_name = str(cfg.env.get("reward", "log_return"))
     reward_fn = _REWARD_MAP.get(reward_name, LogReturn)()
-    logger.info(f"Reward function: {reward_name} ({type(reward_fn).__name__})")
+    use_excess = bool(cfg.env.get("use_excess_returns", False))
+    # `excess_log_return` reward implies `use_excess_returns=True` even if
+    # the env flag is left at its default — keep the two consistent so a
+    # config typo can't silently produce the wrong reward.
+    if reward_name == "excess_log_return":
+        use_excess = True
+    logger.info(
+        f"Reward function: {reward_name} ({type(reward_fn).__name__})"
+        f"  excess={use_excess}"
+    )
 
     env_kwargs = dict(
         panel_path=train_panel,
@@ -88,6 +101,7 @@ def main(cfg: DictConfig) -> None:
         initial_cash=float(cfg.env.initial_cash),
         turnover_penalty=float(cfg.env.turnover_penalty),
         reward_fn=reward_fn,
+        use_excess_returns=use_excess,
     )
 
     def make_env(env_seed: int) -> object:

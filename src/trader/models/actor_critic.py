@@ -22,6 +22,7 @@ class ModelConfig:
     dropout: float = 0.1
     head_hidden: int = 64
     log_std_init: float = -1.0
+    num_sectors: int = 8                     # used by the critic for sector exposure
 
 
 class ActorCritic(nn.Module):
@@ -50,7 +51,7 @@ class ActorCritic(nn.Module):
         )
         d = self.encoder.out_dim
         self.actor = ActorHead(d, hidden=cfg.head_hidden)
-        self.critic = CriticHead(d, hidden=cfg.head_hidden)
+        self.critic = CriticHead(d, num_sectors=cfg.num_sectors, hidden=cfg.head_hidden)
         # Learnable log-std per action dimension (N+1)
         self.log_std = nn.Parameter(
             torch.full((cfg.n_tickers + 1,), cfg.log_std_init)
@@ -72,13 +73,31 @@ class ActorCritic(nn.Module):
         features = features.permute(0, 2, 1, 3)         # → [B, N, L, F] for TCN
         portfolio = obs["portfolio"].float()             # [B, N+1]
         t_frac = obs["t_frac"].float()                   # [B] or scalar
+        sector_ids = obs["sector_ids"].long()            # [B, N]
 
         if t_frac.dim() == 0:
             t_frac = t_frac.unsqueeze(0)
 
+        # Critic-only state summary (with backward-compatible defaults so any
+        # callers using older obs dicts still work — though training always
+        # supplies the keys).
+        zero_b = torch.zeros_like(t_frac)
+        recent_return = obs.get("recent_return_1d", zero_b).float()
+        recent_vol = obs.get("recent_vol_20d", zero_b).float()
+        nav_log_progress = obs.get("nav_log_progress", zero_b).float()
+        if recent_return.dim() == 0:
+            recent_return = recent_return.unsqueeze(0)
+        if recent_vol.dim() == 0:
+            recent_vol = recent_vol.unsqueeze(0)
+        if nav_log_progress.dim() == 0:
+            nav_log_progress = nav_log_progress.unsqueeze(0)
+
         z = self.encoder(features)                         # [B, N, d]
         action_mean = self.actor(z, portfolio)             # [B, N+1]
-        value = self.critic(z, portfolio, t_frac)          # [B]
+        value = self.critic(
+            z, portfolio, t_frac, sector_ids,
+            recent_return, recent_vol, nav_log_progress,
+        )                                                  # [B]
         return action_mean, value, self.log_std
 
     def get_action_and_value(

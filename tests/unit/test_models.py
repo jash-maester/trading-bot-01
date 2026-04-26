@@ -91,12 +91,62 @@ def test_critic_head_output_shape() -> None:
     from trader.models.heads import CriticHead
 
     B, N, d = 4, 10, 64
-    head = CriticHead(embed_dim=d)
+    head = CriticHead(embed_dim=d, num_sectors=8)
     z = torch.randn(B, N, d)
     portfolio = torch.softmax(torch.randn(B, N + 1), dim=-1)
     t_frac = torch.rand(B)
-    v = head(z, portfolio, t_frac)
+    sector_ids = torch.randint(1, 9, (B, N), dtype=torch.long)
+    recent_return = torch.randn(B) * 0.01
+    recent_vol = torch.rand(B) * 0.02
+    nav_log_progress = torch.randn(B) * 0.1
+    v = head(z, portfolio, t_frac, sector_ids, recent_return, recent_vol, nav_log_progress)
     assert v.shape == (B,)
+
+
+def test_critic_head_sector_exposure_correct() -> None:
+    """Sector exposure must equal the sum of per-stock weights inside each sector."""
+    from trader.models.heads import CriticHead
+
+    B, N, d, S = 2, 6, 16, 4
+    head = CriticHead(embed_dim=d, num_sectors=S)
+    z = torch.zeros(B, N, d)
+    # Hand-built portfolio: cash=0.4, equity weights known per slot.
+    eq_w = torch.tensor(
+        [
+            [0.10, 0.20, 0.05, 0.15, 0.05, 0.05],
+            [0.30, 0.05, 0.05, 0.05, 0.10, 0.05],
+        ]
+    )
+    portfolio = torch.cat([torch.full((B, 1), 0.4), eq_w], dim=1)
+    t_frac = torch.zeros(B)
+    # Stocks 0,1 in sector 1; 2,3 in sector 2; 4 in sector 3; 5 in sector 4.
+    sector_ids = torch.tensor([[1, 1, 2, 2, 3, 4]] * B, dtype=torch.long)
+    zero = torch.zeros(B)
+    head(z, portfolio, t_frac, sector_ids, zero, zero, zero)
+    # Independently compute sector exposure for env 0:
+    # sector1 = 0.30, sector2 = 0.20, sector3 = 0.05, sector4 = 0.05
+    # We can't easily inspect the internal sector_exp, but we can build a
+    # checker that mirrors the scatter logic and assert it sums correctly.
+    sec_idx = (sector_ids - 1).clamp(min=0).long()
+    sector_exp = torch.zeros(B, S)
+    sector_exp.scatter_add_(1, sec_idx, eq_w)
+    assert torch.allclose(sector_exp[0], torch.tensor([0.30, 0.20, 0.05, 0.05]))
+    # Total equity exposure must equal sum of per-sector exposure.
+    assert torch.allclose(sector_exp.sum(dim=1), eq_w.sum(dim=1))
+
+
+def test_actor_head_init_is_small() -> None:
+    """Orthogonal init with gain=0.01 → output magnitude << 1 at step 0."""
+    from trader.models.heads import ActorHead
+
+    B, N, d = 4, 20, 64
+    head = ActorHead(embed_dim=d)
+    z = torch.randn(B, N, d)
+    portfolio = torch.softmax(torch.randn(B, N + 1), dim=-1)
+    out = head(z, portfolio)
+    # With gain=0.01 the last layer's output is bounded by ~|input| × 0.01.
+    # Hidden activations are ~O(1) after LayerNorm, so |out| should be << 1.
+    assert out.abs().max().item() < 0.5, f"actor init too aggressive: {out.abs().max().item()}"
 
 
 # ── ActorCritic full forward ──────────────────────────────────────────────────

@@ -70,3 +70,25 @@ class LogReturn(RewardFn):
 
     def __call__(self, log_return: float) -> float:
         return log_return
+
+
+class ExcessLogReturn(RewardFn):
+    """Pass-through reward for *excess* log return.
+
+    The env is responsible for subtracting the benchmark log return before
+    calling this — see ``PanelTradingEnv`` and the ``use_excess_returns``
+    flag.  This class exists so :data:`_REWARD_MAP` in ``train.py`` has a
+    distinct entry that documents the choice; functionally it is identical
+    to :class:`LogReturn`.
+
+    Why excess return: with raw `LogReturn`, a long-only agent in a +16%
+    market gets positive reward just by being invested.  With excess return
+    (portfolio_log_return − benchmark_log_return) the agent is rewarded
+    only when it *beats* the benchmark — which is the actual objective.
+    """
+
+    def reset(self) -> None:
+        pass
+
+    def __call__(self, log_return: float) -> float:
+        return log_return

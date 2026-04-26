@@ -206,8 +206,16 @@ class HeteroGNN(nn.Module):
         self._relations = cfg.relations
         self.drop_edge_prob = cfg.drop_edge_prob
 
-        # Learnable sector-node embedding (one per sector, 0-indexed)
+        # Learnable sector-node embedding (one per sector, 0-indexed).
+        # PyTorch's default `nn.Embedding` init is N(0, 1) — far too large
+        # relative to LayerNorm-ed stock embeddings (~unit norm). Without
+        # rescaling, the membership / inter-sector edges initially propagate
+        # ~8× the stock-embedding magnitude into every connected stock,
+        # which forces the policy to spend hundreds of updates un-learning
+        # this random sector influence.  N(0, 0.1) puts sector nodes on
+        # the same scale as the encoder output from the start.
         self.sector_emb: nn.Embedding = nn.Embedding(cfg.num_sectors, d)
+        nn.init.normal_(self.sector_emb.weight, mean=0.0, std=0.1)
 
         # Per-layer modules
         self.layers:       nn.ModuleList = nn.ModuleList()
@@ -403,7 +411,10 @@ class GNNActorCritic(nn.Module):
         # Align GNN embed_dim with encoder output; silently overrides config value.
         self.gnn = HeteroGNN(replace(gnn_cfg, embed_dim=d))
         self.actor  = ActorHead(d, hidden=model_cfg.head_hidden)
-        self.critic = CriticHead(d, hidden=model_cfg.head_hidden)
+        # Critic uses the same num_sectors as the GNN (single source of truth).
+        self.critic = CriticHead(
+            d, num_sectors=gnn_cfg.num_sectors, hidden=model_cfg.head_hidden,
+        )
         self.log_std: nn.Parameter = nn.Parameter(
             torch.full((model_cfg.n_tickers + 1,), model_cfg.log_std_init)
         )
@@ -426,10 +437,25 @@ class GNNActorCritic(nn.Module):
         if t_frac.dim() == 0:
             t_frac = t_frac.unsqueeze(0)
 
+        # Critic-only state summary (with backward-compatible zeros).
+        zero_b = torch.zeros_like(t_frac)
+        recent_return = obs.get("recent_return_1d", zero_b).float()
+        recent_vol = obs.get("recent_vol_20d", zero_b).float()
+        nav_log_progress = obs.get("nav_log_progress", zero_b).float()
+        if recent_return.dim() == 0:
+            recent_return = recent_return.unsqueeze(0)
+        if recent_vol.dim() == 0:
+            recent_vol = recent_vol.unsqueeze(0)
+        if nav_log_progress.dim() == 0:
+            nav_log_progress = nav_log_progress.unsqueeze(0)
+
         h = self.encoder(features)                       # [B, N, d]
         z = self.gnn(h, sector_ids, tradeable)           # [B, N, d]
         action_mean = self.actor(z, portfolio)           # [B, N+1]
-        value       = self.critic(z, portfolio, t_frac)  # [B]
+        value = self.critic(
+            z, portfolio, t_frac, sector_ids,
+            recent_return, recent_vol, nav_log_progress,
+        )                                                # [B]
         return action_mean, value, self.log_std
 
     def get_action_and_value(
