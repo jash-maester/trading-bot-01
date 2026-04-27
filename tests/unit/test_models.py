@@ -6,6 +6,78 @@ import pytest
 torch = pytest.importorskip("torch")
 
 
+# ── Cross-stock attention ─────────────────────────────────────────────────────
+
+
+def test_cross_stock_attention_shape_and_mixing() -> None:
+    """Output preserves shape AND each stock's output depends on others."""
+    from trader.models.encoders import CrossStockAttention
+
+    B, N, d = 2, 10, 64
+    attn = CrossStockAttention(embed_dim=d, num_heads=4, dropout=0.0)
+    attn.eval()
+    x = torch.randn(B, N, d)
+    out_a = attn(x)
+    assert out_a.shape == (B, N, d)
+
+    # Modify ONLY stock 0's input; stock 5's output should change
+    # (proving cross-stock mixing happened).
+    x2 = x.clone()
+    x2[:, 0] = torch.randn(B, d)
+    out_b = attn(x2)
+    diff_at_5 = (out_b[:, 5] - out_a[:, 5]).abs().max().item()
+    assert diff_at_5 > 1e-5, (
+        "Cross-stock attention should make stock 5's output depend on stock 0"
+    )
+
+
+def test_cross_stock_attention_respects_mask() -> None:
+    """Untradeable stocks must NOT influence other stocks' outputs."""
+    from trader.models.encoders import CrossStockAttention
+
+    B, N, d = 1, 6, 32
+    attn = CrossStockAttention(embed_dim=d, num_heads=2, dropout=0.0)
+    attn.eval()
+    x = torch.randn(B, N, d)
+    mask_full = torch.ones(B, N, dtype=torch.bool)         # all tradeable
+    mask_partial = mask_full.clone()
+    mask_partial[0, 5] = False                             # mask out stock 5
+
+    out_full = attn(x, tradeable_mask=mask_full)
+    # Now perturb stock 5 only; with stock 5 masked, that perturbation
+    # should NOT propagate to other stocks.
+    x2 = x.clone()
+    x2[0, 5] = torch.randn(d) * 100
+    out_partial_perturbed = attn(x2, tradeable_mask=mask_partial)
+    # Compare: stocks 0..4 should be (almost) identical between
+    # `attn(x, mask_partial)` and `attn(x2, mask_partial)`.
+    out_partial = attn(x, tradeable_mask=mask_partial)
+    diff = (out_partial_perturbed[0, :5] - out_partial[0, :5]).abs().max().item()
+    assert diff < 1e-5, f"Masked stock leaked into other stocks (diff={diff})"
+    # Sanity: with full mask (no masking), the perturbation DOES propagate.
+    out_full_perturbed = attn(x2, tradeable_mask=mask_full)
+    diff_unmasked = (out_full_perturbed[0, :5] - out_full[0, :5]).abs().max().item()
+    assert diff_unmasked > 1e-3, "Unmasked perturbation should propagate"
+
+
+def test_actor_critic_uses_cross_attn_when_enabled() -> None:
+    """ActorCritic with use_cross_attn=True actually inserts the layer."""
+    from trader.models.actor_critic import ActorCritic, ModelConfig
+    from trader.models.encoders import CrossStockAttention
+
+    cfg_on = ModelConfig(in_features=15, n_tickers=10, use_cross_attn=True)
+    cfg_off = ModelConfig(in_features=15, n_tickers=10, use_cross_attn=False)
+    m_on = ActorCritic(cfg_on)
+    m_off = ActorCritic(cfg_off)
+
+    assert isinstance(m_on.cross_attn, CrossStockAttention)
+    assert m_off.cross_attn is None
+    # The "on" model must have strictly more params than the "off" model.
+    on_params = sum(p.numel() for p in m_on.parameters())
+    off_params = sum(p.numel() for p in m_off.parameters())
+    assert on_params > off_params
+
+
 # ── TCN encoder ───────────────────────────────────────────────────────────────
 
 

@@ -9,7 +9,7 @@ learning_rate: 5.0e-5  # reduced from 3e-4 — GNN attention layers have larger 
 gamma: 0.995
 gae_lambda: 0.95
 clip_coef: 0.2
-ent_coef: 0.001        # reduced from 0.01 — entropy was dominating pg signal
+ent_coef: 0.0001       # r7: lowered from 0.001 — entropy crept σ from 0.37 → 0.68 by end of r6
 vf_coef: 0.5
 max_grad_norm: 0.2     # tighter than MLP (0.5) — GNN grad norms are much larger
 anneal_lr: true

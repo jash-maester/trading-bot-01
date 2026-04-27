@@ -35,7 +35,7 @@ from torch.distributions import Normal
 from torch_geometric.nn import GATv2Conv, HeteroConv
 
 from trader.models.actor_critic import ModelConfig
-from trader.models.encoders import TCNEncoder
+from trader.models.encoders import CrossStockAttention, TCNEncoder
 from trader.models.heads import ActorHead, CriticHead
 
 # ---------------------------------------------------------------------------
@@ -410,6 +410,19 @@ class GNNActorCritic(nn.Module):
         d = self.encoder.out_dim
         # Align GNN embed_dim with encoder output; silently overrides config value.
         self.gnn = HeteroGNN(replace(gnn_cfg, embed_dim=d))
+        # Cross-stock self-attention AFTER the GNN.  GNN gives sector-aware
+        # context (within sector, sector-mediated cross-sector); cross-attn
+        # gives all-pairs context.  The two are complementary:
+        # GNN provides structured priors, cross-attn provides flexibility.
+        self.cross_attn: CrossStockAttention | None = (
+            CrossStockAttention(
+                embed_dim=d,
+                num_heads=model_cfg.cross_attn_heads,
+                dropout=model_cfg.dropout,
+            )
+            if model_cfg.use_cross_attn
+            else None
+        )
         self.actor  = ActorHead(d, hidden=model_cfg.head_hidden)
         # Critic uses the same num_sectors as the GNN (single source of truth).
         self.critic = CriticHead(
@@ -451,6 +464,8 @@ class GNNActorCritic(nn.Module):
 
         h = self.encoder(features)                       # [B, N, d]
         z = self.gnn(h, sector_ids, tradeable)           # [B, N, d]
+        if self.cross_attn is not None:
+            z = self.cross_attn(z, tradeable_mask=tradeable)  # [B, N, d]
         action_mean = self.actor(z, portfolio)           # [B, N+1]
         value = self.critic(
             z, portfolio, t_frac, sector_ids,

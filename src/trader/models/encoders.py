@@ -1,9 +1,71 @@
-"""Per-ticker time-series encoders."""
+"""Per-ticker time-series encoders and cross-stock attention."""
 from __future__ import annotations
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+class CrossStockAttention(nn.Module):
+    """All-pairs self-attention over the universe of stocks.
+
+    Inserted between the per-ticker encoder (TCN, optionally GNN) and the
+    actor / critic heads.  Lets each stock's representation be informed by
+    *every* other stock in the universe — critical for portfolio
+    allocation, where relative merit determines the weight assigned.
+
+    Without this layer, the actor head sees ``logit_i = MLP(z_i)`` where
+    ``z_i`` depends only on stock-i features (and at most its sector
+    neighbours via the GNN).  The softmax that turns logits into weights
+    is a *normalisation*, not a *comparison* — so the model has no
+    inductive bias for ranking.  Adding cross-stock attention fixes that:
+    each ``z_i`` after this layer is a function of all 163 stock
+    representations, so per-stock logits can express genuinely relative
+    decisions.
+
+    Untradeable stocks are masked from attention via ``key_padding_mask``
+    so they don't contaminate other stocks' refined representations.
+    Their own outputs still get masked at action time by `masked_softmax`
+    in the env.
+    """
+
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int = 4,
+        dropout: float = 0.1,
+    ) -> None:
+        super().__init__()
+        if embed_dim % num_heads != 0:
+            raise ValueError(
+                f"embed_dim ({embed_dim}) must be divisible by num_heads ({num_heads})"
+            )
+        self.attn = nn.MultiheadAttention(
+            embed_dim, num_heads, dropout=dropout, batch_first=True,
+        )
+        self.norm = nn.LayerNorm(embed_dim)
+
+    def forward(
+        self,
+        x: torch.Tensor,                                # [B, N, d]
+        tradeable_mask: torch.Tensor | None = None,     # [B, N] bool, True = tradeable
+    ) -> torch.Tensor:
+        kpm: torch.Tensor | None = None
+        if tradeable_mask is not None:
+            # MultiheadAttention `key_padding_mask`: True ⇒ ignore that key.
+            kpm = ~tradeable_mask.bool()
+            # Numerical-safety guard: if every key is masked for a batch
+            # element, MHA emits NaN.  Force at least one key to be
+            # un-masked.  In practice this never fires (the universe always
+            # has tradeable stocks on every training day), but it costs
+            # nothing and prevents a class of silent NaN bugs.
+            all_masked = kpm.all(dim=1)
+            if bool(all_masked.any().item()):
+                kpm = kpm.clone()
+                kpm[all_masked, 0] = False
+
+        attn_out, _ = self.attn(x, x, x, key_padding_mask=kpm, need_weights=False)
+        return self.norm(x + attn_out)  # type: ignore[no-any-return]
 
 
 class FeatureNormalizer(nn.Module):

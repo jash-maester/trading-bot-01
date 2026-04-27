@@ -4,6 +4,7 @@ defaults:
   - model: mlp_baseline
   - train: ppo_baseline
   - broker: paper
+  - walk: default
   - _self_
 
 seed: 42

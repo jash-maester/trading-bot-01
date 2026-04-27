@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Normal
 
-from trader.models.encoders import TCNEncoder
+from trader.models.encoders import CrossStockAttention, TCNEncoder
 from trader.models.heads import ActorHead, CriticHead
 
 
@@ -21,8 +21,19 @@ class ModelConfig:
     kernel_size: int = 3
     dropout: float = 0.1
     head_hidden: int = 64
-    log_std_init: float = -1.0
+    # log_std_init = -2.0 → σ=0.135 at start (was -1.0 → σ=0.37 in r6/r7).
+    # With 164 action dims, smaller σ means each *sample* is closer to the
+    # policy's mean, which is what we actually want to evaluate on. The
+    # entropy bonus + ent_coef will still let the policy widen σ if there
+    # is real exploration value to it.
+    log_std_init: float = -2.0
     num_sectors: int = 8                     # used by the critic for sector exposure
+    # Cross-stock self-attention layer between encoder and heads.
+    # Provides the inductive bias needed for portfolio ranking — see
+    # encoders.CrossStockAttention.  Default ON for r9+; flip to False
+    # via Hydra override for ablation runs.
+    use_cross_attn: bool = True
+    cross_attn_heads: int = 4
 
 
 class ActorCritic(nn.Module):
@@ -50,6 +61,17 @@ class ActorCritic(nn.Module):
             feat_std=feat_std,
         )
         d = self.encoder.out_dim
+        # Optional cross-stock attention BEFORE the heads (see ModelConfig).
+        # Lets each stock's representation see the entire universe.
+        self.cross_attn: CrossStockAttention | None = (
+            CrossStockAttention(
+                embed_dim=d,
+                num_heads=cfg.cross_attn_heads,
+                dropout=cfg.dropout,
+            )
+            if cfg.use_cross_attn
+            else None
+        )
         self.actor = ActorHead(d, hidden=cfg.head_hidden)
         self.critic = CriticHead(d, num_sectors=cfg.num_sectors, hidden=cfg.head_hidden)
         # Learnable log-std per action dimension (N+1)
@@ -93,6 +115,12 @@ class ActorCritic(nn.Module):
             nav_log_progress = nav_log_progress.unsqueeze(0)
 
         z = self.encoder(features)                         # [B, N, d]
+        if self.cross_attn is not None:
+            mask_raw = obs.get("mask")
+            tradeable: torch.Tensor | None = (
+                mask_raw.bool() if mask_raw is not None else None
+            )
+            z = self.cross_attn(z, tradeable_mask=tradeable)  # [B, N, d]
         action_mean = self.actor(z, portfolio)             # [B, N+1]
         value = self.critic(
             z, portfolio, t_frac, sector_ids,

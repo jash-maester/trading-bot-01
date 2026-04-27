@@ -1,0 +1,11 @@
+# @package _global_.walk
+# Walk-forward training defaults.
+# Override at the command line, e.g.:
+#   python scripts/walk_forward.py walk.seeds=[42,43,44,45,46]
+n_windows: 4
+train_years: 5
+val_months: 12
+test_months: 12
+purge_months: 1
+step_months: 12
+seeds: [42, 43, 44]
