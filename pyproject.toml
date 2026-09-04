@@ -26,6 +26,7 @@ dependencies = [
     "mlflow>=2.14",
     "tqdm>=4.66",
     "torch-geometric>=2.5",
+    "quantstats>=0.0.81",
 ]
 
 [dependency-groups]

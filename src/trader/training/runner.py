@@ -9,6 +9,7 @@ aggregated train/val/test metrics, and logs everything to MLflow.
 """
 from __future__ import annotations
 
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -345,6 +346,10 @@ def train_one_run(
                 val_agg = aggregate_metrics(val_metrics)
                 mlflow.log_metrics({f"val_{k}": v for k, v in val_agg.items()})
                 logger.info(f"Val Sharpe: {val_agg.get('mean_sharpe', 0):.3f}")
+                _log_quantstats(
+                    "val", val_metrics, val_panel, universe, FEATURE_COLS,
+                    env_kwargs, seed, run_tag,
+                )
 
         if test_panel is not None and test_panel.exists():
             test_metrics = _evaluate_split(
@@ -355,6 +360,10 @@ def train_one_run(
                 test_agg = aggregate_metrics(test_metrics)
                 mlflow.log_metrics({f"test_{k}": v for k, v in test_agg.items()})
                 logger.info(f"Test Sharpe: {test_agg.get('mean_sharpe', 0):.3f}")
+                _log_quantstats(
+                    "test", test_metrics, test_panel, universe, FEATURE_COLS,
+                    env_kwargs, seed + 1, run_tag,
+                )
 
         envs.close()
         return RunResult(
@@ -412,6 +421,112 @@ def _evaluate_split(
                 done = terminated or truncated
         metrics.append(compute_episode_metrics(nav_series, turnovers))
     return metrics
+
+
+def _baseline_episode_returns(
+    panel_path: Path,
+    universe: list[str],
+    feature_cols: list[str],
+    base_kwargs: dict[str, Any],
+    seed: int,
+    n_episodes: int = 5,
+) -> list[list[float]]:
+    """Equal-weight-rebalanced daily log returns on the same panel and seeds.
+
+    This is the benchmark the RL agent has to beat, so the tearsheet plots the
+    agent *against* it rather than in isolation.  Uses the same seed sequence as
+    :func:`_evaluate_split` so agent and benchmark see identical episode windows.
+    """
+    from trader.env.baselines import EqualWeightRebalanced
+    from trader.env.panel_env import PanelTradingEnv
+    from trader.training.eval_metrics import compute_episode_metrics
+
+    agent = EqualWeightRebalanced()
+    env = PanelTradingEnv(
+        panel_path=panel_path,
+        universe=universe,
+        feature_columns=feature_cols,
+        lookback=int(base_kwargs.get("lookback", 60)),
+        episode_length=int(base_kwargs.get("episode_length", 252)),
+        initial_cash=float(base_kwargs.get("initial_cash", 1_000_000.0)),
+        seed=seed + 999,
+    )
+    out: list[list[float]] = []
+    for ep in range(n_episodes):
+        obs, _ = env.reset(seed=seed + 999 + ep)
+        agent.reset()
+        nav_series = [float(obs["nav"])]
+        turnovers: list[float] = []
+        done = False
+        while not done:
+            obs, _, terminated, truncated, info = env.step(agent.act(obs))
+            nav_series.append(float(info["nav"]))
+            turnovers.append(float(info["turnover"]))
+            done = terminated or truncated
+        out.append(compute_episode_metrics(nav_series, turnovers).daily_returns)
+    return out
+
+
+def _log_quantstats(
+    split: str,
+    metrics: list[Any],
+    panel_path: Path,
+    universe: list[str],
+    feature_cols: list[str],
+    base_kwargs: dict[str, Any],
+    seed: int,
+    run_tag: str,
+) -> None:
+    """Log the full QuantStats metric set + an HTML tearsheet for one split.
+
+    Best-effort throughout: the run has already produced its primary metrics by
+    this point, so nothing here may raise.
+    """
+    import mlflow
+
+    from trader.training.quantstats_report import aggregate_quantstats, save_tearsheet
+
+    try:
+        episodes = [
+            list(m.daily_returns) for m in metrics if getattr(m, "daily_returns", None)
+        ]
+        if not episodes:
+            return
+
+        agg = aggregate_quantstats(episodes)
+        if agg:
+            mlflow.log_metrics({f"qs/{split}/{k}": v for k, v in agg.items()})
+            logger.info(
+                f"QuantStats [{split}]: logged {len(agg)} metrics "
+                f"(sharpe={agg.get('sharpe', float('nan')):.3f}, "
+                f"sortino={agg.get('sortino', float('nan')):.3f}, "
+                f"max_dd={agg.get('max_drawdown', float('nan')):.3f})"
+            )
+
+        bench = _baseline_episode_returns(
+            panel_path, universe, feature_cols, base_kwargs, seed,
+            n_episodes=len(episodes),
+        )
+        if bench:
+            bench_agg = aggregate_quantstats(bench)
+            if bench_agg:
+                mlflow.log_metrics(
+                    {f"qs/{split}_benchmark/{k}": v for k, v in bench_agg.items()}
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / f"tearsheet_{split}.html"
+            written = save_tearsheet(
+                episodes[0],
+                out,
+                title=f"{run_tag} — {split}",
+                benchmark_log_returns=bench[0] if bench else None,
+            )
+            if written is not None:
+                mlflow.log_artifact(str(written), artifact_path="quantstats")
+                logger.info(f"QuantStats [{split}]: tearsheet logged")
+    except Exception as e:  # noqa: BLE001 — reporting must never fail a run
+        logger.warning(f"QuantStats [{split}] failed, continuing: {e}")
 
 
 def _check_guardrails(episode_metrics: list[Any]) -> None:
