@@ -86,11 +86,19 @@ win-push-env:
 
 ## Bring up Postgres + MLflow on the training box via docker compose. Unlike the
 ## Mac mini, that box HAS Docker, so the compose path works there unmodified.
+## Bring up Postgres + MLflow on the training box. Unlike the Mac mini, that box
+## HAS Docker, so the compose path works there unmodified. The logic lives in
+## scripts/win_bootstrap.sh because PowerShell mangles inline pipes and loops,
+## and because the box's ~/.docker/config.json uses "desktop.exe" as its
+## credential helper — that needs an interactive Windows logon and fails over SSH
+## with "A specified logon session does not exist", even for public images that
+## need no credentials. The script points DOCKER_CONFIG at a project-local
+## config to sidestep it without touching theirs.
 win-services:
-	@$(SSH) $(SERVER) 'wsl.exe -e bash -lc "cd $(REMOTE_DIR) && docker compose -f docker/docker-compose.yml up -d postgres mlflow && docker compose -f docker/docker-compose.yml ps"'
+	@$(SSH) $(SERVER) 'wsl.exe -e bash $(REMOTE_DIR)/scripts/win_bootstrap.sh services'
 
 win-services-down:
-	@$(SSH) $(SERVER) 'wsl.exe -e bash -lc "cd $(REMOTE_DIR) && docker compose -f docker/docker-compose.yml down"'
+	@$(SSH) $(SERVER) 'wsl.exe -e bash -lc "cd $(REMOTE_DIR) && DOCKER_CONFIG=$(REMOTE_DIR)/.docker docker compose -f docker/docker-compose.yml down"'
 
 ## One-time remote bootstrap: uv, venv, deps, CUDA probe. Run after win-push.
 ## Logic lives in scripts/win_bootstrap.sh — see the comment there for why it is

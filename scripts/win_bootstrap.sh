@@ -26,7 +26,34 @@ ensure_uv() {
     uv --version
 }
 
+export DOCKER_CONFIG="$(pwd)/.docker"
+
 case "$CMD" in
+services)
+    # Anything with pipes, loops or $( ) belongs here rather than in an inline
+    # ssh command — PowerShell re-parses argv in transit and mangles all three.
+    mkdir -p .docker && echo '{}' > .docker/config.json
+    DC="docker compose -f docker/docker-compose.yml"
+    say "starting postgres + mlflow"
+    $DC up -d postgres mlflow
+    say "waiting for health"
+    for _ in $(seq 1 45); do
+        st=$($DC ps --format '{{.Health}}' | tr '\n' ' ')
+        case "$st" in *starting*) sleep 4 ;; *) break ;; esac
+    done
+    $DC ps --format 'table {{.Service}}\t{{.Health}}\t{{.Ports}}'
+    say "endpoints"
+    pg_ok=$(docker exec docker-postgres-1 pg_isready -U trader -d trader 2>&1 || true)
+    echo "  postgres: $pg_ok"
+    echo "  mlflow:   $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5555/health || echo unreachable)"
+    say "schema"
+    docker exec docker-postgres-1 psql -U trader -d trader -tAc \
+        "select table_schema||'.'||table_name from information_schema.tables
+         where table_schema in ('market','ledger') order by 1" 2>&1 | sed 's/^/  /'
+    docker exec docker-postgres-1 psql -U trader -d trader -tAc \
+        "select 'alembic: '||version_num from alembic_version" 2>&1 | sed 's/^/  /'
+    ;;
+
 setup)
     say "host"
     echo "pwd:    $(pwd)"
