@@ -29,6 +29,12 @@ dependencies = [
     "quantstats>=0.0.81",
 ]
 
+[project.optional-dependencies]
+# Live Zerodha data feed (read-only historical bars). Optional on purpose:
+# the module lazily imports it and everything else works without it.
+#   uv sync --extra zerodha
+zerodha = ["kiteconnect>=4.2"]
+
 [dependency-groups]
 dev = [
     "pytest>=8",

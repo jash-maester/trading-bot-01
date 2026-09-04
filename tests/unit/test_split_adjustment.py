@@ -26,15 +26,56 @@ def test_universe_no_duplicates() -> None:
     assert len(tickers) == len(set(tickers)), "Duplicate tickers in universe"
 
 
-def test_universe_contains_nifty50() -> None:
-    universe = set(all_tickers())
+def test_no_nifty50_ticker_vanishes_silently() -> None:
+    """Every NIFTY 50 name is either traded or *explicitly* reported as excluded.
+
+    The original assertion was `NIFTY_50 subset of all_tickers()`, which broke when
+    the taxonomy stopped covering every index member. Simply relaxing it would
+    hide the thing worth protecting: a large cap must never drop out unnoticed.
+    So the invariant becomes "accounted for", not "present".
+    """
+    from trader.data.universe import unsectored_nifty50
+
+    traded = set(all_tickers())
+    excluded = set(unsectored_nifty50())
     for t in NIFTY_50:
-        assert t in universe, f"NIFTY 50 ticker {t} missing from universe"
+        assert t in traded or t in excluded, (
+            f"NIFTY 50 ticker {t} is neither traded nor reported as excluded"
+        )
+    # Anything excluded must genuinely have no sector — not merely be forgotten.
+    for t in excluded:
+        assert sector_of(t) is None, f"{t} reported unsectored but sector_of says {sector_of(t)}"
+
+
+def test_active_universe_is_subset_of_fetched() -> None:
+    """Training trades a subset of what the pipeline fetches, never a superset."""
+    from trader.data.universe import active_tickers
+
+    assert set(active_tickers()) <= set(all_tickers())
+
+
+def test_no_ticker_lands_in_a_phantom_sector() -> None:
+    """`sector_id_of` must never return 0 — an id absent from SECTOR_IDS.
+
+    Regression test. `all_tickers()` used to union NIFTY_50 with SECTOR_MAP, so
+    index members without a sectoral entry came through with id 0 and became a
+    phantom sector node in the graph model.
+    """
+    from trader.data.universe import SECTOR_IDS, active_tickers
+
+    valid = set(SECTOR_IDS.values())
+    for t in all_tickers():
+        assert sector_id_of(t) in valid, f"{t} has sector_id {sector_id_of(t)}"
+    for t in active_tickers():
+        assert sector_id_of(t) in valid, f"{t} has sector_id {sector_id_of(t)}"
 
 
 def test_universe_size_reasonable() -> None:
-    tickers = all_tickers()
-    assert 130 <= len(tickers) <= 200, f"Universe size {len(tickers)} is outside expected range"
+    from trader.data.universe import active_tickers
+
+    fetched, active = len(all_tickers()), len(active_tickers())
+    assert 400 <= active <= fetched, f"active universe {active} outside expected range"
+    assert fetched <= 800, f"fetched universe {fetched} larger than NSE classifies"
 
 
 def test_sector_known_tickers() -> None:
@@ -214,7 +255,15 @@ def test_unadjusted_data_shows_discontinuity() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_zerodha_fetch_ohlcv_raises() -> None:
+def test_zerodha_fetch_ohlcv_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Clear the Kite env vars first. Once `kiteconnect` is installed AND real
+    # credentials are exported (e.g. a dev ran `. ./.env` before pytest), this
+    # call otherwise reaches Kite's servers — a unit test making a live network
+    # request, which is both slow and non-deterministic. Unsetting them forces
+    # the credentials branch, which is what this contract test is actually about.
+    for var in ("KITE_API_KEY", "KITE_API_SECRET", "KITE_ACCESS_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+
     from trader.data.sources.zerodha_source import ZerodhaSource
 
     src = ZerodhaSource()

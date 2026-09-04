@@ -24,7 +24,7 @@ def main(cfg: DictConfig) -> None:
     import mlflow
 
     from trader.data.features import FEATURE_COLS
-    from trader.data.universe import all_tickers
+    from trader.data.universe import active_tickers
     from trader.env.baselines import (
         BuyAndHoldIndex,
         EqualWeightRebalanced,
@@ -41,7 +41,7 @@ def main(cfg: DictConfig) -> None:
 
     orig_cwd = Path(hydra.utils.get_original_cwd())
     panels_root = orig_cwd / "data" / "panels"
-    universe = all_tickers()
+    universe = active_tickers()
 
     n_episodes: int = int(cfg.get("n_episodes", 10))
     target_split: str = str(cfg.get("split", "all"))

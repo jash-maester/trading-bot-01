@@ -31,7 +31,7 @@ from trader.data.regime_features import (
     regime_stats_to_tensors,
     save_regime_stats,
 )
-from trader.data.universe import all_tickers
+from trader.data.universe import active_tickers
 from trader.env.reward import DifferentialSharpe, ExcessLogReturn, LogReturn
 from trader.models.actor_critic import ActorCritic, ModelConfig
 from trader.training.eval_metrics import EpisodeMetrics, aggregate_metrics
@@ -104,7 +104,7 @@ def train_one_run(
     if not train_panel.exists():
         raise FileNotFoundError(f"train panel not found: {train_panel}")
 
-    universe = all_tickers()
+    universe = active_tickers()
     n_tickers = len(universe)
 
     # ── Feature normalisation stats (from train panel only) ───────────────────
@@ -317,6 +317,23 @@ def train_one_run(
                     for k, v in dict(cfg.model).items()
                     if not isinstance(v, DictConfig)
                 },
+                # env.* was omitted until 2026-09-04, which made any experiment
+                # varying the environment unanalysable from MLflow alone — an
+                # A/B over env.lookback_days produced runs indistinguishable in
+                # the UI.  It is also the class of bug the r6 write-up records
+                # (a `reward:` override that train.py never read); logging the
+                # value the env was actually constructed with makes that
+                # visible instead of silent.
+                **{
+                    f"env.{k}": v
+                    for k, v in dict(cfg.env).items()
+                    if not isinstance(v, DictConfig)
+                },
+                # Resolved at runtime rather than read from cfg — these are what
+                # the env/reward were really built with, after any capping or
+                # coercion in train_one_run.
+                "env.reward_fn_resolved": type(reward_fn).__name__,
+                "env.use_excess_returns_resolved": use_excess,
             }
         )
         mlflow.log_text(OmegaConf.to_yaml(cfg), "config.yaml")

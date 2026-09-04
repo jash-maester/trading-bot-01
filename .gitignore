@@ -63,6 +63,12 @@ pgdata/
 
 # Secrets / env
 .env
+# Backups of secret-bearing files — never commit these.
+.env.bak*
+*.bak
+
+# ledger.py / quantstats tearsheets. The hand-written .md reports ARE tracked.
+reports/*.html
 *.pem
 *.key
 

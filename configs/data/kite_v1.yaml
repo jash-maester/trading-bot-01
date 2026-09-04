@@ -1,0 +1,54 @@
+# @package _global_.data
+# Zerodha Kite daily bars for the full universe, 2005 → today.
+#
+# Deliberately a *sibling* of the yfinance dataset, not a replacement: it writes to
+# data/kite_ohlcv and data/panels_kite so the existing validated data/ohlcv and
+# data/panels survive untouched and the two can be diffed (reports/kite_vs_yfinance.md).
+#
+# Kite prices are adjusted for splits and bonuses but NOT for ordinary dividends.
+# That is an accepted, documented difference from yfinance's auto_adjust=True.
+
+start_date: "2005-01-01"
+# Half-open [start, end) to match yf.download, so this is the day *after* the last
+# bar wanted. Bump it and re-run: the per-ticker raw cache makes a re-fetch of
+# already-held history free.
+end_date: "2026-09-05"
+
+universe: nifty50_sectoral_kite
+parquet_root: data/kite_ohlcv
+panels_root: data/panels_kite
+raw_cache: data/raw
+lookback_days: 60
+
+# Kite's historical range cap is 2000 *calendar* days per request, and exceeding it
+# is a hard InputException rather than a truncation. 4 years (1400 days) leaves
+# headroom and turns 2005→today into 6 requests per ticker.
+max_days_per_request: 1400
+
+# NIFTY 50 lives in NSE's INDICES segment, so it needs an explicit opt-in. It is
+# stored under the Yahoo-style name build_features already looks for. Without it
+# beta_nifty_60d silently degenerates to the constant 1.0 — which is exactly what
+# happened to the existing data/panels dataset.
+fetch_index: true
+index_ticker: "^NSEI"
+
+# Re-download even when the raw cache already holds the range. Off by default:
+# a re-run should cost nothing.
+force_refetch: false
+
+# ── Split boundaries ─────────────────────────────────────────────────────────
+# Modern holdout. The 2025+ test window post-dates every architecture and
+# hyperparameter decision in this repo, so it cannot have leaked into one — keep
+# it that way: normalisation stats are computed from `train` only.
+# A 1-month purge is cut from the START of each later segment (same convention as
+# the 2021/2022/2023 split it replaces) so no feature window straddles a boundary.
+train_end: "2023-12-31"
+val_start: "2024-02-01" # Jan 2024 purged
+val_end: "2024-12-31"
+test_start: "2025-02-01" # Jan 2025 purged
+
+# ── Corporate-action masking ─────────────────────────────────────────────────
+# See trader.data.corporate_actions. Flags any single-day move beyond the
+# threshold for triage, then masks the known demerger dates.
+extreme_move_threshold: 0.35
+mask_corporate_actions: true
