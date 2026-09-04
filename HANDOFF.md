@@ -1,8 +1,9 @@
 # HANDOFF — Machine transfer & current development state
 
 **Written:** 2026-09-04
+**Updated:** 2026-09-04 — transfer completed and verified on the Mac mini.
 **From:** MacBook (`/Users/jash/Work/Trading_Bot`, Apple Silicon / MPS)
-**To:** Mac mini (fresh clone)
+**To:** Mac mini — **`/Users/jash/storage/trading-bot-01`** (M4, 24 GB, macOS 26.6.2)
 **Repo:** `git@github.com:jash-maester/trading-bot-01.git`, branch `main`
 
 This document exists because all Phase 1 / Phase 2 work described below was
@@ -212,59 +213,154 @@ the cheap `get_action_and_value`; only the update step calls
 
 ## 5. Mac mini setup — from zero to training
 
-### 5.1 Clone
+> **Status: DONE.** This section is a record of the completed transfer, not a
+> to-do list. Everything below was executed on the Mac mini on 2026-09-04 and
+> verified. Re-read it only if you are setting up a *third* machine.
+
+### 5.0 Where the code actually lives
+
+| | Path |
+|---|---|
+| MacBook (source) | `/Users/jash/Work/Trading_Bot` |
+| **Mac mini (current)** | **`/Users/jash/storage/trading-bot-01`** |
+
+The transfer was a **direct copy of the working tree**, not a fresh `git clone`
+— so `data/` (96 MB, gitignored) came across with it and did **not** need
+rebuilding. Every path in the configs is repo-relative (`data/ohlcv`,
+`data/panels`, …), so nothing needed editing for the new location.
+
+Mac mini hardware: **Apple M4, 24 GB unified memory, macOS 26.6.2, arm64.**
+
+### 5.1 Install
 
 ```bash
-git clone git@github.com:jash-maester/trading-bot-01.git ~/Work/Trading_Bot && cd ~/Work/Trading_Bot
-```
-
-(HTTPS instead, if SSH keys aren't set up on the Mac mini:
-`git clone https://github.com/jash-maester/trading-bot-01.git ~/Work/Trading_Bot`)
-
-### 5.2 Install
-
-```bash
+cd /Users/jash/storage/trading-bot-01
 uv sync
 ```
 
-`torch-backend = "auto"` picks MPS on Apple Silicon. No `uv.toml` needed
-unless you later move to the CUDA box.
+Verified on the mini: `uv` 0.9.16, Python 3.12.12, **torch 2.11.0 with
+`torch.backends.mps.is_available() == True`**, 353 packages.
 
-### 5.3 Verify the transfer landed intact
+> ⚠️ **`torch-backend = "auto"` in `pyproject.toml` is a dead key.** uv 0.9.16
+> rejects it under `[tool.uv]` and prints a `TOML parse error … unknown field`
+> warning on *every* `uv` invocation, then ignores it. This is harmless on
+> macOS (there is only one arm64 torch wheel and it has MPS built in), but it
+> means the setting **is not doing anything on the CUDA box either**. When you
+> move to the 5090, select the backend explicitly:
+>
+> ```bash
+> UV_TORCH_BACKEND=auto uv sync     # or: uv sync --torch-backend=cu130
+> ```
+>
+> `uv sync` has no `--torch-backend` flag in 0.9.16 — it is `uv pip`-only plus
+> the `UV_TORCH_BACKEND` env var. Moving the key to `[tool.uv.pip]` silences
+> the warning but still would not affect `uv sync`.
+
+### 5.2 Verify the transfer landed intact
 
 ```bash
 uv run ruff check . && uv run mypy src && uv run pytest tests/unit/ -q
 ```
 
-Expected: `All checks passed!` / `Success: no issues found in 37 source files` /
-**`140 passed`**. If you see 96, the Phase 1/2 files did not come across.
+Actual result on the mini: `All checks passed!` /
+`Success: no issues found in 37 source files` / **`140 passed`**.
+(If you ever see 96, the Phase 1/2 files did not come across.)
 
-### 5.4 ⚠️ Rebuild the data — it is NOT in git
+With the services of §5.3 up, the *full* suite including DB integration tests
+passes: `uv run pytest -q` → **`159 passed`**.
 
-`data/` is ~95 MB and gitignored (`*.parquet`, `data/raw/`, `data/ohlcv/`).
-**A fresh clone has no data.** Either rebuild it (~15–25 min, mostly the
-Yahoo Finance download) or rsync `data/` over from the MacBook.
+### 5.3 Services — native, no Docker
+
+**Docker is not installed on the Mac mini yet** (no Docker Desktop, no
+colima, no podman), so `make db-up` / `make db-down` / the whole
+`docker/docker-compose.yml` path does not work here *for now*. Both services
+run natively instead.
+
+The compose path is deliberately left intact and unchanged — Docker is
+planned for this machine, and it is still the path on the CUDA box. Once
+Docker is installed here, `make db-up` works again and you can pick either;
+just don't run both at once, since they both bind 5432 and 5555. The native
+targets below are additive, not a replacement.
+
+**Postgres 16 — Homebrew service (installed & running):**
 
 ```bash
-make db-up          # postgres:16 on 5432, MLflow on 5555
-make db-migrate     # once
+brew install postgresql@16
+brew services start postgresql@16          # auto-restarts at login
+export PATH="/opt/homebrew/opt/postgresql@16/bin:$PATH"   # keg-only
 
+# one-time role + db + schemas (already done)
+psql -h localhost -d postgres -c \
+  "CREATE ROLE trader LOGIN PASSWORD 'trader' SUPERUSER;"
+createdb -h localhost -O trader trader
+psql -h localhost -U trader -d trader -f docker/init-scripts/001_schema.sql
+```
+
+**MLflow — from the project venv (no container):**
+
+```bash
+cd /Users/jash/storage/trading-bot-01
+mkdir -p mlruns logs
+nohup .venv/bin/mlflow server \
+  --host 127.0.0.1 --port 5555 \
+  --backend-store-uri "sqlite:///$(pwd)/mlruns/mlflow.db" \
+  --artifacts-destination "$(pwd)/mlruns/artifacts" \
+  --serve-artifacts \
+  > logs/mlflow.log 2>&1 &
+```
+
+The compose file's MLflow used a Docker volume; this uses a local SQLite
+backend store plus a local artifact root under `mlruns/`. Same API, same port,
+and `runner.py`'s hardcoded `http://localhost:5555` needs no change.
+
+Health checks:
+
+```bash
+pg_isready -h localhost -p 5432          # => accepting connections
+curl -s http://127.0.0.1:5555/health     # => OK
+```
+
+> **macOS note:** MLflow uses port **5555**, not 5000 — 5000 is taken by
+> AirPlay Receiver (`ControlCenter`). Confirmed still true on this mini.
+
+**Migrations (already applied — `alembic_version` is at `0001`):**
+
+```bash
+set -a && . ./.env && set +a      # nothing in the codebase auto-loads .env
+uv run alembic upgrade head
+```
+
+This created 5 `market.*` and 6 `ledger.*` tables.
+
+> **Gotcha:** no module calls `load_dotenv()`. `docker compose` used to read
+> `.env` for you; running natively, **you must `set -a && . ./.env && set +a`
+> yourself** before anything that touches Postgres. It happens to work without
+> that today only because every default in `engine.py` / `alembic/env.py`
+> matches the `.env` values (`trader` / `trader` / `localhost` / `5432`).
+
+### 5.4 Data — already present, no rebuild needed
+
+`data/` is 96 MB / 1,835 files and came over with the copy: `data/panels/{train,val,test}.parquet`
+(+ `.sha256` sidecars), `data/ohlcv/year=*/ticker=*.parquet`, `data/raw/universe_v1.parquet`.
+Panels cover train 2014→2021, val 2022-02→2022-12, test 2023-02→present, with
+purge gaps.
+
+Only if you ever need to rebuild from scratch (~15–25 min, mostly the Yahoo
+download):
+
+```bash
 uv run python scripts/build_universe.py data=universe_v1    # ~5s
 uv run python scripts/fetch_data.py     data=universe_v1    # ~10-20 min
 uv run python scripts/build_features.py data=universe_v1    # ~2-3 min
 ```
 
-Produces `data/panels/{train,val,test}.parquet` with purge gaps
-(train 2014→2021, val 2022-02→2022-12, test 2023-02→present).
+### 5.5 What did *not* come across
 
-> **macOS note:** MLflow uses port **5555**, not 5000 — port 5000 is taken by
-> AirPlay Receiver. Override with `MLFLOW_PORT=<port> make db-up`.
-
-Faster alternative — copy the data straight across from the MacBook:
-
-```bash
-rsync -avz --progress <macbook-user>@<macbook-host>.local:~/Work/Trading_Bot/data/ ~/Work/Trading_Bot/data/
-```
+`mlruns/` was **not** transferred — it is a fresh, empty tracking store. The
+`corr(val_sharpe, test_sharpe) = −0.86` figure in §2 and every number in
+`Report/main.tex` live only in the MacBook's MLflow. **If you want the
+baseline number to compare Phase 1 against, you must either rsync the
+MacBook's `mlruns/` over or re-run the `mlp_baseline` control from §6.**
 
 ---
 
@@ -333,8 +429,20 @@ uv run python scripts/walk_forward.py model=mlp_regime_aux train=ppo_aux
 
 ## 8. Environment notes
 
-- **Development machine:** macOS / Apple Silicon, MPS backend.
+- **Current machine:** Mac mini, Apple **M4 / 24 GB unified memory**,
+  macOS 26.6.2 arm64, MPS backend. Repo at
+  `/Users/jash/storage/trading-bot-01`.
+- **Docker not installed here yet** (planned). Until it is, Postgres 16 runs
+  as a Homebrew service and MLflow from the project venv — see §5.3, or
+  `make services-up`. The `db-up` / `db-down` compose targets are untouched
+  and will work on the mini as soon as Docker is installed; don't run the
+  native and compose stacks simultaneously (both bind 5432 / 5555).
 - **Intended training machine:** RTX 5090 (Blackwell GB202), CUDA 13.0,
   driver 595 — see `make sync` / `make sync-data` for the rsync deploy path.
-- **Python 3.12**, `uv` for dependency management.
+  Note `make sync`'s `REMOTE_DIR` default is still
+  `/home/jash/trading-agent/Trading_Bot`; `SERVER`/`REMOTE_DIR` are
+  command-line overridable.
+- **Python 3.12**, `uv` 0.9.16 for dependency management. torch 2.11.0.
 - MLflow on **5555** (AirPlay owns 5000 on macOS).
+- Nothing auto-loads `.env` — `set -a && . ./.env && set +a` before any
+  Postgres-touching command.

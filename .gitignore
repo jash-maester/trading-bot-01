@@ -50,6 +50,14 @@ data/processed/
 mlruns/
 mlartifacts/
 
+# Training artefacts (generated locally; never committed)
+checkpoints/
+logs/
+data/walks/
+# Normalisation stats emitted next to the panels by runner.py.
+# The *.sha256 panel provenance sidecars ARE tracked — do not widen this.
+data/panels/*_stats.json
+
 # Docker volumes (local bind mounts if any)
 pgdata/
 
