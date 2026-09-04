@@ -61,7 +61,7 @@ are the highest-risk kind, because the spec is now actively dangerous.
 | 9 | DP charge | ₹15.93 | ₹15.34 | **CODE FIXED / SPEC STALE** |
 | 10 | Vectorisation | `AsyncVectorEnv` | `SyncVectorEnv(16)` | **SPEC STALE** — and irrelevant; env stepping is 0.2% of wall clock |
 | 11 | Rollout / entropy | `rollout_length: 512`, `ent_coef: 0.01` | `n_steps 256`, `ent 1e-4` | **SPEC STALE** |
-| 12 | Share rounding | paper broker "nearest, not truncated" | env: floor | **UNRESOLVED — likely most of the 11% NAV divergence** |
+| 12 | Share rounding | paper broker "nearest, not truncated" | env: floor | **REFUTED by A0** — both floor (`panel_env.py:247`, `paper_broker.py:1034`); the divergence is `min_trade_value`, which only the broker implements |
 | 13 | Target hardware | RTX 5090, CUDA 12.8 | M4 Mac mini, MPS | **BOTH STALE** — target is now RTX 4060 8 GB |
 | 14 | Sector holdout | not mentioned | 5 of 14 sectors held out | **CODE CHANGED** — `INACTIVE_SECTORS` |
 
@@ -147,9 +147,12 @@ Weekly cuts turnover 4–5×. Monthly cuts it further and starts moving part of 
 book past the 12-month LTCG boundary at 12.5%. **That is worth 2–3 pp/yr — more
 than any plausible model improvement.**
 
-The baselines (`EqualWeightRebalanced`, `MomentumTopK`) already rebalance
-monthly, so the agent is compared against baselines paying a fraction of its tax
-bill.
+> **A0 correction (2026-09-05).** This section originally argued the agent was
+> unfairly compared against monthly-rebalancing baselines paying less tax. That
+> premise is false. `EqualWeightRebalanced` rebalances **every step** —
+> `baselines.py:57-62`, docstring "rebalanced each step" — so the baselines churn
+> just as hard as the agent and pay the same drag. The case for a monthly default
+> stands on its own merits; it is not a fairness argument.
 
 **New default: monthly, with weekly and daily as ablations.**
 
@@ -186,8 +189,15 @@ k=20: cash=  1.8%  equity= 98.2%  max= 4.9%
 ```
 
 Five names at equal weight is 20% each, which the 10% per-name cap forbids, so
-the baseline sits ~47% in cash. The momentum bar has been **understated**, and
-the agent still failed to clear it. **Set K=20** (`src/trader/env/baselines.py:91`).
+the baseline sits ~47% in cash. **Set K=20** (`src/trader/env/baselines.py:91`).
+
+**A0 found a second, independent bug in the same baseline.** It ranks on
+`features[-1, :, 0]`, which is `log_return_1d`, not `log_return_20d` — with a
+comment at `baselines.py:105-110` admitting the shortcut: *"We need
+log_return_20d, but we don't know its feature index here. Fall back to the last
+row of features col 0 as a proxy score."* So "momentum top-K" has been a
+**one-day** signal. The momentum benchmark is wrong in two independent ways, and
+the agent failed to clear even that understated bar.
 
 **Report against all of:** Nifty 50 TRI, Nifty 500 TRI, equal-weight universe,
 momentum top-20 monthly. The momentum baseline is the one that matters — if it
@@ -296,8 +306,26 @@ momentum-20 may already clear Nifty 50 TRI net of everything.*
 > with `.to(self.device)` inside the inner loop. There is no VRAM overflow.
 >
 > The real cost is **data movement**: 4 epochs × 32 minibatches = 128 transfers
-> of 217 MB each = **~27.7 GB host→device per update**. On MPS unified memory
-> that is cheap; over PCIe on the 4060 it will not be.
+> of 217 MB each = **~27.7 GB host→device per update**.
+>
+> **A2 correction (2026-09-05):** the byte count is confirmed to 0.02% — 27.79
+> GiB in the update loop, plus 6.97 GiB in the rollout and 6.95 GiB of pure D2H
+> waste where `ppo.py:266` uploads an obs and `ppo.py:228` copies it straight
+> back. But the *time* is ~5.0 s/update, **0.0001% of update wall clock**. Data
+> movement is not why runs take days. This fix is worth ~40 min per 2M-step run
+> and belongs near the bottom of the list, not the top.
+>
+> The real signature is a **VRAM cliff**: 7762/8188 MiB with memory-controller
+> utilisation at 1–4% and the card drawing 34 W. Cost collapses onto a function
+> of the working set `N x L` — flat below `N·L ~ 15,000`, then 2x, 6x, 14x, then
+> OOM. At 504 tickers **L=60 costs 24x what L=30 costs**, because 504x60 sits
+> past the knee and 504x30 does not. (An earlier 1.93x measured on the Mac at 163
+> tickers was taken from below the knee.)
+>
+> **Encoder caching is the only fix that matters**: the TCN is 97.9% of all
+> arithmetic, redundancy is 12.8x within an update and 5,075x across a run, and
+> caching is a 47x reduction. The other two candidates are worth ~40 min and
+> ~0.3%.
 >
 > The prescribed fix is unchanged and still correct — but for this reason, not
 > the stated one. Anyone chasing a VRAM problem will find nothing wrong.
@@ -322,11 +350,24 @@ Then fix, in order:
   encoder supervised, freeze, cache to `[T, N, 128]` (~670 MB fp16 at 504 names),
   and let PPO train only attention and heads.
 
-**Gate (corrected):** 2M steps in under 2 hours on the 4060, **conditional on
-encoder caching landing**. The arithmetic — ~40 PFLOP total against ~15 TFLOPS —
-puts a 100%-utilisation floor at ~44 minutes, so 2 hours is ~37% utilisation.
-That is reachable *with* the cache and not without it. If the cache is rejected,
-restate the gate rather than failing the sequence against an unreachable target.
+**Gate (re-corrected after A2, 2026-09-05).** The arithmetic in the previous
+version of this gate was wrong twice over, both errors mine:
+
+| | as written | measured (A2) |
+|---|---|---|
+| FLOP per stock-sequence | 3.3 M | **7.83 M** |
+| Total for 2M steps | 40 PFLOP | **96.8 PFLOP** |
+| RTX 4060 Laptop FP32 | ~15 TFLOPS | **9.05 TFLOPS** |
+
+The TCN has **seven** Conv1d layers, not three — each `TemporalBlock` holds
+`conv1` + `conv2` plus a `downsample` on the first block — and 15.34 TFLOPS is
+the card's TF32 figure, not FP32. 96.8 PFLOP / 9.05 TFLOPS = **2.97 hours at
+100% utilisation**, so "2M steps in under 2 hours" was *below its own theoretical
+floor* uncached: not optimistic, impossible. With the encoder cached the workload
+drops to 2.06 PFLOP and the gate is comfortable.
+
+**Gate:** 2M steps under 2 hours on the 4060, **which requires encoder caching**.
+Uncached, the honest target is ~4 hours at a realistic 75% utilisation.
 
 ### R4 — Supervised cross-sectional model
 
@@ -545,6 +586,12 @@ committed.
 | `docs/` directory exists | `ls` | **REFUTED** — no `docs/`; all specs at root |
 | Panel size on GPU | computed from shape | **CONFIRMED** — ~150 MB fp32 / ~75 MB fp16 at 504 names |
 | 4060 VRAM binding | activations at mb=128 | **REFUTED** — ~3 GB at 504 names; system RAM (6.9 GB buffer) is the real constraint |
+
+**Corrected by A2 on 2026-09-05** (see §5 R3): the FLOP-per-sequence figure was
+2.4x too low, the 4060's FP32 peak was overstated by 70%, and the host-to-device
+traffic — while confirmed to 0.02% in bytes — accounts for 0.0001% of wall clock
+rather than being the bottleneck. The R3 gate as originally written was below its
+own theoretical floor.
 
 **Not verified, carried forward as stated:** the Kronos claims (§8), NSE bhavcopy
 depth and series-code availability (§4.4), and the assertion that share-rounding

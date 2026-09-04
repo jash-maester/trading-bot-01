@@ -1,6 +1,6 @@
 # PROGRESS
 
-**Last updated:** 2026-09-04 by session 2
+**Last updated:** 2026-09-05 by session 2
 **Plan:** `09_revamp_and_audit.md`
 **Rules:** `CLAUDE.md`
 
@@ -22,9 +22,9 @@ Dependency order:
 
 | Unit | Status | Gate | Evidence | Session |
 |---|---|---|---|---|
-| A0 — read-only forensics | IN_PROGRESS | Written answers to all 14 contradictions + 7 R0 questions | `audit/A0_findings.md` | — |
-| A1 — leakage & correctness | IN_PROGRESS | Six checks answered with call graphs / measurements | `audit/A1_leakage.md` | — |
-| A2 — compute forensics | IN_PROGRESS | Profile + measured H2D bytes + encoder-invocation ratio | `audit/A2_compute.md` | — |
+| A0 — read-only forensics | **PASS** | Written answers to all 14 contradictions + 7 R0 questions | `audit/A0_findings.md` | 2 |
+| A1 — leakage & correctness | **PASS** | Six checks answered with call graphs / measurements | `audit/A1_leakage.md` | 2 |
+| A2 — compute forensics | **PASS (partial)** | Profile + measured H2D bytes + encoder-invocation ratio | `audit/A2_compute.md` | 2 |
 | A3 — reconcile specs | NOT_STARTED | Every spec carries a `## Status` block + verifying commit | `02/03/05/08_*.md` | — |
 | A4 — quarantine (optional) | NOT_STARTED | Untrained code moved to `experimental/`, tests still green | `experimental/*/README.md` | — |
 | A5 — standing rules | **DONE** | `CLAUDE.md` exists with the five rules | `CLAUDE.md` | 1 |
@@ -36,11 +36,17 @@ Dependency order:
 | R6 — reinstate RL | NOT_STARTED | Beats R5's allocator | run ID | — |
 | R7 — regime conditioning | NOT_STARTED | `corr(val,test)` CI over ≥8 windows excludes zero, then Phase 1 A/B | walk-forward summary | — |
 
-**Current units: A0, A1, A2 — running concurrently.** The plan lists them
-sequentially, but all three are read-only and write to disjoint reports under
-`audit/`, so serialising them buys nothing but wall clock. Recorded here as a
-deliberate deviation from the written sequence, per the instruction to record
-disagreements rather than silently follow or ignore the spec.
+**Current unit: A3 — reconcile the specs.** A0, A1 and A2 all pass; their
+headline claims were independently re-verified rather than accepted on report.
+A2 passes *partially*: four 4060 measurements are marked NOT MEASURED because the
+box began refusing SSH mid-run and has not recovered. None of A2's conclusions
+depend on them — the R3 verdict rests on the corrected FLOP count and the
+measured FP32 peak, both in hand.
+
+**To finish A2 later** (needs `Restart-Service sshd` or a reboot on the Windows
+box first, which cannot be done from the Mac):
+`make win-push`, then
+`ssh jashm@192.168.1.7 'wsl.exe -e bash /mnt/d/trading-bot-01/scripts/profiling/a2_all.sh'`.
 
 ---
 
@@ -72,6 +78,44 @@ disagreements rather than silently follow or ignore the spec.
 ---
 
 ## Findings that change the plan
+
+### From A0/A1/A2 (2026-09-05) — all verified independently
+
+- **The good panel is unreachable.** `data.panels_root` is read only by
+  `build_features.py:55`. `train.py:33`, `walk_forward.py:59`, `paper_run.py:266`
+  and `evaluate.py:43` all hardcode `data/panels`, so `data/panels_kite/` is
+  written and then orphaned. No config override can select it.
+- **`num_sectors` will crash on rebuild — introduced by this session.** The
+  universe now has 14 sectors; `num_sectors` defaults to 8 in `heads.py:181`,
+  `actor_critic.py:30` and `graph.py:82`. Verified: `sector_id=14` →
+  `RuntimeError: index 13 is out of bounds for dimension 1 with size 8`.
+- **Dropout is inverted.** `ppo.py:218` calls `.eval()` before the rollout and
+  `.train()` is only restored at `ppo.py:445`, *after* the whole loop. So every
+  gradient update runs in eval mode (no dropout at all during training) and
+  val/test evaluation runs in train mode (dropout on). Exactly backwards.
+- **The purge is short on all 8 boundaries** (19–23 trading days vs 60-day
+  features), and the new `kite_v1` split has it too despite a comment claiming
+  otherwise. Minimum clean purge is 3 months; 4 gives margin.
+- **`graph.py:334` is a correctness bug**, not a simplification: 87.6% (yfinance)
+  / 94.3% (Kite) of minibatch elements get the wrong adjacency, swinging a fixed
+  transition's `log_prob` by 0.68 nats against `clip_coef=0.2`. Every GNN result
+  is uninterpretable, and this is a live alternative explanation for the
+  instability the report attributes to dropout.
+- **Both momentum baselines are wrong**: `MomentumTopK` ranks on `log_return_1d`
+  (`baselines.py:110`, with a comment admitting it) and holds 47% cash at K=5.
+- **`beta_nifty_60d` was never fixed in code.** `features.py:293` still does
+  `pl.lit(1.0)` when the index is absent, and that file is untouched since
+  2026-04-22. Only the Kite *config* fetches `^NSEI`. Any rebuild with a config
+  lacking the index silently kills the feature again, with no error.
+- **My compute arithmetic was wrong twice** — see the R3 gate in `09` §5.
+  7.83 MFLOP/sequence not 3.3 (the TCN has 7 conv layers, not 3); 9.05 TFLOPS
+  FP32 not ~15 (15.34 is TF32). The gate was below its own theoretical floor.
+- **Host-to-device traffic is confirmed but irrelevant**: 27.79 GiB/update
+  verified to 0.02%, but ~5.0 s/update — 0.0001% of wall clock. The real
+  signature is a VRAM cliff; at 504 tickers **L=60 costs 24× L=30**. Encoder
+  caching (TCN = 97.9% of arithmetic, 47× reduction) is the only fix that matters.
+
+### From the pre-commit review of the plan (2026-09-04)
 
 Recorded during the pre-commit review of `09_revamp_and_audit.md`. Full
 verification log at `09` §9.
