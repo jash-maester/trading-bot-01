@@ -64,7 +64,7 @@ sync:
 		--exclude='mlruns/' \
 		--exclude='checkpoints/' \
 		--exclude='data/' \
-		./* $(SERVER):$(REMOTE_DIR)
+		./ $(SERVER):$(REMOTE_DIR)
 
 # Like sync, but also transfers the data/ directory (panels + raw cache).
 # Use once after build_features.py if you don't want to re-download on server.

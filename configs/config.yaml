@@ -1,7 +1,11 @@
 defaults:
   - data: default
   - env: panel_daily
-  - model: mlp_baseline
+  # Phase 1 winner (mlp_regime: TCN + CrossStockAttention + regime FiLM +
+  # critic concat) is the new default.  Override with `model=mlp_baseline`
+  # for a-pre-Phase-1 ablation, or `model=mlp_regime_aux` (with
+  # `train=ppo_aux`) for the Phase 2 auxiliary-head variant.
+  - model: mlp_regime
   - train: ppo_baseline
   - broker: paper
   - walk: default

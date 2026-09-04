@@ -1,0 +1,38 @@
+# @package _global_.model
+#
+# Phase 1 architecture upgrade: MLP baseline + market-regime conditioning.
+#
+# Adds FiLM modulation at two locations (after TCN encoder and after
+# CrossStockAttention) plus regime concat into the critic head.  Each
+# location is independently toggleable so we can ablate cleanly:
+#
+#   regime_film_encoder: {true,false}   FiLM after TCN encoder
+#   regime_film_attn:    {true,false}   FiLM after CrossStockAttention
+#   regime_in_critic:    {true,false}   raw regime → critic input concat
+#
+# All other hyperparameters match `mlp_baseline.yaml` so a head-to-head
+# A/B is purely the conditioning effect, not the architecture's parameter
+# budget.
+name: mlp_regime
+encoder: tcn
+tcn:
+  num_channels: [64, 64, 64]
+  kernel_size: 3
+  dropout: 0.1
+embed_dim: 128
+use_graph: false
+use_cross_attn: true
+cross_attn_heads: 4
+# ── Regime conditioning ────────────────────────────────────────────────────
+regime_film_encoder: true
+regime_film_attn: true
+regime_in_critic: true
+regime_film_hidden: 32
+# Phase 2 aux head — disabled in mlp_regime by definition (this is the
+# Phase-1-only config).  Use mlp_regime_aux.yaml to enable.
+use_aux_return_head: false
+aux_return_hidden: 32
+# torch.compile of the module's forward — gives 1.3-2x speedup on CUDA, ~1.1x
+# on MPS (or no-op if backend doesn't support it).  Set false to debug or if
+# recompilations dominate (rare for our static-shape obs).
+compile: true

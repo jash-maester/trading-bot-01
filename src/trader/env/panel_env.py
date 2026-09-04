@@ -10,6 +10,7 @@ import numpy as np
 import polars as pl
 from gymnasium import Env, spaces
 
+from trader.data.regime_features import REGIME_DIM, compute_regime_features
 from trader.env.costs import CostModel, ZerodhaEquityDeliveryCostModel
 from trader.env.reward import LogReturn, RewardFn
 
@@ -128,10 +129,21 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         # `use_excess_returns=True`. Computed cross-sectionally: mean of
         # `log_return_1d` across tradeable stocks each day.  Kept in raw
         # space (no normalisation) — that's a model-side concern.
-        log_ret_raw = _stack("log_return_1d", np.float64)        # [T, N]
+        # Also kept on `self._stk_log_ret` for the auxiliary next-day
+        # return prediction target (Phase 2).
+        self._stk_log_ret = _stack("log_return_1d", np.float64)  # [T, N]
+        log_ret_raw = self._stk_log_ret
         trd_f = self._stk_mask.astype(np.float64)
         trd_count = np.maximum(trd_f.sum(axis=1), 1.0)
         self._benchmark_log_ret = (log_ret_raw * trd_f).sum(axis=1) / trd_count  # [T]
+
+        # Market-regime features ([T, R]) — exogenous signal for FiLM
+        # conditioning in the model.  Always computed (cheap, ~O(T·N)
+        # at construction); the model decides whether to consume them
+        # via `obs["regime"]`.  Strictly backward-looking.
+        self._regime_features = compute_regime_features(
+            log_ret_raw, self._stk_mask
+        )                                                         # [T, R] float32
 
         _sid_max = panel["sector_id"].max() if "sector_id" in panel.columns else None
         S: int = int(_sid_max) if isinstance(_sid_max, (int, float)) else 0
@@ -150,6 +162,19 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
                 "recent_return_1d": spaces.Box(-np.inf, np.inf, (), np.float32),
                 "recent_vol_20d": spaces.Box(0.0, np.inf, (), np.float32),
                 "nav_log_progress": spaces.Box(-np.inf, np.inf, (), np.float32),
+                # Market-regime conditioning vector (FiLM input).  Models
+                # that don't use it simply ignore the key — the env always
+                # emits it for forward compatibility.
+                "regime": spaces.Box(-np.inf, np.inf, (REGIME_DIM,), np.float32),
+                # Auxiliary supervised target: the next-day cross-section of
+                # log returns (the "today" close-to-close move from the obs's
+                # POV — the agent has features through yesterday's close).
+                # This is the *target* for the optional ReturnPredictionHead;
+                # the main policy/value path NEVER reads this key (it would
+                # be a future leak).  See PPOTrainer for how it's consumed.
+                "next_day_returns": spaces.Box(
+                    -np.inf, np.inf, (N,), np.float32
+                ),
             }
         )
         self.action_space = spaces.Box(-10.0, 10.0, (N + 1,), np.float32)
@@ -337,6 +362,15 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
             np.log(max(current_nav, 1e-8) / max(self._initial_cash, 1e-8))
         )
 
+        # Auxiliary target: next-day cross-section of log returns.
+        # `day_idx` is the day being traded; obs features end at day_idx-1's
+        # close, so the *next* return (from day_idx-1 close to day_idx close)
+        # is `_stk_log_ret[day_idx]` — exactly the cross-section the agent
+        # is implicitly betting on.  Always emitted; the main forward path
+        # never consumes this key.  Untradeable rows get the raw return value
+        # (the trainer applies a tradeable-mask before computing MSE).
+        next_day_returns = self._stk_log_ret[day_idx].astype(np.float32)
+
         return {
             "features": feat_arr,
             "mask": mask.astype(np.int8),
@@ -348,6 +382,8 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
             "recent_return_1d": np.array(recent_return_1d, dtype=np.float32),
             "recent_vol_20d": np.array(recent_vol_20d, dtype=np.float32),
             "nav_log_progress": np.array(nav_log_progress, dtype=np.float32),
+            "regime": self._regime_features[day_idx].astype(np.float32),
+            "next_day_returns": next_day_returns,
         }
 
     # ── fast array accessors (vectorised — kept for backward compatibility) ───

@@ -7,3 +7,13 @@ tcn:
   dropout: 0.1
 embed_dim: 128
 use_graph: false
+# Regime-conditioning flags (Phase 1) — disabled in baseline by definition.
+# Listed explicitly so this config is self-documenting and so Hydra
+# overrides (e.g., `model.regime_film_encoder=true`) don't 404.
+regime_film_encoder: false
+regime_film_attn: false
+regime_in_critic: false
+regime_film_hidden: 32
+use_aux_return_head: false
+aux_return_hidden: 32
+compile: false

@@ -16,3 +16,8 @@ normalize_rewards: true  # RunningMeanStd reward scaling before GAE
 log_interval: 10
 eval_interval: 50
 checkpoint_interval: 200
+# Phase 2 — auxiliary next-day return-prediction loss weight.  Active only
+# when the model also has `use_aux_return_head: true` (see configs/model/).
+# 0.0 here = backwards-compatible default; the path is dead unless both
+# flags are set.
+aux_return_loss_coef: 0.0

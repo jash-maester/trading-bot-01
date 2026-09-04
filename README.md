@@ -150,7 +150,7 @@ uv run ruff check --fix .
 # Type checking — must report "Success: no issues found"
 uv run mypy src
 
-# Unit tests — must be 82/82 passed (no DB or data required)
+# Unit tests — must be 140/140 passed (no DB or data required)
 uv run pytest tests/unit/ -v
 
 # Full test suite (includes integration tests — requires DB to be up)

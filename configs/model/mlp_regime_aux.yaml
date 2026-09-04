@@ -1,0 +1,36 @@
+# @package _global_.model
+#
+# Phase 2 architecture: Phase 1 (regime FiLM + critic concat) stacked with
+# the auxiliary next-day return-prediction head.  The aux head adds
+# ~5k params + a per-stock MSE supervised loss to PPO's update step,
+# pushing the encoder to learn return-predictive representations.
+#
+# Run:
+#   uv run python scripts/walk_forward.py \
+#     model=mlp_regime_aux \
+#     train.aux_return_loss_coef=0.1
+#
+# The aux *head* lives in the model config; the loss *weight* lives in the
+# train config, because PPOConfig owns it.  Setting both is required for
+# the auxiliary signal to actually flow.  If `train.aux_return_loss_coef=0`
+# the head is built but never trained → wasted params.
+name: mlp_regime_aux
+encoder: tcn
+tcn:
+  num_channels: [64, 64, 64]
+  kernel_size: 3
+  dropout: 0.1
+embed_dim: 128
+use_graph: false
+use_cross_attn: true
+cross_attn_heads: 4
+# Phase 1 regime conditioning (identical to mlp_regime).
+regime_film_encoder: true
+regime_film_attn: true
+regime_in_critic: true
+regime_film_hidden: 32
+# Phase 2 auxiliary return prediction head.
+use_aux_return_head: true
+aux_return_hidden: 32
+# torch.compile JIT — same as Phase 1.
+compile: true

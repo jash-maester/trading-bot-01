@@ -24,6 +24,12 @@ from trader.data.feature_stats import (
     stats_to_tensors,
 )
 from trader.data.features import FEATURE_COLS
+from trader.data.regime_features import (
+    REGIME_DIM,
+    compute_regime_stats,
+    regime_stats_to_tensors,
+    save_regime_stats,
+)
 from trader.data.universe import all_tickers
 from trader.env.reward import DifferentialSharpe, ExcessLogReturn, LogReturn
 from trader.models.actor_critic import ActorCritic, ModelConfig
@@ -111,6 +117,25 @@ def train_one_run(
         f"[{feat_std.min().item():.4g}, {feat_std.max().item():.4g}]"
     )
 
+    # ── Regime-feature normalisation stats (from train panel only) ───────────
+    # Computed even when the model doesn't consume regime features — the
+    # cost is sub-second on a typical training panel, and it lets us
+    # toggle regime conditioning purely via Hydra without re-running stats.
+    regime_stats = compute_regime_stats(train_panel)
+    if feature_stats_save_path is not None:
+        regime_stats_path = feature_stats_save_path.with_name(
+            feature_stats_save_path.stem.replace("feature_stats", "regime_stats")
+            + feature_stats_save_path.suffix
+        )
+        save_regime_stats(regime_stats, regime_stats_path)
+    regime_mean, regime_std = regime_stats_to_tensors(regime_stats)
+    logger.info(
+        f"Regime stats: dim={REGIME_DIM}  mean range "
+        f"[{regime_mean.min().item():.4g}, {regime_mean.max().item():.4g}]  "
+        f"std range [{regime_std.min().item():.4g}, "
+        f"{regime_std.max().item():.4g}]"
+    )
+
     # ── Reward function ───────────────────────────────────────────────────────
     reward_name = str(cfg.env.get("reward", "log_return"))
     reward_fn = _REWARD_MAP.get(reward_name, LogReturn)()
@@ -156,6 +181,17 @@ def train_one_run(
         num_channels=num_channels,
         kernel_size=int(cfg.model.tcn.kernel_size),
         dropout=float(cfg.model.tcn.dropout),
+        use_cross_attn=bool(cfg.model.get("use_cross_attn", True)),
+        cross_attn_heads=int(cfg.model.get("cross_attn_heads", 4)),
+        # Regime conditioning — silently no-op for models that ignore it.
+        regime_dim=REGIME_DIM,
+        regime_film_encoder=bool(cfg.model.get("regime_film_encoder", False)),
+        regime_film_attn=bool(cfg.model.get("regime_film_attn", False)),
+        regime_in_critic=bool(cfg.model.get("regime_in_critic", False)),
+        regime_film_hidden=int(cfg.model.get("regime_film_hidden", 32)),
+        # Phase 2: auxiliary next-day return prediction head.
+        use_aux_return_head=bool(cfg.model.get("use_aux_return_head", False)),
+        aux_return_hidden=int(cfg.model.get("aux_return_hidden", 32)),
     )
 
     model: nn.Module
@@ -177,11 +213,60 @@ def train_one_run(
         )
         logger.info(f"Model: GNNActorCritic (relations={gnn_cfg.relations})")
     else:
-        model = ActorCritic(model_cfg, feat_mean=feat_mean, feat_std=feat_std)
-        logger.info("Model: ActorCritic (no graph)")
+        model = ActorCritic(
+            model_cfg,
+            feat_mean=feat_mean,
+            feat_std=feat_std,
+            regime_mean=regime_mean,
+            regime_std=regime_std,
+        )
+        film_state = (
+            f"enc={model_cfg.regime_film_encoder} "
+            f"attn={model_cfg.regime_film_attn} "
+            f"critic={model_cfg.regime_in_critic}"
+        )
+        aux_coef = float(cfg.train.get("aux_return_loss_coef", 0.0))
+        aux_state = (
+            f"  aux_head=True coef={aux_coef}"
+            if model_cfg.use_aux_return_head
+            else ""
+        )
+        logger.info(f"Model: ActorCritic (no graph)  FiLM[{film_state}]{aux_state}")
 
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Parameters: {n_params:,}")
+
+    # ── Optional torch.compile JIT (PyTorch 2.x) ────────────────────────────
+    # Speeds up the forward/backward kernels by lowering through TorchInductor.
+    # Typical speedup: 1.3-2× on CUDA, ~1.0-1.2× on MPS (limited support),
+    # no-op on backends that don't support it.
+    #
+    # Subtlety: `torch.compile(model)` returns an `OptimizedModule` *wrapper*.
+    # PPO's hot path is `model.get_action_and_value(obs)`, which internally
+    # calls `self.forward(obs)` — that internal call would bypass the
+    # compiled graph if we replaced the model with the wrapper. Instead we
+    # rebind `model.forward` to its compiled version so every call site —
+    # `model(obs)`, `self.forward(obs)`, `get_action_and_value`, `get_value`
+    # — hits the compiled kernel.
+    #
+    # We use `mode="reduce-overhead"` because our obs shapes are static
+    # (fixed lookback × universe × n_envs), so CUDA Graphs give the largest
+    # win.  Set `dynamic=False` defensively against unintended recompiles.
+    if bool(cfg.model.get("compile", False)):
+        try:
+            import torch
+
+            model.forward = torch.compile(  # type: ignore[method-assign]
+                model.forward,
+                mode="reduce-overhead",
+                dynamic=False,
+                fullgraph=False,        # allow graph breaks (MHA has them)
+            )
+            logger.info(
+                "torch.compile: enabled (mode=reduce-overhead, dynamic=False)"
+            )
+        except Exception as e:
+            logger.warning(f"torch.compile failed, running eager: {e}")
 
     # ── PPO config ────────────────────────────────────────────────────────────
     model_name = str(cfg.model.get("name", "ppo"))
@@ -203,6 +288,9 @@ def train_one_run(
         learning_rate=float(cfg.train.learning_rate),
         anneal_lr=bool(cfg.train.anneal_lr),
         normalize_rewards=bool(cfg.train.get("normalize_rewards", True)),
+        # Phase 2 aux loss weight — only fires when the model also has the
+        # ReturnPredictionHead enabled (`model.use_aux_return_head=true`).
+        aux_return_loss_coef=float(cfg.train.get("aux_return_loss_coef", 0.0)),
         log_interval=int(cfg.train.log_interval),
         eval_interval=int(cfg.train.eval_interval),
         checkpoint_interval=int(cfg.train.checkpoint_interval),

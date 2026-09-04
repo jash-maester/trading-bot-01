@@ -17,3 +17,6 @@ normalize_rewards: true  # RunningMeanStd reward scaling before GAE
 log_interval: 10
 eval_interval: 50
 checkpoint_interval: 200
+# GNN models don't currently expose the aux head; flag listed for Hydra
+# override compatibility only.
+aux_return_loss_coef: 0.0

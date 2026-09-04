@@ -68,6 +68,122 @@ class CrossStockAttention(nn.Module):
         return self.norm(x + attn_out)  # type: ignore[no-any-return]
 
 
+class RegimeNormalizer(nn.Module):
+    """Frozen z-score standardisation for the regime conditioning vector.
+
+    Mirrors `FeatureNormalizer` but operates on the [B, R] regime tensor
+    rather than the [B, N, L, F] feature tensor.  Using fixed train-set
+    stats means val/test envs see the same regime-feature distribution
+    the FiLM net was trained on — without normalisation, FiLM would have
+    to spend capacity absorbing the natural scale of each feature
+    (e.g., `mkt_vol_20d` ~ 0.02, `mkt_breadth_20d` ~ 0.5).
+
+    If `mean=None or std=None`, this becomes an identity (used for tests
+    and ablation toggles).
+    """
+
+    def __init__(
+        self,
+        mean: torch.Tensor | None = None,
+        std: torch.Tensor | None = None,
+    ) -> None:
+        super().__init__()
+        if mean is None or std is None:
+            self.register_buffer("mean", torch.zeros(1))
+            self.register_buffer("std", torch.ones(1))
+            self._identity = True
+        else:
+            self.register_buffer("mean", mean.float())
+            self.register_buffer("std", std.float().clamp_min(1e-6))
+            self._identity = False
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self._identity:
+            return x
+        mean: torch.Tensor = self.mean      # type: ignore[assignment]
+        std: torch.Tensor = self.std        # type: ignore[assignment]
+        return (x - mean) / std
+
+
+class FiLM(nn.Module):
+    """Feature-wise Linear Modulation (Perez et al. 2018).
+
+    Given a per-batch conditioning vector ``c ∈ R^{cond_dim}`` (the regime
+    vector here) and a per-stock embedding ``x ∈ R^{B×N×D}``, FiLM produces
+    affine modulation parameters ``(γ, β) ∈ R^{B×D}`` from c via a small
+    MLP and applies them as::
+
+        out = γ.unsqueeze(1) * x + β.unsqueeze(1)
+
+    The same (γ, β) is applied to every stock — appropriate here because
+    the regime is a market-wide property; per-stock adjustments are
+    handled later by the actor head and (in this architecture) by
+    CrossStockAttention.
+
+    Why FiLM over concatenation?
+    ----------------------------
+    Concatenating the regime vector to per-stock features grows the
+    encoder input dimension and forces every layer to relearn the
+    regime-dependence.  FiLM is *multiplicative*: it gates which features
+    matter in which regime.  Empirically this gives much stronger
+    conditional behaviour than a residual concat with the same parameter
+    budget.
+
+    Initialisation
+    --------------
+    The last linear's weights and biases are initialised to zero so the
+    layer outputs ``(Δγ, Δβ) = 0`` at start, with γ = 1 + Δγ → identity
+    at step 0.  This means the network behaves exactly like the
+    non-FiLM model at initialisation; FiLM only gradually learns
+    regime-dependent modulations as gradients flow.
+    """
+
+    def __init__(
+        self,
+        cond_dim: int,
+        embed_dim: int,
+        hidden: int = 32,
+        normalizer: RegimeNormalizer | None = None,
+    ) -> None:
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.normalizer = normalizer if normalizer is not None else RegimeNormalizer()
+        self.net = nn.Sequential(
+            nn.Linear(cond_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, 2 * embed_dim),
+        )
+        # Identity-init: zeroing the final layer makes Δγ=Δβ=0,
+        # so γ=1 and β=0 at step 0 (out = x unchanged).
+        last = self.net[-1]
+        assert isinstance(last, nn.Linear)
+        nn.init.zeros_(last.weight)
+        nn.init.zeros_(last.bias)
+
+    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+        """Apply FiLM to a per-stock embedding tensor.
+
+        Parameters
+        ----------
+        x : Tensor [B, N, D]
+            Per-stock embeddings.
+        cond : Tensor [B, R]
+            Regime conditioning vector (one per batch element).
+
+        Returns
+        -------
+        Tensor [B, N, D]
+        """
+        if cond.dim() == 1:
+            cond = cond.unsqueeze(0)
+        cond = self.normalizer(cond)
+        gb = self.net(cond)                                   # [B, 2D]
+        gamma_delta, beta = gb.chunk(2, dim=-1)               # each [B, D]
+        gamma = 1.0 + gamma_delta
+        out: torch.Tensor = gamma.unsqueeze(1) * x + beta.unsqueeze(1)
+        return out                                            # [B, N, D]
+
+
 class FeatureNormalizer(nn.Module):
     """Fixed per-feature standardisation: ``(x - mean) / std``.
 

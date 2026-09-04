@@ -68,6 +68,10 @@ class PPOConfig:
     target_kl: float | None = 0.02
     normalize_advantage: bool = True
     normalize_rewards: bool = True   # divide rewards by running std before GAE
+    # Auxiliary supervised loss: weight on the next-day return-prediction
+    # head (Phase 2).  0.0 disables the loss path entirely (faster update,
+    # backward-compatible with pre-Phase-2 models).  Typical range 0.05–0.2.
+    aux_return_loss_coef: float = 0.0
     checkpoint_dir: Path = field(default_factory=lambda: Path("checkpoints"))
     eval_interval: int = 50       # update iterations between evals
     checkpoint_interval: int = 100
@@ -309,6 +313,16 @@ class PPOTrainer:
             pg_losses: list[float] = []
             v_losses: list[float] = []
             entropy_losses: list[float] = []
+            aux_losses: list[float] = []
+
+            # Whether the auxiliary return-prediction head is active.  Only
+            # enabled when (a) the model has the head AND (b) the loss coef
+            # is positive AND (c) the obs buffer carries the target key.
+            aux_active = (
+                cfg.aux_return_loss_coef > 0.0
+                and getattr(self.model, "aux_return_head", None) is not None
+                and "next_day_returns" in obs_batch
+            )
 
             b_inds = np.arange(self._batch_size)
             for _ in range(cfg.n_epochs):
@@ -324,10 +338,18 @@ class PPOTrainer:
                     mb_ret = b_returns[mb_inds]
                     mb_val = b_values[mb_inds]
 
+                    aux_pred: torch.Tensor | None = None
                     with amp_ctx:
-                        _, new_lp, entropy, new_val = self.model.get_action_and_value(  # type: ignore[operator]
-                            mb_obs, mb_act
-                        )
+                        if aux_active:
+                            (
+                                _, new_lp, entropy, new_val, aux_pred
+                            ) = self.model.get_action_value_and_aux(  # type: ignore[operator]
+                                mb_obs, mb_act
+                            )
+                        else:
+                            _, new_lp, entropy, new_val = self.model.get_action_and_value(  # type: ignore[operator]
+                                mb_obs, mb_act
+                            )
 
                     if cfg.normalize_advantage:
                         mb_adv = (mb_adv - mb_adv.mean()) / (mb_adv.std() + 1e-8)
@@ -356,6 +378,20 @@ class PPOTrainer:
                     entropy_loss = entropy.mean()
                     loss = pg_loss + cfg.vf_coef * vf_loss - cfg.ent_coef * entropy_loss
 
+                    # Auxiliary supervised next-day return-prediction loss
+                    # (Phase 2).  Cast pred & target to float32 for the MSE
+                    # to avoid BF16 underflow on small (~1e-4) loss values.
+                    if aux_active and aux_pred is not None:
+                        from trader.models.heads import aux_return_loss
+
+                        aux_target = mb_obs["next_day_returns"].float()
+                        aux_mask = mb_obs["mask"]
+                        aux_loss = aux_return_loss(
+                            aux_pred.float(), aux_target, aux_mask
+                        )
+                        loss = loss + cfg.aux_return_loss_coef * aux_loss
+                        aux_losses.append(aux_loss.item())
+
                     self.optimizer.zero_grad()
                     loss.backward()
                     nn.utils.clip_grad_norm_(self.model.parameters(), cfg.max_grad_norm)
@@ -376,28 +412,32 @@ class PPOTrainer:
                 mean_sharpe = float(np.mean([m.sharpe for m in recent])) if recent else 0.0
                 mean_cagr = float(np.mean([m.cagr for m in recent])) if recent else 0.0
                 reward_std = self._reward_rms.std if self.cfg.normalize_rewards else 1.0
+                aux_str = (
+                    f"  aux={np.mean(aux_losses):.5f}" if aux_losses else ""
+                )
                 logger.info(
                     f"update={update}/{n_updates}  step={global_step:,}"
                     f"  sps={sps}  sharpe={mean_sharpe:.3f}  cagr={mean_cagr:.3f}"
                     f"  pg={np.mean(pg_losses):.4f}  vf={np.mean(v_losses):.4f}"
                     f"  ent={np.mean(entropy_losses):.4f}"
+                    f"{aux_str}"
                     f"  clip_frac={np.mean(clip_fracs):.3f}"
                     f"  rew_std={reward_std:.4f}"
                 )
-                self._log_mlflow(
-                    global_step,
-                    {
-                        "charts/mean_sharpe": mean_sharpe,
-                        "charts/mean_cagr": mean_cagr,
-                        "losses/policy_loss": float(np.mean(pg_losses)),
-                        "losses/value_loss": float(np.mean(v_losses)),
-                        "losses/entropy": float(np.mean(entropy_losses)),
-                        "charts/clip_fraction": float(np.mean(clip_fracs)),
-                        "charts/approx_kl": float(np.mean(approx_kls)),
-                        "charts/sps": sps,
-                        "charts/reward_std": reward_std,
-                    },
-                )
+                metrics_dict = {
+                    "charts/mean_sharpe": mean_sharpe,
+                    "charts/mean_cagr": mean_cagr,
+                    "losses/policy_loss": float(np.mean(pg_losses)),
+                    "losses/value_loss": float(np.mean(v_losses)),
+                    "losses/entropy": float(np.mean(entropy_losses)),
+                    "charts/clip_fraction": float(np.mean(clip_fracs)),
+                    "charts/approx_kl": float(np.mean(approx_kls)),
+                    "charts/sps": sps,
+                    "charts/reward_std": reward_std,
+                }
+                if aux_losses:
+                    metrics_dict["losses/aux_return_mse"] = float(np.mean(aux_losses))
+                self._log_mlflow(global_step, metrics_dict)
 
             if update % cfg.checkpoint_interval == 0:
                 self._save_checkpoint(update)
