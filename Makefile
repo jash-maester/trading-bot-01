@@ -57,6 +57,58 @@ services-status:
 	@printf 'mlflow: '; curl -sf http://127.0.0.1:$(MLFLOW_PORT)/health || echo "DOWN"
 	@echo
 
+# ── Windows training box (RTX 4060) ────────────────────────────────────────────
+.PHONY: win-check win-push win-push-data win-push-env win-setup win-test win-shell win-gpu \
+        win-services win-services-down
+
+## Connectivity, path, docker and GPU in one call.
+win-check:
+	@$(SSH) $(SERVER) 'hostname; "---"; \
+	  if (Test-Path "D:/trading-bot-01") { "path OK" } else { "PATH MISSING" }; \
+	  docker info --format "docker {{.ServerVersion}} os={{.OSType}} running={{.ContainersRunning}}"; \
+	  nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader'
+
+## Code, configs, scripts, tests, docs. Never data, never secrets.
+win-push:
+	$(WINRSYNC) $(SYNC_EXCLUDES) --exclude='/data/' ./ $(SERVER):$(REMOTE_DIR)/
+
+## The panels and OHLCV store (~342 MB). Slow first time, incremental after.
+win-push-data:
+	$(WINRSYNC) $(SYNC_EXCLUDES) ./data/ $(SERVER):$(REMOTE_DIR)/data/
+
+## Push .env to the training box. Deliberately a separate target, not part of
+## win-push: secrets should move on an explicit command, never as a side effect
+## of syncing code. Re-run it whenever the Kite access token is refreshed — it
+## expires around 6am daily, so a stale copy will fail auth mid-run.
+win-push-env:
+	@rsync -az --rsync-path="$(RSYNC_PATH)" -e "$(SSH)" .env $(SERVER):$(REMOTE_DIR)/.env
+	@$(SSH) $(SERVER) 'wsl.exe -e bash -lc "chmod 600 $(REMOTE_DIR)/.env && ls -l $(REMOTE_DIR)/.env"'
+
+## Bring up Postgres + MLflow on the training box via docker compose. Unlike the
+## Mac mini, that box HAS Docker, so the compose path works there unmodified.
+win-services:
+	@$(SSH) $(SERVER) 'wsl.exe -e bash -lc "cd $(REMOTE_DIR) && docker compose -f docker/docker-compose.yml up -d postgres mlflow && docker compose -f docker/docker-compose.yml ps"'
+
+win-services-down:
+	@$(SSH) $(SERVER) 'wsl.exe -e bash -lc "cd $(REMOTE_DIR) && docker compose -f docker/docker-compose.yml down"'
+
+## One-time remote bootstrap: uv, venv, deps, CUDA probe. Run after win-push.
+## Logic lives in scripts/win_bootstrap.sh — see the comment there for why it is
+## a file and not an inline command (PowerShell re-parses argv in transit).
+win-setup:
+	@$(SSH) $(SERVER) 'wsl.exe -e bash $(REMOTE_DIR)/scripts/win_bootstrap.sh setup'
+
+## Full check suite on the training box.
+win-test:
+	@$(SSH) $(SERVER) 'wsl.exe -e bash $(REMOTE_DIR)/scripts/win_bootstrap.sh test'
+
+win-gpu:
+	@$(SSH) $(SERVER) 'nvidia-smi'
+
+## Interactive WSL shell in the project directory.
+win-shell:
+	@$(SSH) -t $(SERVER) 'wsl.exe -e bash -lc "cd $(REMOTE_DIR) && exec bash -l"'
+
 data-fetch:
 	uv run python scripts/fetch_data.py $(ARGS)
 
@@ -85,10 +137,27 @@ full-report:
 	uv run python scripts/full_report.py $(ARGS)
 
 # ── Remote sync ────────────────────────────────────────────────────────────────
-# SERVER / REMOTE_DIR can be overridden on the command line:
-#   make sync SERVER=user@host REMOTE_DIR=/path/on/server
-SERVER     ?= jash@10.21.186.205
-REMOTE_DIR ?= /home/jash/trading-agent/Trading_Bot
+# Training box: Windows 11 + RTX 4060, reached over OpenSSH. Its default shell is
+# PowerShell, which mangles rsync's server-side argv — so rsync is invoked through
+# WSL via --rsync-path. Note `wsl.exe`, not bare `wsl`: PowerShell resolves the
+# former and fails on the latter. The path is the WSL view of D:\trading-bot-01.
+SERVER     ?= jashm@192.168.1.7
+REMOTE_DIR ?= /mnt/d/trading-bot-01
+RSYNC_PATH ?= wsl.exe rsync
+SSH        ?= ssh -o BatchMode=yes
+RSH         = $(SSH)
+WINRSYNC    = rsync -azvh --progress --rsync-path="$(RSYNC_PATH)" -e "$(SSH)"
+
+# Generated locally, never shipped: caches, venv, artefacts, secrets.
+# NOTE the leading slash on '/data/' below and in win-push: an unanchored
+# 'data/' matches at EVERY level, which silently excluded src/trader/data/
+# and left the training box with a `trader` package missing its data module.
+SYNC_EXCLUDES = \
+	--exclude='.venv/' --exclude='.git/' --exclude='__pycache__/' --exclude='*.pyc' \
+	--exclude='.mypy_cache/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
+	--exclude='*.egg-info/' --exclude='.hydra/' --exclude='outputs/' \
+	--exclude='mlruns/' --exclude='checkpoints/' --exclude='logs/' \
+	--exclude='.env' --exclude='*.bak' --exclude='reports/*.html'
 
 # Syncs source code, configs, scripts, docker, tests — nothing that is
 # generated locally (venv, caches, downloaded data, model artefacts).
@@ -106,7 +175,7 @@ sync:
 		--exclude='outputs/' \
 		--exclude='mlruns/' \
 		--exclude='checkpoints/' \
-		--exclude='data/' \
+		--exclude='/data/' \
 		./ $(SERVER):$(REMOTE_DIR)
 
 # Like sync, but also transfers the data/ directory (panels + raw cache).

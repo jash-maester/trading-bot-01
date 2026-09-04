@@ -58,6 +58,15 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]
 
+[tool.ruff.lint.isort]
+# Pinned explicitly rather than left to ruff's src-layout inference. The Mac and
+# the WSL training box (project on a /mnt/d DrvFs mount) inferred differently
+# from byte-identical files with the same ruff 0.15.11: the Mac treated `trader`
+# as first-party, WSL as third-party, so `ruff check .` passed on one machine
+# and reported 14 I001 errors on the other. Lint results must not depend on
+# which filesystem the checkout happens to sit on.
+known-first-party = ["trader"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
