@@ -9,3 +9,12 @@ test_months: 12
 purge_months: 1
 step_months: 12
 seeds: [42, 43, 44]
+
+# Shuffled-ticker-label leak check (M7 acceptance).  When true, each window is
+# additionally evaluated with the ticker axis of `features`/`sector_ids`
+# permuted, so per-stock features no longer correspond to the stock whose
+# returns are realised.  Expect the shuffled arm to land near equal-weight —
+# long-only beta survives relabelling — NOT at zero.  Red flags: shuffled
+# ~= real (the model is not using per-stock information), or shuffled well
+# above equal-weight (a leak).  Off by default: it costs an extra eval pass.
+shuffle_check: false

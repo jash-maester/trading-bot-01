@@ -19,15 +19,20 @@ rolling-window features from leaking across the boundary.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
 from loguru import logger
 from omegaconf import DictConfig
+
+if TYPE_CHECKING:  # torch is imported lazily — keeps `import walk_forward` cheap
+    import torch
+    from torch import nn
 
 # ── Window definition ──────────────────────────────────────────────────────────
 
@@ -166,6 +171,369 @@ def materialise_window(
     return paths
 
 
+# ── Comparison arms: equal-weight baseline + shuffled-ticker leak check ────────
+#
+# These three constants mirror `trader.training.runner._evaluate_split`, which
+# is what produces the agent's own test metrics.  The episode window an env
+# hands out is a pure function of the reset seed, so the baseline arm is a
+# genuinely *paired* comparison only while these stay in sync with runner.py.
+# (runner.py is not ours to edit; if its offsets change, these must follow.)
+_EVAL_N_EPISODES = 5      # runner._evaluate_split's `n_episodes` default
+_TEST_SEED_OFFSET = 1     # runner evaluates the test split with `seed + 1`
+_ENV_SEED_OFFSET = 999    # runner resets with `seed + 999 + episode_index`
+
+
+def _eval_env_kwargs(cfg: DictConfig) -> dict[str, Any]:
+    """Env kwargs for an *evaluation* env, matching runner._evaluate_split.
+
+    Deliberately omits `reward_fn`, `turnover_penalty` and `use_excess_returns`:
+    runner builds its eval envs with the defaults too, and reward shaping does
+    not affect realised NAV, only the training signal.  Matching it exactly is
+    what keeps the arms comparable.
+    """
+    return {
+        "lookback": int(cfg.env.lookback_days),
+        "episode_length": int(cfg.env.episode_length),
+        "initial_cash": float(cfg.env.initial_cash),
+    }
+
+
+def equal_weight_test_metrics(
+    cfg: DictConfig,
+    *,
+    test_panel: Path,
+    seeds: list[int],
+    n_episodes: int = _EVAL_N_EPISODES,
+) -> dict[int, dict[str, float]]:
+    """Evaluate `EqualWeightRebalanced` on one window's test panel, per seed.
+
+    M7's acceptance criterion is a *paired* bootstrap CI of the RL agent
+    against equal-weight.  `paired_bootstrap_ci` has existed (and been
+    unit-tested) since M7 but nothing ever called it, because there was no
+    baseline arm to pair against — this is that arm.
+
+    Pairing is what makes the CI tight enough to be informative: agent and
+    baseline are evaluated on *identical* episode windows (same reset seeds),
+    so the window-to-window variation that dominates walk-forward Sharpe
+    cancels in the difference.
+
+    Returns ``{run_seed: aggregated_metrics}``.  A seed is absent from the
+    result only if evaluation failed, which is logged and never raised — a
+    missing benchmark must not kill a multi-day training run.
+    """
+    from trader.data.features import FEATURE_COLS
+    from trader.data.universe import active_tickers
+    from trader.env.baselines import EqualWeightRebalanced
+    from trader.env.panel_env import PanelTradingEnv
+    from trader.training.eval_metrics import (
+        EpisodeMetrics,
+        aggregate_metrics,
+        compute_episode_metrics,
+    )
+
+    out: dict[int, dict[str, float]] = {}
+    kwargs = _eval_env_kwargs(cfg)
+    try:
+        # One env per panel rather than per seed: `reset(seed=...)` replaces the
+        # env's RNG outright, so the constructor seed never influences which
+        # episode windows are drawn.  Saves re-parsing the parquet per seed.
+        env = PanelTradingEnv(
+            panel_path=test_panel,
+            universe=active_tickers(),
+            feature_columns=FEATURE_COLS,
+            seed=seeds[0] + _TEST_SEED_OFFSET + _ENV_SEED_OFFSET if seeds else 0,
+            **kwargs,
+        )
+    except Exception as e:  # noqa: BLE001 — benchmark must never fail a run
+        logger.warning(f"Equal-weight baseline env failed for {test_panel}: {e}")
+        return out
+
+    agent = EqualWeightRebalanced()
+    for seed in seeds:
+        eval_seed = seed + _TEST_SEED_OFFSET
+        episodes: list[EpisodeMetrics] = []
+        try:
+            for ep in range(n_episodes):
+                obs, _ = env.reset(seed=eval_seed + _ENV_SEED_OFFSET + ep)
+                agent.reset()
+                nav_series = [float(obs["nav"])]
+                turnovers: list[float] = []
+                done = False
+                while not done:
+                    obs, _, terminated, truncated, info = env.step(agent.act(obs))
+                    nav_series.append(float(info["nav"]))
+                    turnovers.append(float(info["turnover"]))
+                    done = bool(terminated or truncated)
+                episodes.append(compute_episode_metrics(nav_series, turnovers))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Equal-weight baseline failed (seed={seed}): {e}")
+            continue
+        if episodes:
+            out[seed] = aggregate_metrics(episodes)
+    return out
+
+
+# ── Shuffled-ticker-label sanity check ────────────────────────────────────────
+#
+# `05_training.md` §Overfitting guardrails calls this the gold-standard leak
+# detector.  The idea: destroy the correspondence between a stock's features
+# and that stock's realised returns, and re-run the *already trained* agent.
+# If it still performs as well, the performance was never coming from
+# per-stock signal, and something else in the observation is carrying the
+# information — possibly the future.
+#
+# WHAT IS PERMUTED, per evaluation episode, with one permutation held fixed
+# for every step of that episode:
+#   * `obs["features"]`   along the ticker axis (axis 1 of (lookback, N, F))
+#   * `obs["sector_ids"]` along its only axis, with the SAME permutation, so
+#     the sector a name claims to belong to travels with its features (a GNN
+#     builds its adjacency from this key; leaving it aligned would hand the
+#     model a true graph over falsified nodes).
+#
+# WHAT IS NOT PERMUTED — and this is the point of the test:
+#   * `mask`, `portfolio`, `cash`, `nav`, `t_frac`, `recent_return_1d`,
+#     `recent_vol_20d`, `nav_log_progress`, `regime`, `next_day_returns`.
+#   * Nothing at all inside the env: prices, costs, tradeability and the
+#     action→ticker mapping are untouched.  Action index j+1 still buys the
+#     real ticker j.
+#
+# So after permutation, slot j shows the price/volume history of ticker
+# perm[j] while the P&L booked at slot j is ticker j's.  Any genuine
+# cross-sectional edge ("this stock's own history predicts this stock's
+# return") is destroyed; anything that does not depend on that correspondence
+# survives — market-level timing from `regime`/`t_frac`, the tradeability
+# mask, and plain long-the-universe beta.
+#
+# HOW TO READ THE RESULT.  The shuffled arm is NOT expected to score zero: a
+# long-only agent keeps market beta through the shuffle, so it should land
+# near the equal-weight baseline arm.  The two red flags are
+#   (a) shuffled ≈ real  → the agent's edge was never cross-sectional; and
+#   (b) shuffled materially ABOVE equal-weight → information is reaching the
+#       agent through a channel that survives ticker relabelling, i.e. a leak.
+# Off by default (`walk.shuffle_check: false`); it costs one extra evaluation
+# pass per run.
+
+def make_ticker_permutation(
+    mask: np.ndarray,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Random permutation of ticker slots, restricted to tradeable names.
+
+    Non-tradeable slots are left in place on purpose.  A padded/untradeable
+    name has near-zero features; letting one land in a tradeable slot would
+    give the agent a trivially detectable "this slot is fake" tell, and the
+    check would then measure the agent's ability to spot the shuffle rather
+    than its dependence on real cross-sectional signal.
+    """
+    perm = np.arange(len(mask), dtype=np.int64)
+    tradeable = np.flatnonzero(np.asarray(mask).astype(bool))
+    if len(tradeable) > 1:
+        perm[tradeable] = tradeable[rng.permutation(len(tradeable))]
+    return perm
+
+
+def apply_ticker_permutation(
+    obs: dict[str, np.ndarray],
+    perm: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """Return `obs` with only the per-stock *feature* keys permuted.
+
+    See the module comment above for the full list of what is and is not
+    permuted, and why.
+    """
+    out = dict(obs)
+    out["features"] = np.ascontiguousarray(obs["features"][:, perm, :])
+    if "sector_ids" in obs:
+        out["sector_ids"] = np.ascontiguousarray(obs["sector_ids"][perm])
+    return out
+
+
+def _rebuild_eval_model(
+    cfg: DictConfig,
+    *,
+    feature_stats_path: Path,
+    n_tickers: int,
+    device: torch.device,
+) -> nn.Module:
+    """Rebuild the trained architecture so a checkpoint can be loaded into it.
+
+    MIRRORS the model construction inside `trader.training.runner.train_one_run`.
+    That builder is not exposed as a function and runner.py is outside this
+    module's ownership, so it is duplicated here.  The duplication is made safe
+    by loading the checkpoint with ``strict=True``: an architecture that has
+    drifted apart fails loudly instead of silently evaluating a different model.
+
+    TODO(runner.py): extract a shared `build_model(cfg, ...)` and delete this.
+    """
+    import torch
+
+    from trader.data.feature_stats import load_stats, stats_to_tensors
+    from trader.data.features import FEATURE_COLS
+    from trader.data.regime_features import (
+        REGIME_DIM,
+        load_regime_stats,
+        regime_stats_to_tensors,
+    )
+    from trader.models.actor_critic import ActorCritic, ModelConfig
+
+    feat_mean, feat_std = stats_to_tensors(load_stats(feature_stats_path), FEATURE_COLS)
+    regime_path = feature_stats_path.with_name(
+        feature_stats_path.stem.replace("feature_stats", "regime_stats")
+        + feature_stats_path.suffix
+    )
+    if regime_path.exists():
+        regime_mean, regime_std = regime_stats_to_tensors(load_regime_stats(regime_path))
+    else:
+        regime_mean = torch.zeros(REGIME_DIM)
+        regime_std = torch.ones(REGIME_DIM)
+
+    num_channels_raw = cfg.model.tcn.get("num_channels")
+    num_channels = (
+        [int(c) for c in num_channels_raw] if num_channels_raw is not None else None
+    )
+    model_cfg = ModelConfig(
+        in_features=len(FEATURE_COLS),
+        n_tickers=n_tickers,
+        embed_dim=int(cfg.model.embed_dim),
+        num_channels=num_channels,
+        kernel_size=int(cfg.model.tcn.kernel_size),
+        dropout=float(cfg.model.tcn.dropout),
+        use_cross_attn=bool(cfg.model.get("use_cross_attn", True)),
+        cross_attn_heads=int(cfg.model.get("cross_attn_heads", 4)),
+        regime_dim=REGIME_DIM,
+        regime_film_encoder=bool(cfg.model.get("regime_film_encoder", False)),
+        regime_film_attn=bool(cfg.model.get("regime_film_attn", False)),
+        regime_in_critic=bool(cfg.model.get("regime_in_critic", False)),
+        regime_film_hidden=int(cfg.model.get("regime_film_hidden", 32)),
+        use_aux_return_head=bool(cfg.model.get("use_aux_return_head", False)),
+        aux_return_hidden=int(cfg.model.get("aux_return_hidden", 32)),
+    )
+
+    model: nn.Module
+    if bool(cfg.model.get("use_graph", False)):
+        from trader.models.graph import GNNActorCritic, GNNConfig
+
+        gc = cfg.model.graph
+        gnn_cfg = GNNConfig(
+            num_sectors=int(gc.get("num_sectors", 8)),
+            num_layers=int(gc.get("layers", 2)),
+            num_heads=int(gc.get("num_heads", 2)),
+            dropout=float(gc.get("dropout", 0.1)),
+            drop_edge_prob=float(gc.get("drop_edge_prob", 0.1)),
+            relations=str(gc.get("relations", "all")),
+        )
+        model = GNNActorCritic(model_cfg, gnn_cfg, feat_mean=feat_mean, feat_std=feat_std)
+    else:
+        model = ActorCritic(
+            model_cfg,
+            feat_mean=feat_mean,
+            feat_std=feat_std,
+            regime_mean=regime_mean,
+            regime_std=regime_std,
+        )
+    return model.to(device)
+
+
+def shuffled_ticker_test_metrics(
+    cfg: DictConfig,
+    *,
+    test_panel: Path,
+    checkpoint_dir: Path,
+    feature_stats_path: Path,
+    seed: int,
+    n_episodes: int = _EVAL_N_EPISODES,
+) -> dict[str, float] | None:
+    """Re-evaluate the trained agent on the test panel with ticker labels shuffled.
+
+    Reloads the newest checkpoint under `checkpoint_dir` (PPOTrainer writes
+    `model_<update>.pt` every `train.checkpoint_interval` updates, so this is
+    the last *checkpointed* policy, which may trail the final weights by up to
+    one interval — a caveat worth remembering when the numbers are close).
+
+    Uses the same episode windows as the agent's real test evaluation, so the
+    two Sharpes are directly comparable.  Returns ``None`` — never raises — if
+    anything is missing; this is a diagnostic, not a gate.
+    """
+    import torch
+
+    from trader.data.features import FEATURE_COLS
+    from trader.data.universe import active_tickers
+    from trader.env.panel_env import PanelTradingEnv
+    from trader.training.eval_metrics import (
+        EpisodeMetrics,
+        aggregate_metrics,
+        compute_episode_metrics,
+    )
+    from trader.utils.seeding import get_device
+
+    checkpoints = sorted(checkpoint_dir.glob("model_*.pt")) if checkpoint_dir.is_dir() else []
+    if not checkpoints:
+        logger.warning(
+            f"Shuffle check skipped (seed={seed}): no checkpoint under {checkpoint_dir}"
+        )
+        return None
+    if not feature_stats_path.exists():
+        logger.warning(
+            f"Shuffle check skipped (seed={seed}): missing {feature_stats_path}"
+        )
+        return None
+
+    try:
+        device = get_device()
+        universe = active_tickers()
+        model = _rebuild_eval_model(
+            cfg,
+            feature_stats_path=feature_stats_path,
+            n_tickers=len(universe),
+            device=device,
+        )
+        state = torch.load(checkpoints[-1], map_location=device, weights_only=True)
+        model.load_state_dict(state["model_state"], strict=True)
+        model.eval()
+
+        env = PanelTradingEnv(
+            panel_path=test_panel,
+            universe=universe,
+            feature_columns=FEATURE_COLS,
+            seed=seed + _TEST_SEED_OFFSET + _ENV_SEED_OFFSET,
+            **_eval_env_kwargs(cfg),
+        )
+        eval_seed = seed + _TEST_SEED_OFFSET
+        episodes: list[EpisodeMetrics] = []
+        with torch.no_grad():
+            for ep in range(n_episodes):
+                episode_seed = eval_seed + _ENV_SEED_OFFSET + ep
+                obs, _ = env.reset(seed=episode_seed)
+                # One permutation per episode, fixed for its whole length: a
+                # per-step reshuffle would also destroy the *temporal*
+                # consistency of a slot, which is a different (and much
+                # weaker) test than breaking the feature↔return identity.
+                perm = make_ticker_permutation(
+                    obs["mask"], np.random.default_rng(episode_seed)
+                )
+                nav_series = [float(obs["nav"])]
+                turnovers: list[float] = []
+                done = False
+                while not done:
+                    shuffled = apply_ticker_permutation(obs, perm)
+                    obs_t = {
+                        k: torch.tensor(v, device=device).unsqueeze(0)
+                        for k, v in shuffled.items()
+                    }
+                    action, _, _, _ = model.get_action_and_value(obs_t)  # type: ignore[operator]
+                    a_np = action.squeeze(0).cpu().numpy()
+                    obs, _, terminated, truncated, info = env.step(a_np)
+                    nav_series.append(float(info["nav"]))
+                    turnovers.append(float(info["turnover"]))
+                    done = bool(terminated or truncated)
+                episodes.append(compute_episode_metrics(nav_series, turnovers))
+    except Exception as e:  # noqa: BLE001 — diagnostic must never fail a run
+        logger.warning(f"Shuffled-ticker check failed (seed={seed}): {e}")
+        return None
+
+    return aggregate_metrics(episodes) if episodes else None
+
+
 # ── Walk-forward driver ────────────────────────────────────────────────────────
 
 
@@ -186,15 +554,28 @@ def run_walk_forward(
     Returns a list of dicts, one per run, with structure::
 
         {
-          "window":  "W1",
-          "seed":    42,
-          "train":   {...aggregated train metrics...},
-          "val":     {...aggregated val metrics...},
-          "test":    {...aggregated test metrics...},
-          "run_id":  "<mlflow id>",
+          "window":        "W1",
+          "seed":          42,
+          "train":         {...aggregated train metrics...},
+          "val":           {...aggregated val metrics...},
+          "test":          {...aggregated test metrics...},
+          "baseline_test": {...equal-weight metrics on the same episodes...},
+          "shuffled_test": {...shuffled-ticker metrics...} or None,
+          "run_id":        "<mlflow id>",
         }
+
+    ``baseline_test`` is the equal-weight arm required by M7's "paired
+    bootstrap CI vs equal-weight" criterion — see
+    :func:`equal_weight_test_metrics`.  ``shuffled_test`` is populated only
+    when ``walk.shuffle_check`` is true; see
+    :func:`shuffled_ticker_test_metrics` for what the shuffle does and does
+    not touch.
     """
     from trader.training.runner import train_one_run
+
+    shuffle_check = bool(cfg.get("walk", {}).get("shuffle_check", False))
+    if shuffle_check:
+        logger.info("Shuffled-ticker sanity check: ENABLED (walk.shuffle_check)")
 
     results: list[dict[str, Any]] = []
     for window in windows:
@@ -202,17 +583,31 @@ def run_walk_forward(
         logger.info(f"\n=== {window.name} ===  {window.asdict_iso()}")
         win_paths = materialise_window(full_panel, window, win_dir)
 
+        # Baseline arm for this window, computed once for every seed up front:
+        # it depends only on the panel and the reset seeds, not on the policy,
+        # and one env construction per window beats one per run.
+        baseline_by_seed = equal_weight_test_metrics(
+            cfg, test_panel=win_paths["test"], seeds=seeds
+        )
+        for seed, bl in sorted(baseline_by_seed.items()):
+            logger.info(
+                f"  equal-weight test Sharpe (seed={seed}): "
+                f"{bl.get('mean_sharpe', float('nan')):.3f}"
+            )
+
         for seed in seeds:
             logger.info(f"--- {window.name} seed={seed} ---")
             run_cfg = cfg.copy()
             run_cfg["seed"] = seed
             run_tag = f"{cfg.model.name}_{window.name}_seed{seed}"
+            ckpt_dir = win_dir / f"checkpoints_seed{seed}"
+            stats_path = win_dir / f"feature_stats_seed{seed}.json"
             res = train_one_run(
                 run_cfg,
                 train_panel=win_paths["train"],
                 val_panel=win_paths["val"],
                 test_panel=win_paths["test"],
-                checkpoint_dir=walks_root / window.name / f"checkpoints_seed{seed}",
+                checkpoint_dir=ckpt_dir,
                 mlflow_run_name=run_tag,
                 mlflow_experiment=mlflow_experiment,
                 mlflow_tags={
@@ -225,8 +620,24 @@ def run_walk_forward(
                     "test_start": window.test_start.isoformat(),
                     "test_end": window.test_end.isoformat(),
                 },
-                feature_stats_save_path=win_dir / f"feature_stats_seed{seed}.json",
+                feature_stats_save_path=stats_path,
             )
+            shuffled: dict[str, float] | None = None
+            if shuffle_check:
+                shuffled = shuffled_ticker_test_metrics(
+                    run_cfg,
+                    test_panel=win_paths["test"],
+                    checkpoint_dir=ckpt_dir,
+                    feature_stats_path=stats_path,
+                    seed=seed,
+                )
+                if shuffled is not None:
+                    logger.info(
+                        f"  shuffled-ticker test Sharpe: "
+                        f"{shuffled.get('mean_sharpe', float('nan')):.3f}  "
+                        f"(real: {(res.test_metrics or {}).get('mean_sharpe', float('nan')):.3f})"
+                    )
+
             results.append(
                 {
                     "window": window.name,
@@ -234,6 +645,8 @@ def run_walk_forward(
                     "train": res.train_metrics,
                     "val": res.val_metrics,
                     "test": res.test_metrics,
+                    "baseline_test": baseline_by_seed.get(seed),
+                    "shuffled_test": shuffled,
                     "run_id": res.mlflow_run_id,
                 }
             )
@@ -302,3 +715,228 @@ def paired_bootstrap_ci(
         "ci_hi": float(hi),
         "p_above_zero": float((diffs > 0).mean()),
     }
+
+
+# ── Val/test correlation — the headline walk-forward diagnostic ────────────────
+#
+# Why this lives here and not in a notebook: the central empirical finding of
+# this project is that `corr(val_sharpe, test_sharpe)` was *negative* (−0.86 on
+# the `mlp_baseline` M7 run), which means selecting a model on validation
+# Sharpe actively picked the worst test performers.  Every architecture change
+# since (regime FiLM conditioning, the auxiliary return head) is aimed at
+# moving that number toward zero.  A figure that decides experiments has to be
+# computed by the pipeline that runs them, reproducibly, not by hand.
+
+
+def _average_ranks(x: np.ndarray) -> np.ndarray:
+    """0-based ascending ranks of `x`, with ties collapsed to their mean rank.
+
+    Uses the double-``argsort`` identity (``argsort(argsort(x))`` is the
+    ordinal rank vector) followed by a tie-averaging pass.  scipy is
+    deliberately not a dependency of this project, so ``rankdata`` is not
+    available; and the tie pass genuinely matters here — two runs with
+    identical Sharpe would otherwise get an arbitrary relative order that
+    leaks the input order into rho.
+    """
+    n = len(x)
+    order = np.argsort(x, kind="stable")
+    ranks = np.argsort(order, kind="stable").astype(np.float64)
+    sorted_x = x[order]
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and sorted_x[j + 1] == sorted_x[i]:
+            j += 1
+        if j > i:
+            ranks[order[i : j + 1]] = (i + j) / 2.0
+        i = j + 1
+    return ranks
+
+
+def _pearson_r(x: np.ndarray, y: np.ndarray) -> float | None:
+    """Pearson correlation, or ``None`` when either series has zero variance."""
+    xd = x - x.mean()
+    yd = y - y.mean()
+    denom = math.sqrt(float((xd * xd).sum()) * float((yd * yd).sum()))
+    if not math.isfinite(denom) or denom <= 0.0:
+        return None
+    r = float((xd * yd).sum() / denom)
+    # Guard against |r| drifting a hair past 1.0 through floating-point error.
+    return max(-1.0, min(1.0, r))
+
+
+def _log_beta(a: float, b: float) -> float:
+    return math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
+
+
+def _betacf(a: float, b: float, x: float) -> float:
+    """Continued fraction for the incomplete beta function (Lentz's method).
+
+    Straight transcription of Numerical Recipes §6.4.  Needed only because we
+    compute p-values without scipy.
+    """
+    tiny = 1e-30
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < tiny:
+        d = tiny
+    d = 1.0 / d
+    h = d
+    for m in range(1, 301):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        if abs(d) < tiny:
+            d = tiny
+        c = 1.0 + aa / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        if abs(d) < tiny:
+            d = tiny
+        c = 1.0 + aa / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < 3e-16:
+            break
+    return h
+
+
+def _incomplete_beta(a: float, b: float, x: float) -> float:
+    """Regularised incomplete beta ``I_x(a, b)``."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    front = math.exp(a * math.log(x) + b * math.log1p(-x) - _log_beta(a, b))
+    if x < (a + 1.0) / (a + b + 2.0):
+        return front * _betacf(a, b, x) / a
+    return 1.0 - front * _betacf(b, a, 1.0 - x) / b
+
+
+def _corr_p_value(r: float, n: int) -> float:
+    """Two-sided p-value for correlation `r` over `n` observations.
+
+    Uses the usual t-approximation ``t = r * sqrt((n - 2) / (1 - r²))`` on
+    ``n - 2`` degrees of freedom.  NOTE: this is *approximate* for the sample
+    sizes we actually have.  It is exact for Pearson only under bivariate
+    normality, and for Spearman it is an approximation that is known to be
+    optimistic in small samples.  A walk-forward gives ~12 (window × seed)
+    points, so read these p-values as "is this worth taking seriously" rather
+    than as a formal test.
+    """
+    df = n - 2
+    if df <= 0:
+        return 1.0
+    r2 = min(r * r, 1.0)
+    if 1.0 - r2 <= 1e-15:
+        return 0.0
+    t = r * math.sqrt(df / (1.0 - r2))
+    return float(_incomplete_beta(df / 2.0, 0.5, df / (df + t * t)))
+
+
+def val_test_correlation(
+    results: list[dict[str, Any]],
+    metric: str = "mean_sharpe",
+    val_split: str = "val",
+    test_split: str = "test",
+) -> dict[str, float]:
+    """Correlation between validation and test performance across all runs.
+
+    One (val, test) pair per (window × seed) run.  Returns *both* Pearson and
+    Spearman, deliberately:
+
+    * The historical −0.86 baseline is a **Pearson** value, so Pearson is the
+      only number directly comparable to it.
+    * With ~12 points a single outlier window dominates Pearson entirely.
+      **Spearman** answers the question that actually matters for model
+      selection — "does ranking by val Sharpe rank correctly on test?" — and is
+      robust to that one bad window.
+
+    Reporting only one of them would make it trivially easy to declare victory
+    on noise, so both are always returned.
+
+    Returns
+    -------
+    dict
+        ``{n, pearson_r, pearson_p, spearman_rho, spearman_p, degenerate}``,
+        or an **empty dict** when fewer than 3 usable pairs exist (a
+        correlation over 2 points is either ±1 or undefined — meaningless).
+        Runs whose val or test metrics are missing (``None``, absent key, or
+        non-finite) are skipped rather than raising.  ``degenerate`` is 1.0
+        when a series had zero variance, in which case correlation is
+        mathematically undefined and is reported as 0.0 with p = 1.0 rather
+        than as NaN — NaN propagates silently through MLflow and JSON.
+    """
+    xs: list[float] = []
+    ys: list[float] = []
+    for run in results:
+        val = run.get(val_split)
+        test = run.get(test_split)
+        if not isinstance(val, dict) or not isinstance(test, dict):
+            continue
+        if metric not in val or metric not in test:
+            continue
+        v = float(val[metric])
+        t = float(test[metric])
+        if not (math.isfinite(v) and math.isfinite(t)):
+            continue
+        xs.append(v)
+        ys.append(t)
+
+    n = len(xs)
+    if n < 3:
+        return {}
+
+    x = np.asarray(xs, dtype=np.float64)
+    y = np.asarray(ys, dtype=np.float64)
+
+    pearson = _pearson_r(x, y)
+    spearman = _pearson_r(_average_ranks(x), _average_ranks(y))
+    degenerate = pearson is None or spearman is None
+
+    return {
+        "n": float(n),
+        "pearson_r": 0.0 if pearson is None else pearson,
+        "pearson_p": 1.0 if pearson is None else _corr_p_value(pearson, n),
+        "spearman_rho": 0.0 if spearman is None else spearman,
+        "spearman_p": 1.0 if spearman is None else _corr_p_value(spearman, n),
+        "degenerate": 1.0 if degenerate else 0.0,
+    }
+
+
+def paired_test_values(
+    results: list[dict[str, Any]],
+    metric: str = "mean_sharpe",
+    rl_split: str = "test",
+    baseline_split: str = "baseline_test",
+) -> tuple[list[float], list[float]]:
+    """Index-aligned (RL, baseline) metric values, ready for the paired bootstrap.
+
+    Only runs that have *both* arms contribute, so the two returned lists are
+    always the same length and element *i* of each comes from the same
+    (window, seed) run — which is exactly what makes
+    :func:`paired_bootstrap_ci` a paired test rather than a two-sample one.
+    """
+    rl: list[float] = []
+    bl: list[float] = []
+    for run in results:
+        a = run.get(rl_split)
+        b = run.get(baseline_split)
+        if not isinstance(a, dict) or not isinstance(b, dict):
+            continue
+        if metric not in a or metric not in b:
+            continue
+        av, bv = float(a[metric]), float(b[metric])
+        if not (math.isfinite(av) and math.isfinite(bv)):
+            continue
+        rl.append(av)
+        bl.append(bv)
+    return rl, bl
