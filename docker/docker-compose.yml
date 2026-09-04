@@ -1,3 +1,8 @@
+# Compose derives the project name from the directory it sits in, which made
+# every container "docker-*" and every volume "docker_*" — indistinguishable
+# from any other project on a shared machine. Named explicitly instead.
+name: trading-bot
+
 services:
   postgres:
     image: postgres:16-alpine

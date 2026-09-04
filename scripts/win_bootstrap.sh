@@ -43,15 +43,25 @@ services)
     done
     $DC ps --format 'table {{.Service}}\t{{.Health}}\t{{.Ports}}'
     say "endpoints"
-    pg_ok=$(docker exec docker-postgres-1 pg_isready -U trader -d trader 2>&1 || true)
+    pg_ok=$($DC exec -T postgres pg_isready -U trader -d trader 2>&1 || true)
     echo "  postgres: $pg_ok"
     echo "  mlflow:   $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5555/health || echo unreachable)"
     say "schema"
-    docker exec docker-postgres-1 psql -U trader -d trader -tAc \
+    $DC exec -T postgres psql -U trader -d trader -tAc \
         "select table_schema||'.'||table_name from information_schema.tables
          where table_schema in ('market','ledger') order by 1" 2>&1 | sed 's/^/  /'
-    docker exec docker-postgres-1 psql -U trader -d trader -tAc \
+    $DC exec -T postgres psql -U trader -d trader -tAc \
         "select 'alembic: '||version_num from alembic_version" 2>&1 | sed 's/^/  /'
+    ;;
+
+run)
+    # Pass-through for Hydra apps: everything after the command name is forwarded
+    # verbatim, e.g.  win_bootstrap.sh run scripts/train.py model=mlp_regime seed=1
+    ensure_uv >/dev/null
+    shift || true
+    set -a; [ -f .env ] && . ./.env; set +a
+    say "running: $*"
+    exec uv run python "$@"
     ;;
 
 setup)

@@ -1,6 +1,6 @@
 # PROGRESS
 
-**Last updated:** 2026-09-04 by session 1 (bootstrap)
+**Last updated:** 2026-09-04 by session 2
 **Plan:** `09_revamp_and_audit.md`
 **Rules:** `CLAUDE.md`
 
@@ -22,9 +22,9 @@ Dependency order:
 
 | Unit | Status | Gate | Evidence | Session |
 |---|---|---|---|---|
-| A0 — read-only forensics | NOT_STARTED | Written answers to all 14 contradictions + 7 R0 questions | `audit/A0_findings.md` | — |
-| A1 — leakage & correctness | NOT_STARTED | Six checks answered with call graphs / measurements | `audit/A1_leakage.md` | — |
-| A2 — compute forensics | NOT_STARTED | Profile + measured H2D bytes + encoder-invocation ratio | `audit/A2_compute.md` | — |
+| A0 — read-only forensics | IN_PROGRESS | Written answers to all 14 contradictions + 7 R0 questions | `audit/A0_findings.md` | — |
+| A1 — leakage & correctness | IN_PROGRESS | Six checks answered with call graphs / measurements | `audit/A1_leakage.md` | — |
+| A2 — compute forensics | IN_PROGRESS | Profile + measured H2D bytes + encoder-invocation ratio | `audit/A2_compute.md` | — |
 | A3 — reconcile specs | NOT_STARTED | Every spec carries a `## Status` block + verifying commit | `02/03/05/08_*.md` | — |
 | A4 — quarantine (optional) | NOT_STARTED | Untrained code moved to `experimental/`, tests still green | `experimental/*/README.md` | — |
 | A5 — standing rules | **DONE** | `CLAUDE.md` exists with the five rules | `CLAUDE.md` | 1 |
@@ -36,8 +36,11 @@ Dependency order:
 | R6 — reinstate RL | NOT_STARTED | Beats R5's allocator | run ID | — |
 | R7 — regime conditioning | NOT_STARTED | `corr(val,test)` CI over ≥8 windows excludes zero, then Phase 1 A/B | walk-forward summary | — |
 
-**Current unit: A0.** Nothing before it is outstanding — A5 was completed during
-bootstrap because the rules govern every later unit.
+**Current units: A0, A1, A2 — running concurrently.** The plan lists them
+sequentially, but all three are read-only and write to disjoint reports under
+`audit/`, so serialising them buys nothing but wall clock. Recorded here as a
+deliberate deviation from the written sequence, per the instruction to record
+disagreements rather than silently follow or ignore the spec.
 
 ---
 
@@ -110,6 +113,42 @@ verification log at `09` §9.
 ---
 
 ## Session log
+
+### 2026-09-04 — session 2 — training box + A0/A1/A2 launched
+
+Stood up the RTX 4060 box (`jashm@192.168.1.7`, `D:\\trading-bot-01`): key auth,
+CUDA torch 2.11.0+cu130, 346 unit tests passing, Postgres + MLflow healthy under
+a compose project now explicitly named `trading-bot` (it was defaulting to
+`docker`, from the directory name). Automation is a set of `win-*` Makefile
+targets plus `scripts/win_bootstrap.sh`.
+
+Four bugs surfaced by running on a second machine rather than trusting the first:
+
+- `--exclude='data/'` is unanchored, so rsync matched it at every level and
+  silently omitted `src/trader/data/`. The same footgun was already present in
+  the pre-existing `sync`/`sync-data` targets. Both anchored to `/data/`.
+- `ruff check .` passed on macOS and reported 14 I001 errors on WSL from
+  byte-identical files with the same ruff 0.15.11 — `src`-layout inference
+  differs on a `/mnt/d` DrvFs mount. `known-first-party` pinned.
+- Pinning `mlflow==3.11.1` was not enough: pip drifted starlette/anyio to a
+  combination whose WSGI middleware raises `module 'anyio' has no attribute
+  'from_thread'` on every request. Both pinned.
+- Docker's `credsStore: desktop.exe` needs an interactive Windows logon and
+  fails over SSH even for public images. Worked around with a project-local
+  `DOCKER_CONFIG`.
+
+**Blocker found for any measurement:** `active_tickers()` returns 504 but both
+panels still contain 163 tickers. A smoke run on the box built a 505-wide action
+space over mostly-empty columns — visible as `ent=-293.37` (log 505) against the
+Mac's `-95.27` (log 164). Any A/B run in that state produces a number that has
+to be thrown away. The 656-ticker raw store is complete and covers all 645
+universe names, so the rebuild is unblocked but has not been run.
+
+Also observed and passed to A0: `Feature stats: mean range [-0.05525, 1.288e+09]`
+— a feature carrying values near 1.3 billion, almost certainly un-normalised
+`dollar_volume_20`.
+
+**Next:** A0/A1/A2 reports, then their gates.
 
 ### 2026-09-04 — session 1 — bootstrap
 
