@@ -110,6 +110,41 @@ class Position(Base):
     )
 
 
+class Lot(Base):
+    """One open purchase tranche, kept so holding periods survive a partial sell.
+
+    ``ledger.positions`` collapses everything into ``quantity`` + ``avg_price``,
+    which cannot say whether a share has been held eleven months or thirteen —
+    and that distinction is the whole of the STCG/LTCG split.  Lots are consumed
+    FIFO (see :mod:`trader.env.tax`), so ``remaining_quantity`` shrinks in place
+    while ``quantity`` preserves the original fill size for audit.
+    """
+
+    __tablename__ = "lots"
+    __table_args__ = (
+        sa.CheckConstraint("quantity > 0", name="ck_lot_quantity_positive"),
+        sa.CheckConstraint(
+            "remaining_quantity >= 0 AND remaining_quantity <= quantity",
+            name="ck_lot_remaining_within_quantity",
+        ),
+        Index("ix_lots_run_symbol_buy_date", "strategy_run_id", "symbol", "buy_date"),
+        {"schema": "ledger"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    strategy_run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("ledger.strategy_runs.id"), nullable=False
+    )
+    symbol: Mapped[str] = mapped_column(Text, nullable=False)
+    buy_date: Mapped[date] = mapped_column(Date, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    cost_basis_per_share: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
+    )
+
+
 class PortfolioSnapshot(Base):
     __tablename__ = "portfolio_snapshots"
     __table_args__ = (

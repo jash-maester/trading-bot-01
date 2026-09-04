@@ -17,14 +17,15 @@ def test_zero_trade_value_returns_zero() -> None:
     assert model.cost(-1.0, is_buy=False) == 0.0
 
 
-def test_buy_has_stamp_not_stt() -> None:
+def test_buy_has_stamp_and_stt() -> None:
     from trader.env.costs import ZerodhaEquityDeliveryCostModel
 
     model = ZerodhaEquityDeliveryCostModel()
     buy_cost = model.cost(100_000.0, is_buy=True)
-    sell_cost = model.cost(100_000.0, is_buy=False)
-    # Buy has stamp duty (0.015%); sell has STT (0.1%)
-    assert sell_cost > buy_cost
+    sell_cost = model.cost(100_000.0, is_buy=False, n_scrips_sold=0)
+    # Delivery STT is 0.1% on *both* legs; only the buy also pays 0.015% stamp
+    # duty, so with no DP charge the buy leg is the dearer of the two.
+    assert buy_cost - sell_cost == pytest.approx(0.00015 * 100_000.0)
 
 
 def test_dp_charge_on_sell() -> None:
@@ -33,22 +34,27 @@ def test_dp_charge_on_sell() -> None:
     model = ZerodhaEquityDeliveryCostModel()
     no_dp = model.cost(100_000.0, is_buy=False, n_scrips_sold=0)
     with_dp = model.cost(100_000.0, is_buy=False, n_scrips_sold=2)
-    assert with_dp - no_dp == pytest.approx(2 * 15.93, abs=1e-6)
+    # ₹15.34 per distinct scrip per sell day (₹3.5 CDSL + ₹9.5 broker + GST).
+    assert with_dp - no_dp == pytest.approx(2 * 15.34, abs=1e-6)
 
 
-def test_brokerage_cap_at_20() -> None:
+def test_intraday_brokerage_cap_at_20() -> None:
     from trader.env.costs import ZerodhaEquityDeliveryCostModel
 
-    model = ZerodhaEquityDeliveryCostModel()
-    # At 0.03% rate, brokerage caps at 20 INR when trade value > 66_667 INR
-    # For very large values the brokerage increment between 1M and 2M must be 0
-    large_cost = model.cost(1_000_000.0, is_buy=True)
-    very_large_cost = model.cost(2_000_000.0, is_buy=True)
-    delta = very_large_cost - large_cost
-    # Linear components on the extra 1M: exchange + SEBI + stamp (no GST increase
-    # from brokerage since it's capped).  Just verify delta is positive but < 500
-    # (i.e., brokerage is not still scaling linearly at 0.03%).
-    assert 0 < delta < 500, f"delta={delta} — brokerage cap may not be working"
+    # Delivery is brokerage-free; the ₹20 cap only bites on intraday orders.
+    model = ZerodhaEquityDeliveryCostModel(intraday=True)
+    delivery = ZerodhaEquityDeliveryCostModel()
+    assert delivery.cost(2_000_000.0, is_buy=True) == pytest.approx(
+        2.0 * delivery.cost(1_000_000.0, is_buy=True)
+    )
+    # Doubling turnover must not double the (capped) intraday brokerage, so the
+    # intraday premium over delivery shrinks in relative terms.
+    premium_1m = model.cost(1_000_000.0, is_buy=True) - delivery.cost(1_000_000.0, is_buy=True)
+    premium_2m = model.cost(2_000_000.0, is_buy=True) - delivery.cost(2_000_000.0, is_buy=True)
+    assert premium_2m - premium_1m == pytest.approx(
+        # Only the rate-driven STT/stamp differences move; brokerage is pinned.
+        (0.00003 - 0.00015) * 1_000_000.0 + (0.0 - 0.001) * 1_000_000.0
+    )
 
 
 def test_zero_cost_model() -> None:
