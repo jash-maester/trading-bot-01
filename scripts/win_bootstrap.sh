@@ -54,6 +54,28 @@ services)
         "select 'alembic: '||version_num from alembic_version" 2>&1 | sed 's/^/  /'
     ;;
 
+chainbg)
+    # Background a shell stage-runner (scripts/orchestrate.sh) the same way
+    # `runbg` backgrounds a Python entrypoint. Separate command because runbg
+    # execs `uv run python` and a chain script is bash, not Python.
+    ensure_uv >/dev/null
+    shift || true
+    set -a; [ -f .env ] && . ./.env; set +a
+    mkdir -p logs
+    tag="${RUN_TAG:-chain}"
+    log="logs/${tag}_chain.log"
+    pidf="logs/${tag}_chain.pid"
+    if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
+        say "REFUSING: chain ${tag} already running as pid $(cat "$pidf")"
+        exit 1
+    fi
+    say "launching chain (background): $*"
+    setsid nohup bash "$@" > "$log" 2>&1 &
+    echo $! > "$pidf"
+    sleep 2
+    say "pid $(cat "$pidf")  log $log"
+    ;;
+
 runbg)
     # Background pass-through for long training runs. `run` execs in the
     # foreground, so the job dies when the SSH channel closes; this detaches it

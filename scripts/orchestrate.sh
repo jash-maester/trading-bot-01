@@ -44,7 +44,7 @@ fi
 # MLflow run it writes carries signal_gate_verdict=FAIL as a param, so no result
 # from tonight can later be mistaken for one that cleared the gate.
 say "stage 2: allocator grid on ${SPLIT} (signal ${TAG}, gate override ON)"
-if uv run python scripts/run_allocator.py \
+if uv run python scripts/run_allocator.py data=kite_v1 \
       +split="$SPLIT" +signal_tag="$TAG" +require_gate_pass=false \
       +allocator.null_control=true \
       > "logs/${TAG}_allocator.log" 2>&1; then

@@ -1,0 +1,95 @@
+2026-09-05 18:26:24.692 | INFO     | trader.data.features:resolve_panels_root:115 - Panels root: /mnt/d/trading-bot-01/data/panels_kite  (data.panels_root)
+2026-09-05 18:26:24.834 | INFO     | trader.data.features:resolve_panels_root:142 -   train.parquet: 645 tickers, 3,038,595 rows, 2005-01-03..2023-12-29
+2026-09-05 18:26:24.845 | INFO     | trader.data.features:resolve_panels_root:142 -   val.parquet: 645 tickers, 120,615 rows, 2024-04-01..2024-12-31
+2026-09-05 18:26:24.856 | INFO     | trader.data.features:resolve_panels_root:142 -   test.parquet: 645 tickers, 228,975 rows, 2025-04-01..2026-09-04
+2026-09-05 18:26:24.905 | INFO     | trader.data.features:resolve_panels_root:142 -   full.parquet: 645 tickers, 3,468,165 rows, 2005-01-03..2026-09-04
+2026-09-05 18:26:24.913 | WARNING  | __main__:main:331 - R4 gate for signal tag 'r4_v1' is FAIL: mean_ic_5d=0.04145092039129582 mean_ic_20d=0.045595155533162714 ic_ci_low=0.02970339242287336 n_windows=8 reasons=['W3 h=5: mean IC +0.0198 <= 0.020', 'W3 h=5: 95% CI [-0.0144, +0.0518] includes zero', 'W3 h=20: mean IC +0.0070 <= 0.020']
+  A backtest of a failed signal is not evidence, and its 'vs EW Δ
+  CAGR' must not be quoted as one.  Re-run with
+  `+require_gate_pass=false` to measure it anyway — the verdict is
+  then stamped into every MLflow run and into the printed header.
+2026-09-05 18:26:25.318 | INFO     | __main__:_dense_signal:126 - Signal /mnt/d/trading-bot-01/data/signal/r4_v1/predictions.parquet: 550405 rows, 550405 on-grid, 56.8% of the [T=1921, N=504] grid populated.
+2026/09/05 18:26:27 INFO mlflow.tracking.fluent: Experiment with name 'allocator' does not exist. Creating a new experiment.
+2026-09-05 18:29:57.462 | INFO     | __main__:main:496 - 
+----------------------------------------------------------------------------------------------
+R4 signal gate [r4_v1]: FAIL — mean_ic_5d=0.04145092039129582 mean_ic_20d=0.045595155533162714 ic_ci_low=0.02970339242287336 n_windows=8 reasons=['W3 h=5: mean IC +0.0198 <= 0.020', 'W3 h=5: 95% CI [-0.0144, +0.0518] includes zero', 'W3 h=20: mean IC +0.0070 <= 0.020']
+*** SIGNAL GATE DID NOT PASS: these numbers are NOT evidence ***
+----------------------------------------------------------------------------------------------
+strategy                     K     freq  hor   Sharpe     CAGR      MDD     Turn  vs EW Δ CAGR
+----------------------------------------------------------------------------------------------
+equal_weight                 -    daily    -   -0.019   -0.003   -0.708    4.736             —
+null_signal (control)       30    daily    -  -10.257   -0.661   -0.903   64.466       -0.6577
+allocator                   20    daily   5d    1.669    0.405   -0.587   59.568       +0.4081
+allocator                   30    daily   5d    1.513    0.332   -0.610   59.054       +0.3354
+allocator                   40    daily   5d    1.383    0.283   -0.607   58.685       +0.2861
+allocator                   20    daily  20d    1.606    0.380   -0.584   58.210       +0.3826
+allocator                   30    daily  20d    1.583    0.344   -0.585   57.661       +0.3473
+allocator                   40    daily  20d    1.559    0.324   -0.578   56.447       +0.3269
+----------------------------------------------------------------------------------------------
+equal_weight                 -   weekly    -    1.139    0.223   -0.579    2.206             —
+null_signal (control)       30   weekly    -   -0.146   -0.017   -0.562   14.131       -0.2406
+allocator                   20   weekly   5d    1.574    0.333   -0.597   13.541       +0.1096
+allocator                   30   weekly   5d    1.543    0.302   -0.572   13.501       +0.0785
+allocator                   40   weekly   5d    1.487    0.273   -0.559   13.487       +0.0499
+allocator                   20   weekly  20d    1.717    0.371   -0.558   13.502       +0.1474
+allocator                   30   weekly  20d    1.640    0.326   -0.564   13.399       +0.1032
+allocator                   40   weekly  20d    1.635    0.311   -0.540   13.346       +0.0877
+----------------------------------------------------------------------------------------------
+equal_weight                 -  monthly    -    1.369    0.272   -0.532    1.134             —
+null_signal (control)       30  monthly    -    1.271    0.152   -0.428    3.900       -0.1205
+allocator                   20  monthly   5d    1.859    0.328   -0.517    3.801       +0.0553
+allocator                   30  monthly   5d    1.824    0.298   -0.481    3.811       +0.0252
+allocator                   40  monthly   5d    1.804    0.275   -0.463    3.815       +0.0031
+allocator                   20  monthly  20d    2.005    0.361   -0.495    3.799       +0.0887
+allocator                   30  monthly  20d    2.019    0.338   -0.463    3.782       +0.0659
+allocator                   40  monthly  20d    2.008    0.323   -0.438    3.793       +0.0509
+----------------------------------------------------------------------------------------------
+2026-09-05 18:29:57.464 | INFO     | __main__:main:497 - 21 runs logged to MLflow experiment 'allocator' (split=oos, signal_tag=r4_v1). A row here is a measurement, not a verdict: nothing is a winner without a walk-forward and a run ID (CLAUDE.md rule 2).
+🏃 View run equal_weight_daily_oos at: http://localhost:5555/#/experiments/2/runs/7ceecd0fc95e415face2d155ba6e19a3
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run null_signal_k30_daily_oos at: http://localhost:5555/#/experiments/2/runs/3071fd69a3ba4e3bb398f429ec4ec071
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k20_daily_5d_oos at: http://localhost:5555/#/experiments/2/runs/e026b6385e5947bb972f86cec8b29795
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_daily_5d_oos at: http://localhost:5555/#/experiments/2/runs/14124e25acef4a049805958eb544d1cd
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k40_daily_5d_oos at: http://localhost:5555/#/experiments/2/runs/18ae9e3467634622aff918ec70d565c9
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k20_daily_20d_oos at: http://localhost:5555/#/experiments/2/runs/b5b7dac89ddb406ca09031bbbf7e612a
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_daily_20d_oos at: http://localhost:5555/#/experiments/2/runs/2d2f28e846384776a06b846daba1d454
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k40_daily_20d_oos at: http://localhost:5555/#/experiments/2/runs/54579a2bf629483695ea69b5185d2c7b
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run equal_weight_weekly_oos at: http://localhost:5555/#/experiments/2/runs/db5290f826334dd5b19aed7af55a058e
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run null_signal_k30_weekly_oos at: http://localhost:5555/#/experiments/2/runs/63248d9978944be79f442176c11d520f
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k20_weekly_5d_oos at: http://localhost:5555/#/experiments/2/runs/ce2d8e79c9ba461bb6d8681c0a7542bf
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_weekly_5d_oos at: http://localhost:5555/#/experiments/2/runs/97d62d13ce42448a834bbcd3f595ee25
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k40_weekly_5d_oos at: http://localhost:5555/#/experiments/2/runs/325d77f4398c409f8e7d720f7597078a
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k20_weekly_20d_oos at: http://localhost:5555/#/experiments/2/runs/5e80f3597efe4fe9a703585060891759
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_weekly_20d_oos at: http://localhost:5555/#/experiments/2/runs/3613ffe77e754070a7075622ea4658a2
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k40_weekly_20d_oos at: http://localhost:5555/#/experiments/2/runs/d6b4979058724d6694c3ce46119c047f
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run equal_weight_monthly_oos at: http://localhost:5555/#/experiments/2/runs/b2de87bdc3f64f27b48fa93595102ccd
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run null_signal_k30_monthly_oos at: http://localhost:5555/#/experiments/2/runs/19e1bbd4b4784166aa0467937397ccf6
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k20_monthly_5d_oos at: http://localhost:5555/#/experiments/2/runs/01a8f024047f43bf8c6cb27541d52a32
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_monthly_5d_oos at: http://localhost:5555/#/experiments/2/runs/735355488d424bd395379b81e4bf7a15
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k40_monthly_5d_oos at: http://localhost:5555/#/experiments/2/runs/c8a1486bf1eb4eba9983535c3ff6073e
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k20_monthly_20d_oos at: http://localhost:5555/#/experiments/2/runs/dc4e0796678b4bf4bfffbcf753a1fe8e
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_monthly_20d_oos at: http://localhost:5555/#/experiments/2/runs/a61e7b253be644e98adfe5ba4523d849
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k40_monthly_20d_oos at: http://localhost:5555/#/experiments/2/runs/4171ecf28b4b4d81b81992694038669e
+🧪 View experiment at: http://localhost:5555/#/experiments/2
