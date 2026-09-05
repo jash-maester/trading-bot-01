@@ -43,6 +43,7 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "ipykernel>=6",
+    "types-requests>=2.31",
 ]
 
 [project.scripts]
@@ -77,5 +78,7 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 addopts = "-v"
 
-[tool.uv]
-torch-backend = "auto"
+# NOTE: `[tool.uv] torch-backend` is NOT a field the pinned uv recognises; it made
+# every `uv run` print a 20-line TOML parse error ahead of real output, which buried
+# the command output this project's verification standard depends on. Removed.
+

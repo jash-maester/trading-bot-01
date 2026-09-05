@@ -6,8 +6,14 @@ reward: log_return
 # When true, env subtracts the daily equal-weight benchmark from the
 # portfolio log return BEFORE passing it to reward_fn.  Reward becomes
 # "excess return" — agent is rewarded only when it beats the universe
-# average.  Default false to preserve baseline behaviour.
-use_excess_returns: false
+# average.
+#
+# Default flipped to true on 2026-09-05 (10_architecture_revamp.md §1.3, §6
+# R1).  The old default rewarded *raw* log return in a panel where equal-weight
+# compounded at 16.4%/yr, so the agent was paid for being long, not for
+# selecting — sitting in the market collected positive reward on average every
+# day.  Every result in the repo before this date was produced with `false`.
+use_excess_returns: true
 # UNCALIBRATED since the turnover metric was fixed. This multiplies the env's
 # per-step turnover, which used to be a NAV-drift artefact of ~5e-6/day — so
 # this knob was effectively off. It now multiplies real gross traded fraction,

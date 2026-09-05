@@ -1,0 +1,36 @@
+# @package _global_.model
+#
+# R4 — the supervised cross-sectional signal model (`10_architecture_revamp.md` §5).
+#
+# This is NOT an RL model config: there is no actor, no critic, no graph and no
+# regime FiLM.  It composes the two pieces that already exist —
+# `TCNEncoder` (encoders.py:255) and `ReturnPredictionHead` (heads.py:139), one
+# head per horizon sharing one encoder.  Nothing here is new modelling.
+#
+# Used by `scripts/train_signal.py`, which refuses to run unless `model.name`
+# is `signal`, so a PPO config cannot be pointed at it by accident:
+#     uv run python scripts/train_signal.py model=signal train=supervised
+#
+# NOT a winner, NOT validated, NOT baseline-beating.  No walk-forward has been
+# run on it as of 2026-09-05 (CLAUDE.md rule 2).  The verdict, when there is
+# one, lands in `data/signal/<tag>/gate.json` with an MLflow run id beside it.
+name: signal
+
+# `in_features` is deliberately absent: the script sets it from the number of
+# feature columns actually resolved off the panel, so a panel with a changed
+# feature set cannot be silently zero-padded into a stale channel count.
+embed_dim: 128
+
+# TCN channels per layer; dilations are [1, 2, 4, 8][:len(num_channels)], so
+# four layers see 1 + 2*(3-1)*(1+2+4+8) = 61 days — matched to lookback 60.
+tcn:
+  num_channels: [128, 128, 128, 128]
+  kernel_size: 3
+  dropout: 0.1
+
+# Hidden width of each per-stock regression MLP (heads.py:166).
+head_hidden: 32
+
+# Forward-return horizons in trading days.  Must equal `train.horizons`;
+# `run_signal_walk_forward` raises on a mismatch rather than picking one.
+horizons: [5, 20]

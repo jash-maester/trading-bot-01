@@ -1,0 +1,36 @@
+# @package _global_.train
+#
+# PPO over AllocatorEnv (R6).  `total_steps` counts REBALANCE PERIODS, not
+# days: with a monthly schedule one step is ~21 inner env days.
+#
+# None of these are tuned.  The old ppo_baseline.yaml values do not transfer:
+# its ent_coef multiplied a logit-space Gaussian entropy that was exactly
+# (N+1)*H(sigma) and said nothing about the portfolio (§1.1), while this one
+# multiplies the Beta's analytic entropy over K / turnover budget / sector
+# tilts.  The two numbers are not on the same scale and the old value carries
+# no information about a good value here.
+
+total_steps: 20_000          # periods, across all envs — ~1,700 simulated years
+n_envs: 8
+n_steps: 24                  # one episode per env per rollout: GAE never crosses a reset
+n_epochs: 10                 # the batch is 192 x ~30 floats; epochs are nearly free
+n_minibatches: 4
+learning_rate: 3.0e-4
+gamma: 0.99                  # per PERIOD. 0.99^24 = 0.79 over a 24-month episode
+gae_lambda: 0.95
+clip_coef: 0.2
+# UNCALIBRATED. Beta entropy in action space, summed over 17 dims. A uniform
+# Beta(1,1) has H=0 per dim, so this term pushes towards a broad-but-unimodal
+# policy rather than towards a large number as the logit-space version did.
+ent_coef: 0.003
+vf_coef: 0.5
+max_grad_norm: 0.5
+anneal_lr: true
+normalize_rewards: true
+# The importance ratio is a product of 17 terms, not 505 (§1.1), so approx_kl
+# no longer explodes on a tiny portfolio change and this bound is meaningful
+# again. It early-stops the epoch loop, it does not abort the run.
+target_kl: 0.02
+normalize_advantage: true
+log_interval: 10
+checkpoint_interval: 50

@@ -6,8 +6,12 @@ Logs results to MLflow under the experiment "baselines".
 
 Usage:
     uv run python scripts/evaluate.py                   # all splits
-    uv run python scripts/evaluate.py split=val         # val only
-    uv run python scripts/evaluate.py n_episodes=20     # more episodes
+    uv run python scripts/evaluate.py +split=val        # val only
+    uv run python scripts/evaluate.py +n_episodes=20    # more episodes
+
+The leading `+` is required: neither key exists in configs/config.yaml, which is
+a Hydra struct, so the bare form is rejected with "Could not override 'split'.
+To append to your config use +split=val".
 """
 from __future__ import annotations
 

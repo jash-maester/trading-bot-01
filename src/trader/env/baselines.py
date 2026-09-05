@@ -3,13 +3,19 @@
 A note on what a baseline can and cannot express here
 ----------------------------------------------------
 `PanelTradingEnv.step` turns the logit vector into *target weights* and then
-into target share counts, **every step** (`panel_env.py:230-249`).  An agent
-that returns the same logits twice therefore does not "hold" — the env marks
-the book to the new NAV and trades back to those weights.  Nothing an agent
-returns through this interface can produce a genuine buy-and-hold or a
-lower-than-daily rebalance cadence; that would need a no-trade action or a
-turnover budget in the env itself.  Class docstrings below say what each
-baseline actually does rather than what it was named after.
+into target share counts on every **rebalance day**.  An agent that returns
+the same logits twice therefore does not "hold" — the env marks the book to
+the new NAV and trades back to those weights.  Nothing an agent returns
+through this interface can produce a lower-than-daily cadence on its own.
+
+Cadence lives in the env, not the agent.  Pass
+``rebalance_schedule=RebalanceSchedule("monthly")`` (`trader.allocator`) to
+`PanelTradingEnv` and it holds the book on every non-rebalance day — the
+action is ignored, nothing trades, no cost is charged.  Every baseline below
+honours that automatically because none of them carries state that assumes a
+daily cadence; `MomentumTopK` re-ranks on every call precisely so that the
+selection is fresh on whichever day the env actually trades.  Class docstrings
+say what each baseline actually does rather than what it was named after.
 """
 from __future__ import annotations
 
@@ -74,17 +80,19 @@ def _top_k_logits(mask: np.ndarray, scores: np.ndarray, k: int) -> np.ndarray:
 
 
 class EqualWeightRebalanced(BaselineAgent):
-    """1/N_tradeable across all tradeable equities, rebalanced **every step**.
+    """1/N_tradeable across all tradeable equities, rebalanced on every
+    **env rebalance day**.
 
-    Daily, not monthly.  `03_environment.md` and `05_training.md` described
-    this baseline as monthly-rebalanced and used that to argue the RL agent was
-    unfairly compared against a lower-turnover, lower-tax benchmark; that
-    premise was never true of this code and is not true now.  It pays the full
-    daily turnover drag, exactly like the agent.
+    With the env's default ``rebalance_schedule=None`` that is daily, not
+    monthly.  `03_environment.md` and `05_training.md` described this baseline
+    as monthly-rebalanced and used that to argue the RL agent was unfairly
+    compared against a lower-turnover, lower-tax benchmark; that premise was
+    never true of this code.  It pays exactly the turnover drag the env's
+    schedule allows, the same as the agent.
 
     A monthly variant cannot be built agent-side — see the module docstring —
-    so this class deliberately has no `rebalance_freq` knob rather than a
-    knob that would not do what its name says.
+    so this class deliberately has no `rebalance_freq` knob.  Build the env
+    with ``RebalanceSchedule("monthly")`` instead.
     """
 
     def act(self, obs: dict[str, np.ndarray]) -> np.ndarray:
@@ -105,11 +113,13 @@ class EqualWeightFrozenUniverse(BaselineAgent):
       until an index definition (constituents + weights) exists in the data
       layer; that is a data-side change, not a baseline-side one.
     * **It is not buy-and-hold.**  Returning frozen logits freezes only the
-      *universe*; the env re-derives target shares from those weights every
-      step and trades the drift back out (see the module docstring).  The only
-      difference from `EqualWeightRebalanced` is that names becoming tradeable
-      mid-episode are never added, and names dropping out are never removed
-      from the target.
+      *universe*; the env re-derives target shares from those weights on every
+      rebalance day and trades the drift back out (see the module docstring).
+      The only difference from `EqualWeightRebalanced` is that names becoming
+      tradeable mid-episode are never added, and names dropping out are never
+      removed from the target.  Under a monthly env schedule the drift is
+      traded out once a month, which is as close to buy-and-hold as this
+      interface gets.
 
     The old name is kept as a module-level alias below purely because
     `scripts/evaluate.py` and `scripts/paper_run.py` import it.
@@ -166,15 +176,19 @@ class MomentumTopK(BaselineAgent):
 
     Rebalance cadence
     -----------------
-    ``rebalance_freq`` freezes the *selection* for that many steps.  It does
-    not make the position static: the env trades the weight drift out of the
-    held names every step regardless (see the module docstring).
+    Cadence belongs to the env's ``rebalance_schedule``, not to this class.
+    ``rebalance_freq`` (default 1 = re-rank on every call) freezes the
+    *selection* for that many *calls*; it was 21 when the env could not hold,
+    as a stand-in for monthly.  With an env schedule that stand-in is actively
+    wrong: a 21-call counter and the calendar's first-trading-day-of-month
+    drift apart, so the env would trade a selection up to twenty days stale.
+    Leave it at 1 and let the env decide when to trade.
     """
 
     def __init__(
         self,
         k: int = 20,
-        rebalance_freq: int = 21,
+        rebalance_freq: int = 1,
         feature_columns: Sequence[str] | None = None,
         momentum_col: str = _MOMENTUM_COL,
     ) -> None:
@@ -215,7 +229,7 @@ class MomentumTopK(BaselineAgent):
 
 
 class SixtyFortyCash(BaselineAgent):
-    """60% equal-weight equity, 40% cash, rebalanced each step."""
+    """60% equal-weight equity, 40% cash, rebalanced on each env rebalance day."""
 
     def act(self, obs: dict[str, np.ndarray]) -> np.ndarray:
         mask = obs["mask"].astype(bool)

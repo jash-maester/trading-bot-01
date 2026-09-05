@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from datetime import date
 from pathlib import Path
 from typing import Any, SupportsFloat
 
@@ -10,6 +11,7 @@ import numpy as np
 import polars as pl
 from gymnasium import Env, spaces
 
+from trader.allocator.rebalance import RebalanceSchedule
 from trader.data.regime_features import REGIME_DIM, compute_regime_features
 from trader.env.costs import CostModel, ZerodhaEquityDeliveryCostModel
 from trader.env.reward import LogReturn, RewardFn
@@ -32,6 +34,16 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
     t_frac      ()                float32   episode progress in [0, 1]
 
     Action space: Box(N+1,) logits; env applies masked softmax + cap.
+
+    Rebalance cadence
+    -----------------
+    ``rebalance_schedule`` (default ``None`` = trade every step, the historical
+    behaviour) restricts trading to the schedule's rebalance days.  On every
+    other day the env **holds**: the incoming action is ignored, no shares
+    change, no costs are charged and ``info["turnover"]`` is 0.0 — but NAV
+    still marks to the close and the reward is still computed.  The first
+    step of an episode always trades, so a monthly schedule does not leave a
+    fresh episode in cash for up to twenty days.  See :meth:`step`.
     """
 
     metadata = {"render_modes": ["human"]}
@@ -51,10 +63,12 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         turnover_penalty: float = 0.0,
         use_excess_returns: bool = False,
         seed: int | None = None,
+        rebalance_schedule: RebalanceSchedule | None = None,
     ) -> None:
         super().__init__()
 
         self._cost_model: CostModel = cost_model or ZerodhaEquityDeliveryCostModel()
+        self._schedule = rebalance_schedule
         self._reward_fn: RewardFn = reward_fn or LogReturn()
         self._use_excess_returns = bool(use_excess_returns)
         self._lookback = lookback
@@ -90,6 +104,13 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
 
         # Assign AFTER clamping so self._episode_length reflects the capped value.
         self._episode_length = episode_length
+
+        # [T] bool — which calendar days the book may trade on.  None means
+        # every day, and the step path is then byte-for-byte the pre-schedule
+        # code (regression-tested).
+        self._rebalance_mask: np.ndarray | None = (
+            None if self._schedule is None else self._schedule.mask(self._dates)
+        )
 
         # Pre-build per-(col, ticker) dense time-series arrays for O(1) access
         self._arrays = _build_ticker_arrays(
@@ -224,12 +245,110 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
     def step(
         self, action: np.ndarray
     ) -> tuple[dict[str, np.ndarray], SupportsFloat, bool, bool, dict[str, Any]]:
+        """Advance one trading day on a logit action.
+
+        The action is turned into target weights by :func:`masked_softmax`
+        (masked softmax + per-name cap) and traded at the open, **unless today
+        is a hold day** under ``rebalance_schedule`` — then the action is
+        ignored and the book is carried unchanged: no share changes, zero
+        ``trade_val``, zero costs, ``info["turnover"] == 0.0``.  NAV still
+        marks to today's close and the reward is computed as usual.
+        ``info["rebalanced"]`` says which happened.
+        """
         day_idx = self._start_idx + self._t
+        if self.is_rebalance_step():
+            mask = self._mask_at(day_idx)
+            target_w = masked_softmax(action.astype(np.float64), mask, self._max_weight)
+            return self._step_target(target_w[1:], day_idx, rebalance=True)
+        return self._step_target(None, day_idx, rebalance=False)
 
+    def step_weights(
+        self, target_w: np.ndarray
+    ) -> tuple[dict[str, np.ndarray], SupportsFloat, bool, bool, dict[str, Any]]:
+        """Advance one trading day on an explicit **weight** target.
+
+        ``target_w`` is ``[N+1]`` with cash at index 0, entries ≥ 0 and summing
+        to 1 — exactly what :func:`trader.allocator.allocate` returns.  Weights
+        are used as-is (no softmax, no cap; the allocator already applied its
+        own), except that untradeable names are forced to zero as in
+        :meth:`step`.  Hold-day semantics are identical to :meth:`step`.
+
+        Feeding weights through :meth:`step` as ``log(w)`` does not work:
+        :func:`masked_softmax` clips logits to ``[-10, 10]``, so every
+        zero-weight name would receive ``e^-10`` relative mass — a dust
+        position in hundreds of names, each paying a per-scrip DP charge on
+        the way out.
+        """
+        day_idx = self._start_idx + self._t
+        if not self.is_rebalance_step():
+            return self._step_target(None, day_idx, rebalance=False)
+        w = np.asarray(target_w, dtype=np.float64)
+        N = len(self._universe)
+        if w.shape != (N + 1,):
+            raise ValueError(f"target_w must be shape [N+1]={N + 1}, got {w.shape}")
+        if np.any(w < -1e-9) or not np.isfinite(w).all():
+            raise ValueError("target_w must be finite and non-negative")
+        total = float(w.sum())
+        if abs(total - 1.0) > 1e-6:
+            raise ValueError(f"target_w must sum to 1, got {total}")
+        return self._step_target(np.maximum(w[1:], 0.0), day_idx, rebalance=True)
+
+    def is_rebalance_step(self) -> bool:
+        """Whether the *next* call to :meth:`step` / :meth:`step_weights` may trade."""
+        if self._rebalance_mask is None or self._t == 0:
+            return True
+        return bool(self._rebalance_mask[self._start_idx + self._t])
+
+    @property
+    def dates(self) -> list[date]:
+        """The env's trading calendar (every date in the panel, sorted)."""
+        return list(self._dates)
+
+    @property
+    def universe(self) -> list[str]:
+        return list(self._universe)
+
+    @property
+    def day_index(self) -> int:
+        """Calendar index (into :attr:`dates`) of the day the next step trades."""
+        return self._start_idx + self._t
+
+    @property
+    def rebalance_schedule(self) -> RebalanceSchedule | None:
+        return self._schedule
+
+    # The three below exist so a wrapper can verify this env's reward
+    # configuration without reaching into private attributes.  AllocatorEnv
+    # sums the daily rewards and calls the sum "the period's excess log
+    # return"; that identity is only true for a particular configuration, and
+    # a `getattr(env, "_turnover_penalty", 0.0)` style check fails *open* — a
+    # rename here would silently disable the guard rather than break it.
+
+    @property
+    def use_excess_returns(self) -> bool:
+        """Whether the daily reward subtracts the equal-weight benchmark."""
+        return self._use_excess_returns
+
+    @property
+    def turnover_penalty(self) -> float:
+        """Per-day turnover charge applied inside the reward."""
+        return self._turnover_penalty
+
+    @property
+    def reward_fn(self) -> RewardFn:
+        """The reward function object the env steps."""
+        return self._reward_fn
+
+    def _step_target(
+        self,
+        eq_target_frac: np.ndarray | None,
+        day_idx: int,
+        *,
+        rebalance: bool,
+    ) -> tuple[dict[str, np.ndarray], SupportsFloat, bool, bool, dict[str, Any]]:
+        """Shared step body.  ``eq_target_frac`` is ``[N]`` equity target
+        weights on a rebalance day, ``None`` on a hold day (carry the book)."""
         mask = self._mask_at(day_idx)
-        target_w = masked_softmax(action.astype(np.float64), mask, self._max_weight)
-
-        eq_target_frac = target_w[1:]  # (N,)
 
         opens = self._price_at(day_idx, "open")
         closes = self._price_at(day_idx, "close")
@@ -241,12 +360,18 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         current_nav = max(self._cash + float(np.sum(self._shares * prev_closes)), 1e-8)
 
         # Target integer shares
-        target_equity_value = current_nav * np.where(mask, eq_target_frac, 0.0)
-        target_shares = np.where(
-            opens > 0,
-            np.floor(target_equity_value / np.maximum(opens, 1e-8)),
-            0.0,
-        )
+        if rebalance and eq_target_frac is not None:
+            target_equity_value = current_nav * np.where(mask, eq_target_frac, 0.0)
+            target_shares = np.where(
+                opens > 0,
+                np.floor(target_equity_value / np.maximum(opens, 1e-8)),
+                0.0,
+            )
+        else:
+            # Hold day: carry the book.  delta_shares is identically zero, so
+            # every downstream quantity — fills, trade_val, costs, turnover —
+            # is exactly zero without a special case.
+            target_shares = self._shares.copy()
         delta_shares = target_shares - self._shares
 
         # Slippage
@@ -350,6 +475,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
             "date": self._dates[day_idx],
             "costs_paid": costs_paid,
             "log_return": log_return,
+            "rebalanced": rebalance,
         }
         return obs, reward, bool(terminated), bool(truncated), info
 

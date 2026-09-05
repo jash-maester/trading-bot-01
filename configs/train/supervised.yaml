@@ -1,0 +1,73 @@
+# @package _global_.train
+#
+# R4 — supervised training of the cross-sectional signal model.
+#
+# Plain Adam on a masked MSE over ~504 labels per day, walk-forward, early
+# stopping on validation *rank IC* rather than on the loss.  See
+# `src/trader/training/supervised.py`.
+#
+#     uv run python scripts/train_signal.py model=signal train=supervised
+#
+# Every value below is a starting point, not a measured optimum.  None of them
+# has an MLflow run behind it yet (CLAUDE.md rule 2).
+kind: supervised
+
+# Names the artefact directory: data/signal/<tag>/{predictions.parquet,
+# embeddings.npy, index.json, gate.json}.  Bump it per experiment; a rerun with
+# the same tag overwrites.
+tag: v1
+
+# ── Windows ──────────────────────────────────────────────────────────────────
+# Feature rows t-L+1..t produce the prediction dated t.  60 matches the longest
+# feature lookback (features.MAX_FEATURE_LOOKBACK_DAYS = 60) — a shorter window
+# would feed the encoder rows whose own features already summarise more history
+# than the window shows it.
+lookback: 60
+
+# Must equal `model.horizons`.
+horizons: [5, 20]
+
+# ── Optimisation ─────────────────────────────────────────────────────────────
+# A "batch" is a set of DAYS; each day carries a full cross-section of ~504
+# labelled stocks, so batch_days=32 is ~16k labelled examples per step.  A2
+# measured cost as set by the observation, not the parameter count: raising this
+# raises memory linearly and is slower per sample.
+batch_days: 32
+eval_batch_days: 64
+
+max_epochs: 30
+# Hard cap on optimiser steps. null = no cap. Set it (e.g. 20) for a smoke run.
+max_steps: null
+
+learning_rate: 1.0e-3
+weight_decay: 0.0
+lr_schedule: cosine        # "cosine" | "constant"
+max_grad_norm: 1.0
+
+# Epochs without a mean-val-IC improvement before stopping. The model is left
+# holding the best-val-IC weights, not the last.
+patience: 5
+
+# ── Evaluation ───────────────────────────────────────────────────────────────
+# A date with fewer than this many labelled tradeable stocks is not scored at
+# all — a rank IC over 4 names is noise with a decimal point on it.
+min_cross_section: 10
+
+# Percentile-bootstrap resamples for the CI on mean IC (resampling days).
+n_boot: 1000
+
+device: auto               # "auto" | "cpu" | "mps" | "cuda"
+
+# ── Plumbing ─────────────────────────────────────────────────────────────────
+# MLflow is on 5555, not 5000 — AirPlay owns 5000 on macOS. null disables it
+# entirely (offline smoke runs).
+mlflow_port: 5555
+mlflow_experiment: signal
+
+# Artefact root; the run writes to <out_root>/<tag>/.
+out_root: data/signal
+
+# Feature columns to train on. null = trader.data.features.FEATURE_COLS, which
+# is the panel's own contract. Every column listed must have nonzero variance on
+# the train split's tradeable rows or the run refuses to start.
+feature_cols: null

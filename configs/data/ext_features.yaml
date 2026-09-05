@@ -1,0 +1,47 @@
+# R8 — opt-in NSE feature group (delivery %, FII/DII flows, bulk/block deals).
+#
+# STATUS: this group is NOT part of any panel and has never been in a training
+# run. `10_architecture_revamp.md` §6 gates it behind R4's rank-IC gate — the
+# pipeline must prove it can measure a signal before new inputs join the
+# experiment — so there is no run ID here and nothing in this file is validated.
+#
+# WHAT READS THIS FILE: `scripts/fetch_nse_flows.py`, and only that. Every key
+# below is read there; none is read by `build_features.py`, the panel builder, or
+# any training entrypoint, because wiring it in means editing files this stream
+# does not own (the exact patch is reported, not applied). `min_trade_value: 500`
+# is the standing warning about declaring a key nothing reads — so this file
+# declares nothing beyond what the fetch script consumes.
+#
+# Deliberately NOT a hydra defaults-list entry: adding it to `configs/config.yaml`
+# would change what every existing run loads. The script loads this path directly.
+
+# Raw per-file cache. A re-run over a cached range issues zero requests.
+#   <cache_root>/mto/MTO_<DDMMYYYY>.DAT          delivery, primary
+#   <cache_root>/bhavdata/sec_bhavdata_full_*.csv delivery, fallback
+#   <cache_root>/flows/fiidii_backfill.csv        FII/DII ledger (append-only)
+#   <cache_root>/flows/fiidii_<ISO>.json          one live API snapshot per day
+#   <cache_root>/deals/{bulk,block}_<ISO>.csv     one deal snapshot per day
+cache_root: data/raw/nse
+
+# Parsed parquet artefacts and the coverage report. Never inside data/panels*.
+out_root: data/ext
+
+sources:
+  - delivery
+  - flows
+  - deals
+
+delivery:
+  # "mto"      — archives/equities/mto/MTO_<DDMMYYYY>.DAT, verified available
+  #              back to 2005-04-01 (HTTP 200, this session, 2026-09-05).
+  # "bhavdata" — products/content/sec_bhavdata_full_<DDMMYYYY>.csv, verified
+  #              back to 2020-07-01. Same figures; use it if an MTO layout
+  #              changes and the parser refuses the file.
+  backend: mto
+
+# NSE rate-limits aggressively and 403s a client without a warmed cookie. One
+# request per second is what this was verified at; going faster was not tested.
+throttle:
+  min_interval_s: 1.0
+  max_retries: 3
+  timeout_s: 20.0

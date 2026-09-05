@@ -41,7 +41,7 @@ import polars as pl
 from loguru import logger
 from omegaconf import DictConfig
 
-from trader.data.features import MAX_FEATURE_LOOKBACK_DAYS
+from trader.data.features_ext import combined_max_lookback_days
 
 if TYPE_CHECKING:  # torch is imported lazily — keeps `import walk_forward` cheap
     import torch
@@ -94,7 +94,9 @@ def _add_months(d: date, months: int) -> date:
     raise ValueError(f"Could not add {months} months to {d}")
 
 
-def assert_purge_clears_feature_lookback(purge_months: int) -> None:
+def assert_purge_clears_feature_lookback(
+    purge_months: int, *, include_ext: bool = False
+) -> None:
     """Raise unless `purge_months` covers the longest feature lookback.
 
     The purge gap exists to stop a rolling feature window from spanning a
@@ -109,14 +111,26 @@ def assert_purge_clears_feature_lookback(purge_months: int) -> None:
     window literals in that module by its own tests.  Adding a 120-day feature
     therefore tightens this guard automatically instead of quietly invalidating
     every walk-forward run.
+
+    ``include_ext`` widens the bound to cover the R8 ext feature group, whose
+    longest window (``delivery_pct_z_60d``, 61 days) lives in
+    ``trader.data.features_ext`` and is invisible to
+    ``MAX_FEATURE_LOOKBACK_DAYS``.  It defaults to False so no existing run
+    changes behaviour, and at today's ``purge_months: 3`` (~63 trading days)
+    the 61-day bound already clears — this moves no window today.  It is the
+    guard against the *next* longer feature, which is when a silently
+    unwidened purge would begin contaminating every boundary.
     """
+    bound = combined_max_lookback_days(include_ext=include_ext)
     purge_days = purge_months * _TRADING_DAYS_PER_MONTH
-    if purge_days < MAX_FEATURE_LOOKBACK_DAYS:
-        needed = -(-MAX_FEATURE_LOOKBACK_DAYS // _TRADING_DAYS_PER_MONTH)
+    if purge_days < bound:
+        needed = -(-bound // _TRADING_DAYS_PER_MONTH)
         raise ValueError(
             f"purge_months={purge_months} is ~{purge_days} trading days, shorter "
-            f"than the longest feature lookback ({MAX_FEATURE_LOOKBACK_DAYS} days, "
-            f"from trader.data.features.FEATURE_LOOKBACK_DAYS). Train and val "
+            f"than the longest feature lookback ({bound} days, from "
+            f"trader.data.features.FEATURE_LOOKBACK_DAYS"
+            f"{' + features_ext.EXT_FEATURE_LOOKBACK_DAYS' if include_ext else ''}"
+            f"). Train and val "
             f"feature windows would physically overlap across every boundary. "
             f"Use walk.purge_months >= {needed} (configs/walk/default.yaml)."
         )
@@ -131,6 +145,7 @@ def compute_windows(
     purge_months: int = DEFAULT_PURGE_MONTHS,
     n_windows: int = 4,
     step_months: int = 12,
+    include_ext_features: bool = False,
 ) -> list[WindowConfig]:
     """Generate sliding walk-forward windows.
 
@@ -147,7 +162,7 @@ def compute_windows(
         If `purge_months` is too short to clear the longest feature lookback —
         see :func:`assert_purge_clears_feature_lookback`.
     """
-    assert_purge_clears_feature_lookback(purge_months)
+    assert_purge_clears_feature_lookback(purge_months, include_ext=include_ext_features)
 
     windows: list[WindowConfig] = []
     cursor_train_start = data_start

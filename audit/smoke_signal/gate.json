@@ -1,0 +1,45 @@
+{
+  "verdict": "FAIL",
+  "mean_ic_5d": 0.08525664811379095,
+  "mean_ic_20d": 0.30000000000000004,
+  "ic_ci_low": 0.3,
+  "ic_ci_high": 0.30000000000000004,
+  "icir": 0.6822882392210131,
+  "n_windows": 1,
+  "gate_horizon": 20,
+  "min_mean_ic": 0.02,
+  "per_horizon": {
+    "5": {
+      "passed": false,
+      "mean_ic": 0.08525664811379095,
+      "ci_low": -0.02023144712430427,
+      "ci_high": 0.16686224489795912,
+      "icir": 0.24453863279316326,
+      "hit_rate": 0.5714285714285714,
+      "decile_spread": 0.001441192567082388,
+      "n_days": 35,
+      "n_skipped_thin": 25,
+      "n_skipped_degenerate": 0,
+      "ic_acf_lag1": -0.17008399005505354,
+      "n_eff": 49.34588459697691
+    },
+    "20": {
+      "passed": false,
+      "mean_ic": 0.30000000000000004,
+      "ci_low": 0.3,
+      "ci_high": 0.30000000000000004,
+      "icir": 0.6822882392210131,
+      "hit_rate": 0.75,
+      "decile_spread": 0.0013602636754512787,
+      "n_days": 4,
+      "n_skipped_thin": 56,
+      "n_skipped_degenerate": 0,
+      "ic_acf_lag1": -0.635135135135135,
+      "n_eff": 17.925925925925917
+    }
+  },
+  "reasons": [
+    "w1 h=5: 95% CI [-0.0202, +0.1669] includes zero",
+    "w1 h=20: only 4 scorable OOS day(s), need >= 30 (skipped: 56 thin, 0 degenerate)"
+  ]
+}

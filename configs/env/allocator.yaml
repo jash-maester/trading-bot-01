@@ -1,0 +1,78 @@
+# @package _global_.env
+#
+# AllocatorEnv (R6) — one step is one REBALANCE PERIOD, not one day.
+# `10_architecture_revamp.md` §5, "RL, IF IT RETURNS".
+#
+# This config configures BOTH layers:
+#   `inner:`     the PanelTradingEnv this env drives day by day
+#   everything else: the period-level MDP (AllocatorEnvConfig / ActionRanges)
+#
+# Nothing here is a measured value.  No walk-forward has been run against this
+# env; every number below is a starting point, and per CLAUDE.md rule 2 none of
+# them may be described as a winner until an MLflow run id says so.
+
+# ── inner PanelTradingEnv ────────────────────────────────────────────────────
+inner:
+  lookback_days: 60
+  initial_cash: 1_000_000
+  transaction_cost_model: zerodha_equity_delivery
+  reward: log_return
+  # REQUIRED true.  AllocatorEnv sums the inner env's daily rewards and calls
+  # the sum "the period's excess log return"; with raw log return the agent is
+  # paid for being long in a 16.4%/yr market (§1.3) and AllocatorEnv refuses to
+  # construct (InnerEnvMisconfigured).
+  use_excess_returns: true
+  # REQUIRED 0.0.  The turnover charge is applied ONCE, per period, by
+  # `turnover_penalty` below.  A non-zero value here charges it twice at two
+  # different scales; AllocatorEnv refuses to construct.
+  turnover_penalty: 0.0
+  # Rebalance cadence.  Monthly is the §4 recommendation: delivery STT is 0.1%
+  # on both legs and STCG is 20% under twelve months, so daily rebalancing was
+  # "the single most expensive choice in the system and it was never justified"
+  # (§7).  Ablations: weekly, daily.
+  rebalance_freq: monthly      # daily | weekly | monthly
+  rebalance_anchor: first      # first | last trading day of the period
+  # Long enough to contain periods_per_episode months plus slack.  The env
+  # clamps this down automatically on a short val/test panel.
+  episode_length: 756
+
+# ── period-level MDP ─────────────────────────────────────────────────────────
+periods_per_episode: 24        # §5 specifies 12-36; 24 monthly steps = 2 years
+max_days_per_period: 45        # safety stop if a schedule yields no next rebalance day
+max_name_weight: 0.10          # matches the env's own per-name cap
+max_sector_weight: 0.25
+# Load-bearing: names the panel vol column as realized_vol_{vol_lookback}d
+# (allocator_env.vol_column_for). There is deliberately no separate
+# `vol_column` key -- two keys for one thing silently disagree.
+vol_lookback: 20
+
+# Reward penalties, on top of the summed daily EXCESS log return.
+# BOTH ARE UNCALIBRATED — §8 says the right turnover_penalty "needs a run, not
+# a guess", and that was written about the *daily* env.  0.02 charges 2 bp of
+# reward per 1% of gross turnover, the same order as the verified delivery
+# round-trip cost the inner env already subtracts from NAV, so it acts as a
+# mild extra brake rather than a second full charge.
+turnover_penalty: 0.02
+drawdown_penalty: 1.0
+drawdown_threshold: 0.10       # no penalty until the book is 10% off its peak
+
+# ── action ranges ────────────────────────────────────────────────────────────
+# The policy samples a ∈ [0,1]^A with A = 3 + n_sectors = 17 (14 sectors).
+# Each entry below is the affine image of one unit interval.  Justification for
+# every bound is in ActionRanges' docstring (src/trader/env/allocator_env.py).
+ranges:
+  k_min: 10                    # below ~10 a 10% name cap cannot place the book
+  k_max: 60                    # above ~60 the book is equal-weight, i.e. the baseline
+  turnover_min: 0.05           # 0 would freeze the book and starve the tilt gradient
+  turnover_max: 1.0            # gross two-sided; 1.0 = one full side, 2.0 = full rotation
+  cash_floor_min: 0.0
+  cash_floor_max: 0.5          # beyond half cash it is not an equity selection strategy
+  tilt_min: -1.0               # r_hat *= (1 + tilt) → factor in [0, 2]
+  tilt_max: 1.0
+  n_sectors: 14                # len(SECTOR_IDS); ids are 1-indexed, 0 = unsectored
+
+# ── signal artefact ──────────────────────────────────────────────────────────
+# R4's OOS predictions.  `scripts/train_allocator_rl.py` REFUSES to run unless
+# <signal_dir>/gate.json exists and says PASS (CLAUDE.md rule 1, in code).
+signal_dir: null               # e.g. data/signal/r4_baseline
+signal_horizon: r_hat_20d      # monthly rebalancing reads the 20d head
