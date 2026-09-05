@@ -17,6 +17,18 @@ test_months: 12
 # trader.data.features.FEATURE_LOOKBACK_DAYS, so this cannot regress silently.
 purge_months: 3
 step_months: 12
+
+# Bound the walk-forward span independently of the panel span. null = use the
+# panel's own min/max. Both exist because the Kite panel opens in 2005 and ends
+# in 2026, and neither end is where the walk-forward belongs:
+#   * anchored at 2005, four windows test 2011-2015 — a market that no longer
+#     exists, and the 2005-2008 rows carry the tick-size problem recorded in
+#     PROGRESS.md (11.3% of rows under Rs 20 against a Rs 0.05 tick);
+#   * left unbounded at the top, enough windows walk straight into the 2025+
+#     modern holdout that configs/data/kite_v1.yaml exists to protect.
+# A run that reports OOS results must say which span produced them.
+data_start: null
+data_end: null
 seeds: [42, 43, 44]
 
 # Escape hatch for the panel-contiguity check in scripts/walk_forward.py.  The

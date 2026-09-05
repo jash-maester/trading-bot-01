@@ -54,6 +54,30 @@ services)
         "select 'alembic: '||version_num from alembic_version" 2>&1 | sed 's/^/  /'
     ;;
 
+runbg)
+    # Background pass-through for long training runs. `run` execs in the
+    # foreground, so the job dies when the SSH channel closes; this detaches it
+    # with setsid+nohup, writes a timestamped log under logs/ and a pidfile, and
+    # prints both so the caller can poll. Everything after the command name is
+    # forwarded verbatim to `uv run python`.
+    ensure_uv >/dev/null
+    shift || true
+    set -a; [ -f .env ] && . ./.env; set +a
+    mkdir -p logs
+    tag="${RUN_TAG:-run}"
+    log="logs/${tag}.log"
+    pidf="logs/${tag}.pid"
+    if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
+        say "REFUSING: ${tag} already running as pid $(cat "$pidf")"
+        exit 1
+    fi
+    say "launching (background): $*"
+    setsid nohup uv run python "$@" > "$log" 2>&1 &
+    echo $! > "$pidf"
+    sleep 2
+    say "pid $(cat "$pidf")  log $log"
+    ;;
+
 run)
     # Pass-through for Hydra apps: everything after the command name is forwarded
     # verbatim, e.g.  win_bootstrap.sh run scripts/train.py model=mlp_regime seed=1

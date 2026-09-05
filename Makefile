@@ -165,7 +165,8 @@ SYNC_EXCLUDES = \
 	--exclude='.mypy_cache/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
 	--exclude='*.egg-info/' --exclude='.hydra/' --exclude='outputs/' \
 	--exclude='mlruns/' --exclude='checkpoints/' --exclude='logs/' \
-	--exclude='.env' --exclude='*.bak' --exclude='reports/*.html'
+	--exclude='.env' --exclude='*.bak' --exclude='reports/*.html' \
+	--exclude='/backups/'
 
 # Syncs source code, configs, scripts, docker, tests — nothing that is
 # generated locally (venv, caches, downloaded data, model artefacts).

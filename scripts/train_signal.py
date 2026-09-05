@@ -142,9 +142,30 @@ def main(cfg: DictConfig) -> None:
     # lookback. Do not widen the guard; a shorter purge means the train and val
     # feature windows physically overlap.
     walk_cfg = cfg.get("walk", {})
+    # `walk.data_start` / `walk.data_end` bound the walk-forward span independently
+    # of the panel span, and default to it. Two reasons they exist:
+    #   * the panel opens in 2005, and windows anchored there test 2011-2015 —
+    #     eight years of OOS evidence about a market that no longer exists;
+    #   * without an upper bound, enough windows walk into the 2025+ modern
+    #     holdout that `configs/data/kite_v1.yaml` exists to protect. Capping the
+    #     span is what keeps that holdout unseen.
+    panel_start = _as_date(full_panel["date"].min())
+    panel_end = _as_date(full_panel["date"].max())
+    walk_start = _as_date(walk_cfg["data_start"]) if walk_cfg.get("data_start") else panel_start
+    walk_end = _as_date(walk_cfg["data_end"]) if walk_cfg.get("data_end") else panel_end
+    if walk_start < panel_start or walk_end > panel_end:
+        raise SystemExit(
+            f"walk.data_start/data_end ({walk_start}..{walk_end}) fall outside the "
+            f"panel span ({panel_start}..{panel_end})."
+        )
+    if walk_start != panel_start or walk_end != panel_end:
+        logger.info(
+            f"Walk-forward span bounded to {walk_start}..{walk_end} "
+            f"(panel is {panel_start}..{panel_end})."
+        )
     windows = compute_windows(
-        data_start=_as_date(full_panel["date"].min()),
-        data_end=_as_date(full_panel["date"].max()),
+        data_start=walk_start,
+        data_end=walk_end,
         train_years=int(walk_cfg.get("train_years", 5)),
         val_months=int(walk_cfg.get("val_months", 12)),
         test_months=int(walk_cfg.get("test_months", 12)),
