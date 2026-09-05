@@ -1,7 +1,7 @@
 # PROGRESS
 
 **Last updated:** 2026-09-05 by session 2
-**Plan:** `09_revamp_and_audit.md`
+**Plan:** `09_revamp_and_audit.md` (process) · `10_architecture_revamp.md` (architecture)
 **Rules:** `CLAUDE.md`
 
 State file for the gated audit-and-rebuild programme. Written to be resumable
@@ -87,6 +87,28 @@ box first, which cannot be done from the Mac):
 ---
 
 ## Findings that change the plan
+
+### Architectural (2026-09-05) — `10_architecture_revamp.md`
+
+- **The policy class manufactures turnover.** A 505-dim Gaussian over logits
+  (`actor_critic.py:242-247`) pushed through `masked_softmax`: exploration noise
+  alone turns over **29% of NAV per day** at initial σ, costing **3–9 pp/yr** in
+  verified delivery charges before tax. Even a confident policy cannot hold
+  fewer than ~30% in names it does not want. This is a design property, not a
+  hyperparameter, and it sits under every result ever recorded.
+- **The critic cannot see the state** — `V(s)` conditions on `z.mean(dim=1)`
+  over 504 embeddings. The project's own `ReturnPredictionHead` docstring
+  (`heads.py:145-147`) says so.
+- **The reward pays for beta** — raw log return in a 16.4%/yr bull-market panel;
+  `ExcessLogReturn` exists (`reward.py:75`) and was never switched on.
+- **The per-sector hierarchical idea addresses none of these** and A2 measured
+  it as a 1.09× compute non-win. It belongs as a bounded "sector tilt" scalar
+  inside a small-action RL layer in R6, not as a governor agent.
+- **Consequence for the roadmap:** R4 becomes primary (supervised signal via the
+  existing head), R5 a parameter-free allocator at monthly frequency, R6 RL over
+  ~4–20 bounded allocator scalars with a Beta/squashed-Gaussian policy. The
+  505-dim Gaussian policy is retired. New R8: feature expansion (NSE delivery %,
+  FII/DII flows, bulk deals) gated behind R4's IC gate.
 
 ### From A0/A1/A2 (2026-09-05) — all verified independently
 
@@ -187,6 +209,16 @@ a 72%-padded workload, and 20 minutes replaces all of them with a real number.
 ---
 
 ## Session log
+
+### 2026-09-05 — session 2 (cont.) — B1–B7 fixed, architecture reviewed
+
+B1–B7 landed (commit `46bf578`, 405 tests). Then a design-level review of the
+core — not the bug list — found the three structural causes above. The finding
+that reframes everything: the agent's *sampling noise* costs more per year than
+the baseline's entire edge over cash. Written up as `10_architecture_revamp.md`.
+
+**Next:** Q1 (config confirmation) is unblocked. R1 gains `use_excess_returns`
+default-on. R4 is reframed as the primary model; see `10` §5–6.
 
 ### 2026-09-04 — session 2 — training box + A0/A1/A2 launched
 
