@@ -12,9 +12,10 @@ Usage:
     uv run python scripts/walk_forward.py model=gnn_v1 \
         walk.seeds=[42,43,44,45,46] walk.n_windows=4
 
-    # With the shuffled-ticker-label leak check (off by default; note the
-    # leading '+' — `shuffle_check` is not yet a key in configs/walk/default.yaml):
-    uv run python scripts/walk_forward.py model=mlp_regime +walk.shuffle_check=true
+    # With the shuffled-ticker-label leak check (off by default).  No leading
+    # '+': `shuffle_check` IS a key in configs/walk/default.yaml, and Hydra
+    # errors on '+' for a key that already exists.
+    uv run python scripts/walk_forward.py model=mlp_regime walk.shuffle_check=true
 
 Reported at the end, in order of importance:
   1. corr(val_sharpe, test_sharpe), Pearson AND Spearman — the metric the
@@ -25,9 +26,17 @@ Reported at the end, in order of importance:
 All of the above also go to MLflow as a single `<model>_walk_summary` run so
 they can be diffed across configs.
 
-The full historical panel is read from the existing train/val/test
-parquets and re-sliced into walk-forward segments.  Per-window panels
-are written under ``data/walks/<W>/{train,val,test}.parquet``.
+The full historical panel is read from ``<data.panels_root>/full.parquet`` and
+re-sliced into walk-forward segments.  Per-window panels are written under
+``data/walks/<W>/{train,val,test}.parquet``.
+
+``full.parquet`` matters: the train/val/test parquets do NOT tile the history,
+because build_features cuts the purge months out of each later split and never
+writes them.  Re-splitting the concatenation therefore slices windows against a
+calendar with a month-long hole at each build-time boundary — on data/panels
+that truncated 4 of 12 segments in silence.  The driver falls back to the
+concatenation for panels built before full.parquet existed, but refuses to run
+once it finds gaps (override: ``walk.allow_panel_gaps=true``).
 """
 from __future__ import annotations
 
@@ -46,9 +55,12 @@ def main(cfg: DictConfig) -> None:
     import hydra.utils
     import polars as pl
 
+    from trader.data.features import resolve_panels_root
     from trader.training.walk_forward import (
+        DEFAULT_PURGE_MONTHS,
         aggregate_walk_forward,
         compute_windows,
+        find_calendar_gaps,
         paired_bootstrap_ci,
         paired_test_values,
         run_walk_forward,
@@ -56,23 +68,40 @@ def main(cfg: DictConfig) -> None:
     )
 
     orig_cwd = Path(hydra.utils.get_original_cwd())
-    panels_root = orig_cwd / "data" / "panels"
+    panels_root = resolve_panels_root(cfg, orig_cwd)
     walks_root = orig_cwd / "data" / "walks"
     walks_root.mkdir(parents=True, exist_ok=True)
 
-    # ── Load and concatenate the full historical panel ────────────────────────
-    panel_paths = [
-        panels_root / "train.parquet",
-        panels_root / "val.parquet",
-        panels_root / "test.parquet",
-    ]
-    available = [p for p in panel_paths if p.exists()]
-    if not available:
-        logger.error("No panels found under data/panels/. Run build_features.py first.")
-        return
-    full_panel = pl.concat([pl.read_parquet(p) for p in available]).unique(
-        subset=["date", "ticker"], keep="first"
-    ).sort(["date", "ticker"])
+    # ── Load the full historical panel ────────────────────────────────────────
+    # `full.parquet` is the un-split panel; prefer it. The three split parquets
+    # do not tile the history — build_features drops the purge months between
+    # them entirely — so concatenating them yields a calendar with a month-long
+    # hole at each build-time boundary, and windows get sliced against it
+    # without a word. Fall back to the concatenation only when the panel predates
+    # full.parquet, and refuse to run on it if the holes are actually there.
+    full_path = panels_root / "full.parquet"
+    if full_path.exists():
+        full_panel = pl.read_parquet(full_path).sort(["date", "ticker"])
+    else:
+        panel_paths = [
+            panels_root / "train.parquet",
+            panels_root / "val.parquet",
+            panels_root / "test.parquet",
+        ]
+        available = [p for p in panel_paths if p.exists()]
+        if not available:
+            logger.error(
+                f"No panels found under {panels_root}. Run build_features.py first."
+            )
+            return
+        logger.warning(
+            f"{full_path} not found — falling back to concat(train, val, test), "
+            "which is missing the build-time purge months. Rebuild with "
+            "scripts/build_features.py to emit full.parquet."
+        )
+        full_panel = pl.concat([pl.read_parquet(p) for p in available]).unique(
+            subset=["date", "ticker"], keep="first"
+        ).sort(["date", "ticker"])
     logger.info(
         f"Full panel: {full_panel.shape[0]:,} rows, "
         f"{full_panel['date'].min()}..{full_panel['date'].max()}"
@@ -84,9 +113,29 @@ def main(cfg: DictConfig) -> None:
     train_years = int(walk_cfg.get("train_years", 5))
     val_months = int(walk_cfg.get("val_months", 12))
     test_months = int(walk_cfg.get("test_months", 12))
-    purge_months = int(walk_cfg.get("purge_months", 1))
+    purge_months = int(walk_cfg.get("purge_months", DEFAULT_PURGE_MONTHS))
     step_months = int(walk_cfg.get("step_months", 12))
     seeds_list = list(walk_cfg.get("seeds", [42, 43, 44]))
+
+    # ── The panel must be a contiguous calendar before it is re-split ─────────
+    gaps = find_calendar_gaps(full_panel)
+    if gaps:
+        detail = ", ".join(f"{a} → {b} ({n} days)" for a, b, n in gaps)
+        msg = (
+            f"Full panel has {len(gaps)} calendar gap(s): {detail}. Walk-forward "
+            "windows are cut from this calendar, so every segment spanning a gap "
+            "is silently short — on data/panels that truncated 4 of 12 segments. "
+            f"Rebuild the panel so {full_path} exists."
+        )
+        if bool(walk_cfg.get("allow_panel_gaps", False)):
+            logger.error(msg + " Continuing anyway: walk.allow_panel_gaps=true.")
+        else:
+            logger.error(msg)
+            raise SystemExit(
+                "Refusing to run walk-forward on a panel with calendar gaps. "
+                "Rebuild with scripts/build_features.py, or set "
+                "walk.allow_panel_gaps=true to override (results will be wrong)."
+            )
 
     data_start = full_panel["date"].min()
     data_end = full_panel["date"].max()

@@ -478,3 +478,78 @@ class TestGNNActorCritic:
         action_mean, value, _ = model(obs)
         assert action_mean.shape == (B, N + 1)
         assert value.shape == (B,)
+
+
+# ---------------------------------------------------------------------------
+# B1 — num_sectors derived from SECTOR_IDS
+# ---------------------------------------------------------------------------
+
+
+class TestSectorWidth:
+    """The GNN's sector-embedding table must track the universe taxonomy.
+
+    ``GNNConfig.num_sectors`` was a hardcoded ``8`` while ``SECTOR_IDS`` grew to
+    14, so a rebuilt panel would have indexed past ``sector_emb`` and past the
+    tiled sector-node block inside ``HeteroConv``.
+    """
+
+    def test_gnn_config_default_tracks_sector_ids(self) -> None:
+        from trader.data.universe import SECTOR_IDS
+        from trader.models.graph import GNNConfig
+
+        assert GNNConfig().num_sectors == max(SECTOR_IDS.values())
+
+    def test_gnn_config_default_follows_a_new_sector(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from trader.data import universe
+        from trader.models.graph import GNNConfig
+        from trader.models.heads import default_num_sectors
+
+        before = default_num_sectors()
+        monkeypatch.setitem(universe.SECTOR_IDS, "unit_test_sector", before + 1)
+        assert GNNConfig().num_sectors == before + 1
+
+    def test_forward_accepts_top_of_range_sector_id(self) -> None:
+        """Default config must handle the highest live sector id."""
+        from trader.data.universe import SECTOR_IDS
+        from trader.models.graph import GNNConfig, HeteroGNN
+
+        top = max(SECTOR_IDS.values())
+        B, N, d = 2, top, 16
+        gnn = HeteroGNN(GNNConfig(embed_dim=d, num_layers=1, num_heads=2))
+        assert gnn.num_sectors >= top
+        x = torch.randn(B, N, d)
+        # One stock per sector, 1..top inclusive.
+        sector_ids = torch.arange(1, top + 1).unsqueeze(0).expand(B, -1)
+        out = gnn(x, sector_ids)
+        assert out.shape == (B, N, d)
+        assert torch.isfinite(out).all()
+
+    def test_forward_rejects_sector_id_above_num_sectors(self) -> None:
+        """Out-of-range ids raise a clear ValueError, not an opaque index error."""
+        from trader.models.graph import GNNConfig, HeteroGNN
+
+        B, N, d, S = 1, 4, 16, 4
+        gnn = HeteroGNN(GNNConfig(embed_dim=d, num_sectors=S, num_layers=1, num_heads=2))
+        x = torch.randn(B, N, d)
+        sector_ids = torch.tensor([[1, 2, 3, S + 1]])
+        with pytest.raises(ValueError, match="sector_id out of range") as exc:
+            gnn(x, sector_ids)
+        assert "HeteroGNN" in str(exc.value)
+        assert "SECTOR_IDS" in str(exc.value)
+
+    def test_gnn_actor_critic_rejects_out_of_range_sector_id(self) -> None:
+        from trader.models.actor_critic import ModelConfig
+        from trader.models.graph import GNNActorCritic, GNNConfig
+
+        B, N, L, F, S = 1, 6, 60, 15, 4
+        model = GNNActorCritic(
+            ModelConfig(in_features=F, n_tickers=N, embed_dim=32),
+            GNNConfig(embed_dim=32, num_sectors=S, num_layers=1, num_heads=2),
+        )
+        obs = _make_obs(B=B, N=N, L=L, F=F, num_sectors=S)
+        obs["sector_ids"] = obs["sector_ids"].clone()
+        obs["sector_ids"][0, 0] = S + 3
+        with pytest.raises(ValueError, match="sector_id out of range"):
+            model(obs)

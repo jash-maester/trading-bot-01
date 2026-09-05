@@ -11,21 +11,22 @@ import pytest
 
 def test_compute_windows_canonical() -> None:
     """The 4-window protocol from 05_training.md §Walk-forward."""
-    from trader.training.walk_forward import compute_windows
+    from trader.training.walk_forward import DEFAULT_PURGE_MONTHS, compute_windows
 
     windows = compute_windows(
         data_start=date(2014, 1, 1),
-        data_end=date(2024, 12, 31),
+        data_end=date(2026, 12, 31),
         train_years=5,
         val_months=12,
         test_months=12,
-        purge_months=1,
+        purge_months=DEFAULT_PURGE_MONTHS,
         n_windows=4,
         step_months=12,
     )
     assert len(windows) == 4
     assert [w.name for w in windows] == ["W1", "W2", "W3", "W4"]
-    # W1: train 2014-01..2018-12, val 2020-02..2021-01, test 2022-03..2023-02
+    # With the 3-month purge: W1 train 2014-01-01..2018-12-31,
+    # val 2019-04-01..2020-03-31, test 2020-07-01..2021-06-30.
     assert windows[0].train_start == date(2014, 1, 1)
     assert windows[0].train_end == date(2018, 12, 31)
     # W2..W4 must each advance the train_start by 12 months
@@ -61,15 +62,15 @@ def test_compute_windows_purge_gaps() -> None:
         data_start=date(2014, 1, 1),
         data_end=date(2024, 12, 31),
         train_years=5, val_months=12, test_months=12,
-        purge_months=1,
+        purge_months=3,
         n_windows=1,
     )
     w = windows[0]
-    # train_end → val_start gap ≥ ~1 month
+    # train_end → val_start gap ≈ 3 months
     gap_train_val = (w.val_start - w.train_end).days
     gap_val_test = (w.test_start - w.val_end).days
-    assert 28 <= gap_train_val <= 32
-    assert 28 <= gap_val_test <= 32
+    assert 89 <= gap_train_val <= 93
+    assert 89 <= gap_val_test <= 93
 
 
 def test_slice_panel_inclusive_bounds() -> None:
@@ -542,3 +543,186 @@ def test_summary_metrics_are_flat_namespaced_floats() -> None:
     assert not any(k.startswith("shuffled_") for k in metrics)
     assert all(isinstance(v, float) for v in metrics.values())
     assert all("/" in k for k in metrics)
+
+
+# ── purge gap must clear the feature lookback (B3) ────────────────────────────
+
+
+def test_compute_windows_rejects_purge_shorter_than_feature_lookback() -> None:
+    """The regression guard for B3.
+
+    `purge_months: 1` shipped for the whole of M7: 17-23 NSE trading days against
+    60-day rolling features, so train and val feature windows physically
+    overlapped on all 8 boundaries (~38 contaminated rows each).  Nothing
+    complained.  Now it cannot be configured at all.
+    """
+    from trader.training.walk_forward import compute_windows
+
+    for bad in (1, 2):
+        with pytest.raises(ValueError, match="shorter than the longest feature lookback"):
+            compute_windows(
+                data_start=date(2014, 1, 1),
+                data_end=date(2024, 12, 31),
+                purge_months=bad,
+            )
+
+    # 3 months clears 60 trading days and must still be accepted.
+    assert compute_windows(
+        data_start=date(2014, 1, 1), data_end=date(2024, 12, 31), purge_months=3
+    )
+
+
+def test_purge_guard_is_derived_from_the_feature_definitions() -> None:
+    """The bound tracks features.py, it is not a second hardcoded 60.
+
+    If someone adds a 120-day feature, `FEATURE_LOOKBACK_DAYS` grows and this
+    guard tightens with it — that is the whole point of deriving it.
+    """
+    from trader.data.features import MAX_FEATURE_LOOKBACK_DAYS
+    from trader.training.walk_forward import (
+        _TRADING_DAYS_PER_MONTH,
+        assert_purge_clears_feature_lookback,
+    )
+
+    # The smallest month count that clears the *current* declared lookback.
+    minimum = -(-MAX_FEATURE_LOOKBACK_DAYS // _TRADING_DAYS_PER_MONTH)
+    assert_purge_clears_feature_lookback(minimum)
+    with pytest.raises(ValueError) as exc:
+        assert_purge_clears_feature_lookback(minimum - 1)
+    # The message has to name where the bound came from, or the next person
+    # "fixes" it by lowering the constant.
+    assert "FEATURE_LOOKBACK_DAYS" in str(exc.value)
+    assert str(MAX_FEATURE_LOOKBACK_DAYS) in str(exc.value)
+
+
+def test_config_default_purge_matches_the_module_default() -> None:
+    """configs/walk/default.yaml is what real runs use — keep the two in step."""
+    import yaml
+
+    from trader.training.walk_forward import (
+        DEFAULT_PURGE_MONTHS,
+        assert_purge_clears_feature_lookback,
+    )
+
+    cfg = yaml.safe_load(pathlib.Path("configs/walk/default.yaml").read_text())
+    assert cfg["purge_months"] == DEFAULT_PURGE_MONTHS
+    assert_purge_clears_feature_lookback(int(cfg["purge_months"]))
+
+
+def test_kite_split_boundaries_clear_the_feature_lookback() -> None:
+    """The kite_v1 split had the same defect, with a comment claiming otherwise.
+
+    Its purge was Jan 2024 (22 NSE trading days) and Jan 2025 (23) against 60-day
+    features.  Checked here in calendar days against the same nominal
+    trading-day rate the window guard uses, so a future edit to the yaml cannot
+    reintroduce a too-narrow gap unnoticed.
+    """
+    from datetime import date as _date
+
+    import yaml
+
+    from trader.data.features import MAX_FEATURE_LOOKBACK_DAYS
+    from trader.training.walk_forward import _TRADING_DAYS_PER_MONTH
+
+    cfg = yaml.safe_load(pathlib.Path("configs/data/kite_v1.yaml").read_text())
+    boundaries = [
+        (_date.fromisoformat(str(cfg["train_end"])), _date.fromisoformat(str(cfg["val_start"]))),
+        (_date.fromisoformat(str(cfg["val_end"])), _date.fromisoformat(str(cfg["test_start"]))),
+    ]
+    # ~30.4 calendar days per month; convert the required trading days back.
+    min_calendar_days = MAX_FEATURE_LOOKBACK_DAYS / _TRADING_DAYS_PER_MONTH * 30.4
+    for seg_end, next_start in boundaries:
+        gap = (next_start - seg_end).days
+        assert gap >= min_calendar_days, (
+            f"purge {seg_end} → {next_start} is {gap} calendar days, too short for "
+            f"a {MAX_FEATURE_LOOKBACK_DAYS}-trading-day feature lookback"
+        )
+
+
+# ── the walk-forward panel must be a contiguous calendar (A1) ─────────────────
+
+
+def test_find_calendar_gaps_spots_a_purged_month() -> None:
+    """concat(train, val, test) is not the full history — the purge months are gone.
+
+    `scripts/walk_forward.py` rebuilt its "full panel" that way, so windows were
+    sliced against a calendar with a month-long hole at each build-time boundary.
+    On data/panels that truncated 4 of 12 segments and said nothing.
+    """
+    import datetime as _dt
+
+    from trader.training.walk_forward import find_calendar_gaps
+
+    # Two years of business days with January of year 2 removed — exactly the
+    # shape build_features leaves behind when it purges the start of `val`.
+    start = date(2021, 1, 1)
+    dates = [start + _dt.timedelta(days=i) for i in range(730)]
+    dates = [d for d in dates if d.weekday() < 5]
+    with_hole = [d for d in dates if not (d.year == 2022 and d.month == 1)]
+
+    clean = pl.DataFrame({"date": dates, "ticker": ["A"] * len(dates)})
+    holed = pl.DataFrame({"date": with_hole, "ticker": ["A"] * len(with_hole)})
+
+    assert find_calendar_gaps(clean) == []
+
+    gaps = find_calendar_gaps(holed)
+    assert len(gaps) == 1
+    gap_start, gap_end, span = gaps[0]
+    assert gap_start.year == 2021 and gap_start.month == 12
+    assert gap_end.year == 2022 and gap_end.month == 2
+    assert span > 28
+
+
+def test_find_calendar_gaps_tolerates_normal_market_closures() -> None:
+    """Weekends and holiday clusters are not gaps; only a purged month is."""
+    import datetime as _dt
+
+    from trader.training.walk_forward import find_calendar_gaps
+
+    start = date(2021, 1, 4)
+    dates = [
+        d
+        for i in range(400)
+        if (d := start + _dt.timedelta(days=i)).weekday() < 5
+    ]
+    # Drop a 4-weekday stretch: a Diwali-sized closure plus its weekends.
+    dates = [d for d in dates if not (date(2021, 11, 1) <= d <= date(2021, 11, 5))]
+    assert find_calendar_gaps(pl.DataFrame({"date": dates})) == []
+
+
+def test_materialise_window_reports_a_segment_truncated_by_a_panel_hole(
+    tmp_path,  # type: ignore[no-untyped-def]
+) -> None:
+    """A short segment must announce itself, not just be quietly short."""
+    import datetime as _dt
+
+    from loguru import logger
+
+    from trader.training.walk_forward import WindowConfig, materialise_window
+
+    start = date(2019, 1, 1)
+    dates = [
+        d
+        for i in range(1200)
+        if (d := start + _dt.timedelta(days=i)).weekday() < 5
+    ]
+    # The build-time purge month, missing from the concatenated panel.
+    dates = [d for d in dates if not (d.year == 2020 and d.month == 1)]
+    df = pl.DataFrame({"date": dates, "ticker": ["A"] * len(dates)})
+
+    win = WindowConfig(
+        name="W1",
+        train_start=date(2019, 1, 1), train_end=date(2019, 6, 30),
+        val_start=date(2019, 8, 1), val_end=date(2020, 1, 31),   # ends in the hole
+        test_start=date(2020, 3, 1), test_end=date(2020, 9, 30),
+    )
+
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="WARNING", format="{message}")
+    try:
+        materialise_window(df, win, tmp_path / "W1")
+    finally:
+        logger.remove(sink_id)
+
+    blob = "".join(lines)
+    assert "W1/val" in blob, f"truncated segment not reported: {blob!r}"

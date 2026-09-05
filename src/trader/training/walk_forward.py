@@ -14,8 +14,19 @@ Window 3: train 2016..2020  val 2021  test 2022
 Window 4: train 2017..2021  val 2022  test 2023
 ```
 
-A 1-month purge gap is enforced between consecutive segments to prevent
-rolling-window features from leaking across the boundary.
+SPEC DIVERGENCE (unresolved, reported not silently followed): that table assumes
+a purge small enough to leave val and test on calendar-year boundaries.  With the
+3-month purge the code now requires, W1 is train 2014-01-01..2018-12-31,
+val 2019-04-01..2020-03-31, test 2020-07-01..2021-06-30 — the segments are still
+12 months each but no longer aligned to calendar years.  The spec has not been
+updated; the leakage fix takes precedence over the cosmetic alignment.
+
+A purge gap is enforced between consecutive segments to prevent rolling-window
+features from leaking across the boundary.  It was 1 month, which is 17–23 NSE
+trading days against 60-day features (`realized_vol_60d`, `beta_nifty_60d`) —
+roughly 40 contaminated rows on every one of the 8 boundaries.  It is now 3
+months, and `compute_windows` refuses anything shorter than the longest feature
+lookback rather than letting the regression happen again quietly.
 """
 from __future__ import annotations
 
@@ -30,9 +41,23 @@ import polars as pl
 from loguru import logger
 from omegaconf import DictConfig
 
+from trader.data.features import MAX_FEATURE_LOOKBACK_DAYS
+
 if TYPE_CHECKING:  # torch is imported lazily — keeps `import walk_forward` cheap
     import torch
     from torch import nn
+
+# NSE trades ~252 days a year, so a calendar month is ~21 trading days.  Only
+# used to turn `purge_months` into a comparable number of trading days for the
+# leakage guard; the real per-month count ranges 17–23 (measured over
+# data/kite_ohlcv, 2014–2026), so a purge that only just clears the guard is
+# worth widening by one more month.
+_TRADING_DAYS_PER_MONTH = 21
+
+# Default purge, in months.  Mirrors `configs/walk/default.yaml: purge_months`;
+# the two must agree, since the config is what a real run uses and this is what
+# a bare `compute_windows(...)` call gets.
+DEFAULT_PURGE_MONTHS = 3
 
 # ── Window definition ──────────────────────────────────────────────────────────
 
@@ -69,13 +94,41 @@ def _add_months(d: date, months: int) -> date:
     raise ValueError(f"Could not add {months} months to {d}")
 
 
+def assert_purge_clears_feature_lookback(purge_months: int) -> None:
+    """Raise unless `purge_months` covers the longest feature lookback.
+
+    The purge gap exists to stop a rolling feature window from spanning a
+    train/val or val/test boundary.  If the gap is shorter than the longest
+    window any feature uses, it does not do that: rows on both sides are
+    computed from overlapping history, and the val/test segments are
+    contaminated by train data.  `purge_months: 1` gave 17–23 trading days
+    against 60-day features and roughly 40 contaminated rows per boundary.
+
+    The bound is *derived* — `MAX_FEATURE_LOOKBACK_DAYS` comes from
+    `trader.data.features.FEATURE_LOOKBACK_DAYS`, which is checked against the
+    window literals in that module by its own tests.  Adding a 120-day feature
+    therefore tightens this guard automatically instead of quietly invalidating
+    every walk-forward run.
+    """
+    purge_days = purge_months * _TRADING_DAYS_PER_MONTH
+    if purge_days < MAX_FEATURE_LOOKBACK_DAYS:
+        needed = -(-MAX_FEATURE_LOOKBACK_DAYS // _TRADING_DAYS_PER_MONTH)
+        raise ValueError(
+            f"purge_months={purge_months} is ~{purge_days} trading days, shorter "
+            f"than the longest feature lookback ({MAX_FEATURE_LOOKBACK_DAYS} days, "
+            f"from trader.data.features.FEATURE_LOOKBACK_DAYS). Train and val "
+            f"feature windows would physically overlap across every boundary. "
+            f"Use walk.purge_months >= {needed} (configs/walk/default.yaml)."
+        )
+
+
 def compute_windows(
     data_start: date,
     data_end: date,
     train_years: int = 5,
     val_months: int = 12,
     test_months: int = 12,
-    purge_months: int = 1,
+    purge_months: int = DEFAULT_PURGE_MONTHS,
     n_windows: int = 4,
     step_months: int = 12,
 ) -> list[WindowConfig]:
@@ -87,7 +140,15 @@ def compute_windows(
     Windows are advanced by `step_months` (default 12 — one window per
     calendar year of test data).  Stops when either `n_windows` is
     reached or a window would extend past `data_end`.
+
+    Raises
+    ------
+    ValueError
+        If `purge_months` is too short to clear the longest feature lookback —
+        see :func:`assert_purge_clears_feature_lookback`.
     """
+    assert_purge_clears_feature_lookback(purge_months)
+
     windows: list[WindowConfig] = []
     cursor_train_start = data_start
     for i in range(1, n_windows + 1):
@@ -137,6 +198,37 @@ def slice_panel(
     )
 
 
+def find_calendar_gaps(
+    panel: pl.DataFrame,
+    max_gap_days: int = 10,
+) -> list[tuple[date, date, int]]:
+    """Consecutive dates in `panel` more than `max_gap_days` calendar days apart.
+
+    Exists because the "full historical panel" the driver assembles is
+    ``concat(train.parquet, val.parquet, test.parquet)`` — and those three do not
+    tile the history.  `build_features.py` cuts the purge months out of the
+    *start of each later split* and never writes them anywhere, so the
+    concatenation has a month-shaped hole at each build-time boundary.  Walk
+    forward windows carry their own purge structure and land nowhere near those
+    boundaries, so segments were being sliced against a calendar with whole
+    months missing, with nothing in the output to say so.
+
+    `max_gap_days=10` clears NSE's longest real closure (Diwali/holiday clusters
+    plus a weekend never reaches 10 calendar days) while catching a purged month.
+
+    Returns ``[(gap_start, gap_end, n_calendar_days), ...]``, empty when clean.
+    """
+    if "date" not in panel.columns:
+        raise ValueError("panel must have a 'date' column")
+    dates = panel["date"].unique().sort().to_list()
+    gaps: list[tuple[date, date, int]] = []
+    for prev, nxt in zip(dates, dates[1:], strict=False):
+        span = (nxt - prev).days
+        if span > max_gap_days:
+            gaps.append((prev, nxt, span))
+    return gaps
+
+
 def materialise_window(
     full_panel: pl.DataFrame,
     window: WindowConfig,
@@ -168,6 +260,29 @@ def materialise_window(
         logger.info(
             f"  {window.name}/{name}: {sub.shape[0]} rows, {d_min!s}..{d_max!s}"
         )
+
+        # A segment can be silently short in two ways: the source panel stops
+        # before the segment does (truncation at the edges), or it has a hole in
+        # the middle (a build-time purge month the driver concatenated over).
+        # Both used to pass without a word.  Say it plainly, per segment.
+        interior_gaps = find_calendar_gaps(sub)
+        if interior_gaps:
+            logger.error(
+                f"  {window.name}/{name}: {len(interior_gaps)} calendar gap(s) "
+                f"inside the segment: "
+                + ", ".join(f"{a}→{b} ({n}d)" for a, b, n in interior_gaps)
+                + " — this segment is missing data it was defined to include."
+            )
+        if isinstance(d_min, date) and isinstance(d_max, date):
+            lead = (d_min - start).days
+            trail = (end - d_max).days
+            # ~1 week absorbs a segment boundary landing on a weekend/holiday.
+            if lead > 7 or trail > 7:
+                logger.warning(
+                    f"  {window.name}/{name}: requested {start}..{end} but the "
+                    f"panel only covers {d_min}..{d_max} "
+                    f"({lead}d missing at the start, {trail}d at the end)."
+                )
     return paths
 
 
@@ -414,8 +529,16 @@ def _rebuild_eval_model(
         from trader.models.graph import GNNActorCritic, GNNConfig
 
         gc = cfg.model.graph
+        # `num_sectors` is deliberately NOT defaulted here.  GNNConfig derives it
+        # from trader.data.universe.SECTOR_IDS via `default_num_sectors()`, so an
+        # explicit fallback would override the derivation with a stale literal —
+        # which is what an `8` here did once SECTOR_IDS grew.  Only pass it when a
+        # config actually asks for a specific width.
+        gnn_kwargs: dict[str, Any] = {}
+        if gc.get("num_sectors") is not None:
+            gnn_kwargs["num_sectors"] = int(gc["num_sectors"])
         gnn_cfg = GNNConfig(
-            num_sectors=int(gc.get("num_sectors", 8)),
+            **gnn_kwargs,
             num_layers=int(gc.get("layers", 2)),
             num_heads=int(gc.get("num_heads", 2)),
             dropout=float(gc.get("dropout", 0.1)),

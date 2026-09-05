@@ -6,9 +6,25 @@ n_windows: 4
 train_years: 5
 val_months: 12
 test_months: 12
-purge_months: 1
+
+# Gap cut between train/val and val/test so that no rolling feature window spans
+# a boundary.  This was 1 month: 17-23 NSE trading days (measured over
+# data/kite_ohlcv, 2014-2026) against 60-day features (realized_vol_60d,
+# beta_nifty_60d), leaving ~40 contaminated rows on each of the 8 boundaries.
+# 3 months is the shortest gap that clears 60 trading days; 4 gives margin (the
+# worst 3-month span in the last decade, Feb-Apr 2014, is only 58 trading days).
+# compute_windows() raises below the longest lookback in
+# trader.data.features.FEATURE_LOOKBACK_DAYS, so this cannot regress silently.
+purge_months: 3
 step_months: 12
 seeds: [42, 43, 44]
+
+# Escape hatch for the panel-contiguity check in scripts/walk_forward.py.  The
+# driver refuses to slice windows out of a panel whose calendar has holes — the
+# concat(train, val, test) fallback has one where each build-time purge month was
+# dropped, which truncated 4 of 12 segments on data/panels.  Setting this to true
+# runs anyway and the results are wrong; it exists only to inspect an old panel.
+allow_panel_gaps: false
 
 # Shuffled-ticker-label leak check (M7 acceptance).  When true, each window is
 # additionally evaluated with the ticker axis of `features`/`sector_ids`

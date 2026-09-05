@@ -27,15 +27,19 @@ from omegaconf import DictConfig
 def main(cfg: DictConfig) -> None:
     import hydra.utils
 
+    from trader.data.features import resolve_panels_root
     from trader.training.runner import train_one_run
 
     orig_cwd = Path(hydra.utils.get_original_cwd())
-    panels_root = orig_cwd / "data" / "panels"
+    panels_root = resolve_panels_root(cfg, orig_cwd)
     train_panel = panels_root / "train.parquet"
     val_panel = panels_root / "val.parquet"
 
     if not train_panel.exists():
-        logger.error("train.parquet not found. Run scripts/build_features.py first.")
+        logger.error(
+            f"{train_panel} not found. Run scripts/build_features.py first "
+            "(or point data.panels_root at an existing panel)."
+        )
         return
 
     seed = int(cfg.seed)

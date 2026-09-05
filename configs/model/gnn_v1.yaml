@@ -10,7 +10,10 @@ tcn:
 embed_dim: 64                       # fallback only; TCN uses num_channels above
 use_graph: true
 graph:
-  num_sectors: 8                    # matches SECTOR_IDS in universe.py (1-indexed)
+  # num_sectors: intentionally unset. GNNConfig derives it from SECTOR_IDS in
+  # universe.py at construction time, so it tracks the universe. Pinning it to
+  # a literal (it said 8) silently under-sized the sector embedding the moment
+  # SECTOR_IDS grew. Set it only to deliberately override that width.
   hidden_dim: 64                    # overridden to encoder.out_dim at runtime
   num_heads: 2
   dropout: 0.1

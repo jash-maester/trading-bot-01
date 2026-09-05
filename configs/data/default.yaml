@@ -5,3 +5,9 @@ universe: nifty50_sectoral
 parquet_root: data/ohlcv
 raw_cache: data/raw
 lookback_days: 60
+
+# Where build_features writes, and where every entrypoint reads from. Declared
+# explicitly because it used to be honoured by build_features.py alone while
+# train/walk_forward/paper_run/evaluate hardcoded data/panels — so data/panels_kite
+# could be built and then never selected by anything.
+panels_root: data/panels

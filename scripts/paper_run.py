@@ -20,7 +20,7 @@ knobs are run-time choices, not configuration, so they are deliberately not in
 ``configs/config.yaml``)::
 
     uv run python scripts/paper_run.py                        # equal-weight baseline
-    uv run python scripts/paper_run.py +agent=momentum_top5
+    uv run python scripts/paper_run.py +agent=momentum_topk
     uv run python scripts/paper_run.py +checkpoint=checkpoints/mlp_regime_seed42/model_000100.pt
     uv run python scripts/paper_run.py +panel=val +persist=false
     uv run python scripts/paper_run.py broker.initial_cash=100000
@@ -110,17 +110,24 @@ def _build_policy(
     checkpoint = cfg.get("checkpoint")
     if not checkpoint:
         from trader.env.baselines import (
-            BuyAndHoldIndex,
+            EqualWeightFrozenUniverse,
             EqualWeightRebalanced,
             MomentumTopK,
             RandomPolicy,
             SixtyFortyCash,
         )
 
+        # The key becomes `strategy_runs.strategy_id` in the ledger, so it has to
+        # name what actually traded. `buy_and_hold` named neither the mechanism
+        # (EqualWeightFrozenUniverse tracks no index and does not hold — the env
+        # rebalances drift out every step) nor, in `momentum_top5`, the K that
+        # runs: MomentumTopK now defaults to K=20, because K=5 under the env's
+        # 0.10 per-name cap leaves the book 49.8% in cash. Both are constructed
+        # with no arguments here so the class default applies.
         agents = {
             "equal_weight": EqualWeightRebalanced,
-            "buy_and_hold": BuyAndHoldIndex,
-            "momentum_top5": MomentumTopK,
+            "equal_weight_frozen": EqualWeightFrozenUniverse,
+            "momentum_topk": MomentumTopK,
             "sixty_forty": SixtyFortyCash,
             "random": RandomPolicy,
         }
@@ -181,10 +188,18 @@ def _build_policy(
         from trader.models.graph import GNNActorCritic, GNNConfig
 
         graph = cfg.model.graph
+        # `num_sectors` is deliberately NOT defaulted here.  GNNConfig derives it
+        # from trader.data.universe.SECTOR_IDS via `default_num_sectors()`, so an
+        # explicit fallback would override the derivation with a stale literal —
+        # which is what an `8` here did once SECTOR_IDS grew.  Only pass it when a
+        # config actually asks for a specific width.
+        gnn_kwargs: dict[str, Any] = {}
+        if graph.get("num_sectors") is not None:
+            gnn_kwargs["num_sectors"] = int(graph["num_sectors"])
         model: Any = GNNActorCritic(
             model_cfg,
             GNNConfig(
-                num_sectors=int(graph.get("num_sectors", 8)),
+                **gnn_kwargs,
                 num_layers=int(graph.get("layers", 2)),
                 num_heads=int(graph.get("num_heads", 2)),
                 dropout=float(graph.get("dropout", 0.1)),
@@ -257,13 +272,13 @@ def main(cfg: DictConfig) -> None:
         PaperBrokerConfig,
         weights_from_logits,
     )
-    from trader.data.features import FEATURE_COLS
+    from trader.data.features import FEATURE_COLS, resolve_panels_root
     from trader.data.universe import active_tickers
     from trader.env.panel_env import PanelTradingEnv
     from trader.utils.seeding import seed_everything
 
     orig_cwd = Path(hydra.utils.get_original_cwd())
-    panels_root = orig_cwd / "data" / "panels"
+    panels_root = resolve_panels_root(cfg, orig_cwd)
     panel_path = _resolve_panel(cfg, panels_root)
     if not panel_path.exists():
         raise SystemExit(f"panel not found: {panel_path} — run scripts/build_features.py")

@@ -8,6 +8,13 @@ reward: log_return
 # "excess return" — agent is rewarded only when it beats the universe
 # average.  Default false to preserve baseline behaviour.
 use_excess_returns: false
+# UNCALIBRATED since the turnover metric was fixed. This multiplies the env's
+# per-step turnover, which used to be a NAV-drift artefact of ~5e-6/day — so
+# this knob was effectively off. It now multiplies real gross traded fraction,
+# ~0.022/day for an equal-weight book: the same 0.001 is roughly 4,000x more
+# reward pressure than it was. Left at its historical value on purpose — every
+# result in the repo was produced with 0.001 — but it is a live reward knob whose
+# meaning changed, and retuning it needs a run, not a guess.
 turnover_penalty: 0.001
 min_trade_value: 500
 episode_length: 252

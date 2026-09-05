@@ -56,6 +56,29 @@ def _make_ohlcv(
     return pl.DataFrame(rows)
 
 
+def _make_index_rets(
+    ohlcv: pl.DataFrame,
+    seed: int = 7,
+) -> pl.DataFrame:
+    """Synthetic benchmark log returns on the same calendar as `ohlcv`.
+
+    `compute_features` requires these — a missing benchmark is a hard error, not
+    a beta of 1.0.  Returns must have real variance: a flat index gives a
+    degenerate covariance window and beta comes back null (correctly), which
+    would make every row non-tradeable.
+    """
+    import random
+
+    rng = random.Random(seed)
+    dates = sorted(set(ohlcv["date"].to_list()))
+    return pl.DataFrame(
+        {
+            "date": dates,
+            "index_return": [rng.gauss(0.0002, 0.01) for _ in dates],
+        }
+    )
+
+
 # ── 1. Mask correctness ────────────────────────────────────────────────────────
 
 
@@ -210,7 +233,7 @@ def test_no_nan_on_tradeable_rows() -> None:
     ohlcv = _make_ohlcv(n=100, ticker="TEST.NS")
     calendar = sorted(ohlcv["date"].to_list())
     panel = align_panel(ohlcv, ["TEST.NS"], calendar)
-    panel = compute_features(panel)
+    panel = compute_features(panel, index_rets=_make_index_rets(ohlcv))
 
     tradeable = panel.filter(pl.col("is_tradeable"))
     assert len(tradeable) > 0, "Expected at least some tradeable rows"
@@ -231,7 +254,9 @@ def test_warm_up_rows_are_not_tradeable() -> None:
 
     ohlcv = _make_ohlcv(n=100, ticker="TEST.NS")
     calendar = sorted(ohlcv["date"].to_list())
-    panel = compute_features(align_panel(ohlcv, ["TEST.NS"], calendar))
+    panel = compute_features(
+        align_panel(ohlcv, ["TEST.NS"], calendar), index_rets=_make_index_rets(ohlcv)
+    )
 
     # The first 60 rows can't have a valid realized_vol_60d; they must be non-tradeable
     first_60 = panel.head(60)
@@ -251,7 +276,9 @@ def test_sha256_deterministic() -> None:
 
     ohlcv = _make_ohlcv(n=100, ticker="TEST.NS")
     calendar = sorted(ohlcv["date"].to_list())
-    panel = compute_features(align_panel(ohlcv, ["TEST.NS"], calendar))
+    panel = compute_features(
+        align_panel(ohlcv, ["TEST.NS"], calendar), index_rets=_make_index_rets(ohlcv)
+    )
     panel = panel.sort(["date", "ticker"])
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -352,7 +379,9 @@ def test_rsi_bounded() -> None:
 
     ohlcv = _make_ohlcv(n=100, ticker="X.NS")
     calendar = sorted(ohlcv["date"].to_list())
-    panel = compute_features(align_panel(ohlcv, ["X.NS"], calendar))
+    panel = compute_features(
+        align_panel(ohlcv, ["X.NS"], calendar), index_rets=_make_index_rets(ohlcv)
+    )
 
     tradeable = panel.filter(pl.col("is_tradeable"))
     if len(tradeable) == 0:
@@ -361,3 +390,214 @@ def test_rsi_bounded() -> None:
     rsi = tradeable["rsi_14"]
     assert float(rsi.min()) >= 0.0, f"RSI below 0: {rsi.min()}"
     assert float(rsi.max()) <= 100.0, f"RSI above 100: {rsi.max()}"
+
+
+# ── 9. beta_nifty_60d must not fake a benchmark (B7) ──────────────────────────
+
+
+def test_beta_without_index_raises_instead_of_returning_one() -> None:
+    """The regression this whole guard exists for.
+
+    `_add_beta` used to return a constant 1.0 when no index was supplied, which
+    is how beta_nifty_60d came to be constant across all 276,005 tradeable
+    training rows: data/ohlcv has no ^NSEI, so index_rets was None and nothing
+    said so.  A missing benchmark must be an error, never a plausible number.
+    """
+    from trader.data.alignment import align_panel
+    from trader.data.features import MissingBenchmarkError, compute_features
+
+    ohlcv = _make_ohlcv(n=100, ticker="X.NS")
+    calendar = sorted(ohlcv["date"].to_list())
+    panel = align_panel(ohlcv, ["X.NS"], calendar)
+
+    with pytest.raises(MissingBenchmarkError, match="beta_nifty_60d"):
+        compute_features(panel, index_rets=None)
+
+    # Same for the default: forgetting the argument must not be the quiet path.
+    with pytest.raises(MissingBenchmarkError):
+        compute_features(panel)
+
+
+def test_beta_is_not_constant_when_index_is_supplied() -> None:
+    """With a real benchmark the channel has to actually vary.
+
+    `compute_feature_stats` maps a zero-variance feature to (0.0, 1.0), which
+    normalises a dead channel to a fixed +1 into every convolution — so
+    "constant" is not a harmless outcome and is worth asserting against
+    directly, not just inferring from the absence of an exception.
+    """
+    from trader.data.alignment import align_panel
+    from trader.data.features import compute_features
+
+    ohlcv = _make_ohlcv(n=140, ticker="X.NS")
+    calendar = sorted(ohlcv["date"].to_list())
+    panel = compute_features(
+        align_panel(ohlcv, ["X.NS"], calendar), index_rets=_make_index_rets(ohlcv)
+    )
+
+    beta = panel.filter(pl.col("is_tradeable"))["beta_nifty_60d"]
+    assert len(beta) > 0, "expected tradeable rows"
+    assert float(beta.std() or 0.0) > 1e-8, (
+        f"beta_nifty_60d is constant at {beta[0]} — a dead channel, not a feature"
+    )
+
+
+def test_beta_is_null_not_one_on_dates_the_index_does_not_cover() -> None:
+    """A short benchmark is the same bug in a quieter costume.
+
+    Uncovered dates used to fall through to 1.0.  They must go null, which
+    `compute_features` turns into is_tradeable=False for exactly those rows —
+    local and visible, rather than a fabricated beta indistinguishable from a
+    measured one.
+    """
+    from trader.data.alignment import align_panel
+    from trader.data.features import compute_features
+
+    ohlcv = _make_ohlcv(n=140, ticker="X.NS")
+    calendar = sorted(ohlcv["date"].to_list())
+    index_rets = _make_index_rets(ohlcv)
+    cutoff = calendar[100]
+    short_index = index_rets.filter(pl.col("date") <= cutoff)
+
+    panel = compute_features(
+        align_panel(ohlcv, ["X.NS"], calendar), index_rets=short_index
+    )
+
+    uncovered = panel.filter(pl.col("date") > cutoff)
+    assert len(uncovered) > 0
+    assert uncovered["is_tradeable"].sum() == 0, (
+        "rows the benchmark does not cover must not be tradeable"
+    )
+    # Sentinel-filled to 0.0 after the mask — the point is that it is not 1.0.
+    assert 1.0 not in uncovered["beta_nifty_60d"].to_list()
+
+
+# ── 10. Feature lookback table drives the walk-forward purge guard (B3) ───────
+
+
+def test_feature_lookback_table_covers_every_feature() -> None:
+    """The purge guard is only as good as this table's coverage."""
+    from trader.data.features import FEATURE_COLS, FEATURE_LOOKBACK_DAYS
+
+    assert set(FEATURE_LOOKBACK_DAYS) == set(FEATURE_COLS), (
+        "FEATURE_LOOKBACK_DAYS and FEATURE_COLS have diverged: "
+        f"missing={set(FEATURE_COLS) - set(FEATURE_LOOKBACK_DAYS)}, "
+        f"extra={set(FEATURE_LOOKBACK_DAYS) - set(FEATURE_COLS)}"
+    )
+
+
+def test_no_window_literal_exceeds_the_declared_max_lookback() -> None:
+    """Adding a longer-window feature must tighten the purge guard, not slip past it.
+
+    Scans the module source for the window sizes actually used.  If someone adds
+    a 120-day rolling feature without updating FEATURE_LOOKBACK_DAYS, the purge
+    guard in `compute_windows` would keep passing a gap that no longer clears the
+    features — the exact silent regression B3 was.
+    """
+    from trader.data import features as features_mod
+
+    source = Path(features_mod.__file__).read_text()
+    literals = [
+        int(m)
+        for m in re.findall(r"window_size=(\d+)|\bspan=(\d+)|\.shift\((\d+)\)", source)
+        for m in (m if isinstance(m, tuple) else (m,))
+        if m
+    ]
+    assert literals, "expected to find rolling-window literals in features.py"
+    assert max(literals) <= features_mod.MAX_FEATURE_LOOKBACK_DAYS, (
+        f"features.py uses a {max(literals)}-day window but "
+        f"MAX_FEATURE_LOOKBACK_DAYS is {features_mod.MAX_FEATURE_LOOKBACK_DAYS} — "
+        "update FEATURE_LOOKBACK_DAYS so the walk-forward purge guard follows."
+    )
+
+
+# ── 11. data.panels_root actually selects the panel (B2) ─────────────────────
+
+
+def _write_stub_panel(path: Path, tickers: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "date": [date(2020, 1, 2)] * len(tickers),
+            "ticker": tickers,
+            "is_tradeable": [True] * len(tickers),
+        }
+    ).write_parquet(path)
+
+
+def test_resolve_panels_root_honours_a_non_default_config_path() -> None:
+    """`data.panels_root` must select the dataset, not be declared and ignored.
+
+    data/panels_kite was built — live beta, 2005-2026, corporate-action masking
+    — and then orphaned: build_features.py read `data.panels_root`, every other
+    entrypoint hardcoded data/panels, and no override could reach the new panel.
+    A smoke run silently used the stale yfinance data.
+    """
+    from omegaconf import OmegaConf
+
+    from trader.data.features import resolve_panels_root
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        _write_stub_panel(root / "data" / "panels" / "train.parquet", ["A.NS"])
+        _write_stub_panel(
+            root / "data" / "panels_kite" / "train.parquet", ["A.NS", "B.NS", "C.NS"]
+        )
+
+        cfg = OmegaConf.create({"data": {"panels_root": "data/panels_kite"}})
+        assert resolve_panels_root(cfg, root) == root / "data" / "panels_kite"
+
+        # Absent key → the historical default, so existing invocations are unchanged.
+        assert resolve_panels_root(OmegaConf.create({"data": {}}), root) == (
+            root / "data" / "panels"
+        )
+
+
+def test_resolve_panels_root_logs_the_resolved_path_and_ticker_count() -> None:
+    """Silence is the bug class.  A run must say which panel it opened."""
+    from loguru import logger
+    from omegaconf import OmegaConf
+
+    from trader.data.features import resolve_panels_root
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        _write_stub_panel(
+            root / "data" / "panels_kite" / "train.parquet", ["A.NS", "B.NS", "C.NS"]
+        )
+        cfg = OmegaConf.create({"data": {"panels_root": "data/panels_kite"}})
+
+        lines: list[str] = []
+        sink_id = logger.add(lines.append, level="INFO", format="{message}")
+        try:
+            resolve_panels_root(cfg, root)
+        finally:
+            logger.remove(sink_id)
+
+        blob = "".join(lines)
+        assert "panels_kite" in blob, f"resolved path not logged: {blob!r}"
+        assert "3 tickers" in blob, f"ticker count not logged: {blob!r}"
+
+
+def test_every_entrypoint_resolves_the_panel_root_from_config() -> None:
+    """Static guard against re-hardcoding the path in any driver script.
+
+    Four of the five entrypoints had `orig_cwd / "data" / "panels"` inlined.
+    That is what made `data.panels_root` unreachable, and nothing would have
+    caught a fifth copy appearing.
+    """
+    scripts = [
+        "scripts/train.py",
+        "scripts/walk_forward.py",
+        "scripts/paper_run.py",
+        "scripts/evaluate.py",
+        "scripts/build_features.py",
+    ]
+    for script in scripts:
+        source = Path(script).read_text()
+        assert "resolve_panels_root(cfg" in source, (
+            f"{script} does not resolve the panel root from config"
+        )
+        assert '"data" / "panels"' not in source, (
+            f"{script} hardcodes the panel path again — use resolve_panels_root"
+        )

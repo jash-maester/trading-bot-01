@@ -40,12 +40,23 @@ force_refetch: false
 # Modern holdout. The 2025+ test window post-dates every architecture and
 # hyperparameter decision in this repo, so it cannot have leaked into one — keep
 # it that way: normalisation stats are computed from `train` only.
-# A 1-month purge is cut from the START of each later segment (same convention as
-# the 2021/2022/2023 split it replaces) so no feature window straddles a boundary.
+# A purge is cut from the START of each later segment (same convention as the
+# 2021/2022/2023 split it replaces) so no feature window straddles a boundary.
+#
+# It was 1 month, and the comment here claimed that cleared the feature windows.
+# It did not: Jan 2024 is 22 NSE trading days and Jan 2025 is 23, against
+# `realized_vol_60d` and `beta_nifty_60d`, which look back 60. Both boundaries
+# were contaminated by ~38 rows. 3 months is the shortest gap that clears:
+# Jan-Mar 2024 and Jan-Mar 2025 are 62 trading days each. Regenerate with
+#   uv run python -c "import polars as pl, pathlib; \
+#     d=pl.concat([pl.read_parquet(f,columns=['date']) for f in \
+#     pathlib.Path('data/kite_ohlcv').rglob('*.parquet')]) \
+#     .with_columns(pl.col('date').cast(pl.Date))['date'].unique(); \
+#     print(d.filter((d>=pl.date(2024,1,1))&(d<=pl.date(2024,3,31))).len())"
 train_end: "2023-12-31"
-val_start: "2024-02-01" # Jan 2024 purged
+val_start: "2024-04-01" # Jan-Mar 2024 purged (62 trading days)
 val_end: "2024-12-31"
-test_start: "2025-02-01" # Jan 2025 purged
+test_start: "2025-04-01" # Jan-Mar 2025 purged (62 trading days)
 
 # ── Corporate-action masking ─────────────────────────────────────────────────
 # See trader.data.corporate_actions. Flags any single-day move beyond the

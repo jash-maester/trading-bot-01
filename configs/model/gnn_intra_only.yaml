@@ -10,7 +10,7 @@ tcn:
 embed_dim: 64
 use_graph: true
 graph:
-  num_sectors: 8
+  # num_sectors: unset on purpose — derived from SECTOR_IDS. See gnn_v1.yaml.
   hidden_dim: 64
   num_heads: 2
   dropout: 0.1

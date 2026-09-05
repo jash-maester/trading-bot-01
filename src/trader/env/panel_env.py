@@ -276,16 +276,36 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         self._cash += float(signed_cash.sum() - cost_per_leg.sum())
         costs_paid = float(cost_per_leg.sum())
 
+        # ── Turnover ─────────────────────────────────────────────────────────
+        # Definition: gross traded value / pre-trade NAV.  Units: dimensionless
+        # fraction of NAV per day (multiply by 252 for the annual figure — see
+        # `eval_metrics.compute_episode_metrics`).  Scale:
+        #     0.0  nothing traded
+        #     1.0  one side of the book replaced (all-buy or all-sell)
+        #     2.0  a full rotation — sell everything, buy something else
+        # `trade_val` is the same rupee volume the cost model is charged on, so
+        # `turnover_penalty * turnover` is proportional to the fees the trade
+        # actually incurs; that proportionality is the entire point of the
+        # penalty term.  This is the two-sided (gross) convention; the one-way
+        # figure is half of it.
+        #
+        # The denominator is NAV *before* today's trades (marked at yesterday's
+        # close, `current_nav` above), so the metric is a function of what was
+        # traded and nothing else: a price move with no trading leaves it at
+        # exactly 0.0.
+        #
+        # This MUST be computed before `self._shares` is overwritten below.
+        # It previously was not: both weight vectors were built from the
+        # post-trade share vector and differed only by their NAV denominator,
+        # making the "turnover" a pure function of the day's NAV drift — a full
+        # rotation reported 0.0 and a flat book through a -5% day reported 0.05.
+        turnover = float(trade_val.sum()) / current_nav
+
         self._shares = target_shares
 
         # Mark-to-close
         new_nav = max(self._cash + float(np.sum(self._shares * closes)), 1e-8)
         log_return = math.log(new_nav / max(self._prev_nav, 1e-8))
-
-        # Turnover (equity weight change)
-        prev_eq_w = (self._shares * closes) / max(self._prev_nav, 1e-8)
-        new_eq_w = (self._shares * closes) / max(new_nav, 1e-8)
-        turnover = float(np.sum(np.abs(new_eq_w - prev_eq_w)))
 
         # Optional: subtract equal-weight benchmark from log_return so the
         # reward function sees *excess* return.  This gives the agent a

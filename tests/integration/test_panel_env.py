@@ -179,8 +179,11 @@ def test_no_action_zero_turnover(panel_file: Path) -> None:
     obs, _, term, trunc, info1 = env.step(all_cash)
     # Second step: repeat same all-cash action
     obs, _, term, trunc, info2 = env.step(all_cash)
-    # Turnover and cost should be near 0 (holding cash → no trades)
+    # Turnover and cost should be near 0 (holding cash → no trades).
+    # The turnover half of this assertion was missing while `info["turnover"]`
+    # was NAV drift; it is the invariant the test is named after.
     assert info2["costs_paid"] == pytest.approx(0.0, abs=1e-6)
+    assert info2["turnover"] == pytest.approx(0.0, abs=1e-9)
 
 
 def test_all_cash_nav_does_not_grow(panel_file: Path) -> None:
@@ -274,3 +277,147 @@ def test_full_episode_walltime(panel_file: Path) -> None:
 
     # For 3 tickers the loop is trivially fast; 200 ms headroom for 150
     assert elapsed < 5.0, f"Episode took {elapsed:.3f}s — too slow"
+
+
+# ── Turnover ──────────────────────────────────────────────────────────────────
+#
+# `info["turnover"]` used to compute both weight vectors from the *post-trade*
+# share vector (`panel_env.py:279,286-288`), which made it a pure function of
+# the day's NAV drift: on the panel below the full rotation reported 0.000000
+# and a zero-trade day through a -5% close reported 0.049979. These tests pin
+# the behaviour that matters — turnover responds to trading and to nothing else.
+
+_FLAT_PRICE = 100.0
+_DROP_PRICE = 95.0
+_TURNOVER_LOOKBACK = 3
+_TURNOVER_DAYS = 20
+_DROP_IDX = 5   # first day index whose close is _DROP_PRICE
+
+
+def _deterministic_panel() -> pl.DataFrame:
+    """Panel engineered so every share count is exactly predictable.
+
+    * `atr_14 = 0` → the slippage term is identically zero, fills are at open.
+    * `open[i] = close[i-1]` → no overnight gap, so an unchanged target weight
+      reproduces the held share vector exactly and trades nothing.
+    * close steps 100 → 95 at `_DROP_IDX` and stays there, giving one day with
+      a -5% NAV move and provably zero trading.
+    """
+    closes = [_FLAT_PRICE] * _DROP_IDX + [_DROP_PRICE] * (_TURNOVER_DAYS - _DROP_IDX)
+    opens = [_FLAT_PRICE] + closes[:-1]
+
+    start = date(2020, 1, 1)
+    rows: list[dict[str, object]] = []
+    for ticker in _TICKERS:
+        for i in range(_TURNOVER_DAYS):
+            row: dict[str, object] = {
+                "date": start + timedelta(days=i),
+                "ticker": ticker,
+                "open": opens[i],
+                "high": max(opens[i], closes[i]) * 1.001,
+                "low": min(opens[i], closes[i]) * 0.999,
+                "close": closes[i],
+                "adj_close": closes[i],
+                "volume": 1_000_000,
+                "is_tradeable": True,
+                "sector_id": 1,
+            }
+            for fc in _FEATURE_COLS:
+                row[fc] = 0.0
+            row["atr_14"] = 0.0                 # no slippage
+            row["dollar_volume_20"] = 1e9
+            rows.append(row)
+    return pl.DataFrame(rows)
+
+
+def _turnover_env(tmpdir: Path) -> object:
+    """Env over `_deterministic_panel` with a forced start index.
+
+    `len(dates) - lookback - episode_length - 1 == 0` makes `reset` sample from
+    a single-element range, so the episode always starts at day `lookback` and
+    the price path below is the one actually traded.
+    """
+    from trader.env.costs import ZeroCostModel
+    from trader.env.panel_env import PanelTradingEnv
+
+    path = tmpdir / "deterministic.parquet"
+    _deterministic_panel().write_parquet(path)
+    return PanelTradingEnv(
+        panel_path=path,
+        universe=_TICKERS,
+        feature_columns=_FEATURE_COLS,
+        lookback=_TURNOVER_LOOKBACK,
+        episode_length=_TURNOVER_DAYS - _TURNOVER_LOOKBACK - 1,
+        initial_cash=1_000_000.0,
+        cost_model=ZeroCostModel(),      # keep NAV arithmetic exact
+        max_weight_per_name=1.0,         # allow a single-name book to rotate
+        seed=0,
+    )
+
+
+def _all_in(ticker_idx: int) -> np.ndarray:
+    """Logits that put ~100% of NAV into one ticker."""
+    action = np.full(_N + 1, -1e9, dtype=np.float32)
+    action[ticker_idx + 1] = 0.0
+    return action
+
+
+def test_turnover_zero_on_hold_and_two_on_full_rotation() -> None:
+    """A hold is free and a full rotation costs ~2.0 (sell 100% + buy 100%)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _turnover_env(Path(tmp))
+        env.reset(seed=0)                                    # type: ignore[union-attr]
+
+        _, _, _, _, buy = env.step(_all_in(0))               # type: ignore[union-attr]
+        _, _, _, _, hold = env.step(_all_in(0))              # type: ignore[union-attr]
+        _, _, _, _, drop = env.step(_all_in(0))              # -5% close, no trade
+        _, _, _, _, rotate = env.step(_all_in(1))            # type: ignore[union-attr]
+        _, _, _, _, hold2 = env.step(_all_in(1))             # type: ignore[union-attr]
+
+    # Entering from all-cash trades one side of the book only.
+    assert buy["turnover"] == pytest.approx(1.0, abs=1e-3)
+    # Rotating A → B sells the whole book and buys another: two sides.
+    assert rotate["turnover"] == pytest.approx(2.0, abs=1e-3)
+    # Holding trades nothing at all.
+    assert hold["turnover"] == pytest.approx(0.0, abs=1e-9)
+    assert drop["turnover"] == pytest.approx(0.0, abs=1e-9)
+    assert hold2["turnover"] == pytest.approx(0.0, abs=1e-9)
+    # The defect inverted exactly this ordering.
+    assert rotate["turnover"] > 100.0 * max(hold["turnover"], drop["turnover"], 1e-9)
+
+
+def test_turnover_is_not_a_function_of_nav() -> None:
+    """Perturbing NAV without trading must leave turnover unchanged.
+
+    Step 2 and step 3 are the same zero-trade hold; step 3's close is 5% lower.
+    The old formula reported 0.000000 for the flat day and 0.049979 for the
+    -5% day — the same trading activity (none) scored differently.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _turnover_env(Path(tmp))
+        env.reset(seed=0)                                    # type: ignore[union-attr]
+
+        env.step(_all_in(0))                                 # type: ignore[union-attr]
+        _, _, _, _, flat = env.step(_all_in(0))              # type: ignore[union-attr]
+        _, _, _, _, dropped = env.step(_all_in(0))           # type: ignore[union-attr]
+
+    nav_move = dropped["nav"] / flat["nav"] - 1.0
+    assert nav_move == pytest.approx(-0.05, abs=1e-3), "panel must move NAV here"
+    assert dropped["costs_paid"] == 0.0, "and must do so without trading"
+    assert dropped["turnover"] == flat["turnover"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_turnover_scales_with_the_value_actually_traded() -> None:
+    """Half the book rotated must report half the turnover of a full rotation."""
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _turnover_env(Path(tmp))
+        env.reset(seed=0)                                    # type: ignore[union-attr]
+
+        env.step(_all_in(0))                                 # 100% into A
+        # 50% A / 50% B: sells half of A, buys an equal value of B.
+        half = np.full(_N + 1, -1e9, dtype=np.float32)
+        half[1] = 0.0
+        half[2] = 0.0
+        _, _, _, _, info = env.step(half)                    # type: ignore[union-attr]
+
+    assert info["turnover"] == pytest.approx(1.0, abs=5e-3)

@@ -207,14 +207,35 @@ class PPOTrainer:
             )
 
             # ── Rollout collection ────────────────────────────────────────────
-            # eval() disables DropEdge and all attention/feature dropout so that
-            # log_prob_old is a deterministic function of the model weights.
-            # log_prob_new in the update step is computed the same way (model
-            # stays in eval() throughout the iteration), so the importance ratio
-            # exp(new_lp - old_lp) reflects only weight changes — not random
-            # dropout masks.  Without this, GNN clip_frac collapses to 1.000
-            # from the very first update because the two log_prob calls use
-            # different graph topologies.
+            # MODE DISCIPLINE — read this before touching .train()/.eval().
+            #
+            # Rollout runs under eval(): DropEdge and all attention/feature
+            # dropout are off, so log_prob_old is a *deterministic* function of
+            # the weights.  This is deliberate and load-bearing.  When the
+            # rollout was stochastic, log_prob_old was one random draw and
+            # log_prob_new another, so exp(new_lp - old_lp) measured the
+            # difference between two dropout masks rather than the weight
+            # update: GNN clip_frac collapsed to 1.000 on the very first update
+            # and approx_kl ran 36–161.  Do not move this.
+            #
+            # The gradient update, by contrast, runs under train() (set below,
+            # just before the epoch loop).  eval() there — which is what this
+            # loop used to do for the whole iteration — meant dropout never
+            # fired in *any* backward pass: TCN dropout 0.1, attention dropout
+            # and DropEdge were dead for the entire history of this project,
+            # and because train() was only restored after the loop, val/test
+            # evaluation then ran *with* dropout on.  Exactly backwards.
+            #
+            # Consequence to watch: old_lp (eval) and new_lp (train) are now
+            # computed under different dropout regimes, so the ratio carries a
+            # dropout term on the new side.  That is the standard PPO-with-
+            # dropout tradeoff and is bounded — the reference side stays fixed,
+            # unlike the failure above where both sides were random draws — but
+            # it does inflate approx_kl/clip_frac somewhat, which can trip the
+            # target_kl early-stop sooner.  If a GNN run shows clip_frac near
+            # 1.0 again, the lever is drop_edge_prob / dropout, not this mode
+            # discipline: reverting to eval() during the update restores the
+            # zero-regularisation bug.
             self.model.eval()
             obs_buf: list[dict[str, np.ndarray]] = []
             actions_buf: list[np.ndarray] = []
@@ -324,6 +345,10 @@ class PPOTrainer:
                 and "next_day_returns" in obs_batch
             )
 
+            # Gradient update runs in train() so dropout / DropEdge actually
+            # regularise.  See the mode-discipline note above the rollout.
+            self.model.train()
+
             b_inds = np.arange(self._batch_size)
             for _ in range(cfg.n_epochs):
                 np.random.shuffle(b_inds)
@@ -405,6 +430,13 @@ class PPOTrainer:
                     logger.debug(f"Early stop at epoch — KL {np.mean(approx_kls):.4f}")
                     break
 
+            # Back to eval() the moment the gradient update is done: the next
+            # iteration's rollout needs it (it re-asserts eval() anyway), and
+            # anything that touches the model between updates — checkpointing,
+            # and after the final update `runner._evaluate_split`, which does
+            # NOT set the mode itself — must see a deterministic model.
+            self.model.eval()
+
             # ── Logging ───────────────────────────────────────────────────────
             if update % cfg.log_interval == 0:
                 sps = int(global_step / (time.time() - start_time))
@@ -442,7 +474,12 @@ class PPOTrainer:
             if update % cfg.checkpoint_interval == 0:
                 self._save_checkpoint(update)
 
-        self.model.train()  # restore train mode after the loop
+        # Leave the model in eval() on return.  `runner.train_one_run` calls
+        # `_evaluate_split` immediately after this and never sets the mode, so
+        # returning in train() put val/test evaluation under active dropout —
+        # non-deterministic metrics from a model that is supposed to be frozen.
+        # (Also covers the n_updates == 0 case, where the loop body never ran.)
+        self.model.eval()
         return episode_metrics
 
     def _log_mlflow(self, step: int, metrics: dict[str, float]) -> None:

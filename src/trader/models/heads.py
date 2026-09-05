@@ -4,7 +4,66 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
+from trader.data.universe import SECTOR_IDS
 from trader.models.encoders import RegimeNormalizer
+
+
+def default_num_sectors() -> int:
+    """Number of sector buckets the model must allocate.
+
+    Derived from :data:`trader.data.universe.SECTOR_IDS` — the single source of
+    truth for the sector taxonomy — rather than hardcoded.  IDs are 1-indexed
+    (``0`` = unclassified) and are used as ``sector_id - 1`` into a tensor of
+    width ``num_sectors``, so the width must cover the *largest* id, not merely
+    the *count* of ids: ``max()``, not ``len()``.  The two agree while the ids
+    are contiguous, but only ``max()`` stays correct if one is ever retired.
+
+    This was hardcoded to ``8`` in three places (``CriticHead``, ``ModelConfig``,
+    ``GNNConfig``).  The universe grew to 14 sectors on 2026-09-04 and the model
+    did not follow, so any panel rebuilt with current sector ids would have
+    crashed the critic's ``scatter_add_`` with an out-of-bounds index.  Deriving
+    it means adding a sector cannot desynchronise the model again.
+
+    Called at *construction* time (via ``dataclasses.field(default_factory=...)``
+    and the ``None`` sentinel below) rather than captured in a module constant,
+    so the derivation tracks ``SECTOR_IDS`` even within a running process.
+    """
+    return max(SECTOR_IDS.values(), default=0)
+
+
+def check_sector_ids(
+    sector_ids: torch.Tensor,
+    num_sectors: int,
+    *,
+    where: str = "model",
+) -> None:
+    """Fail loudly if any ``sector_id`` cannot be indexed into ``num_sectors``.
+
+    Valid ids are ``0`` (unclassified — excluded from every sector bucket) and
+    ``1..num_sectors``.  An id above ``num_sectors`` used to surface as
+    ``RuntimeError: index 13 is out of bounds for dimension 1 with size 8``
+    from ``scatter_add_`` (or, on CUDA, as an async device-side assert far from
+    the real cause).  Raising here names the actual problem: the model's sector
+    width and the universe's taxonomy have drifted apart.
+
+    Costs one host-device sync per call, which is immaterial next to the
+    encoder/attention forward it guards (the update forward+backward is ~96 %
+    of wall clock; this is two reductions over a ``[B, N]`` int tensor).
+    """
+    if sector_ids.numel() == 0:
+        return
+    hi = int(sector_ids.max())
+    lo = int(sector_ids.min())
+    if hi > num_sectors or lo < 0:
+        raise ValueError(
+            f"{where}: sector_id out of range — observed [{lo}, {hi}], "
+            f"expected 0..{num_sectors} (num_sectors={num_sectors}). "
+            f"trader.data.universe.SECTOR_IDS currently defines "
+            f"{default_num_sectors()} sectors; a model configured for fewer "
+            f"cannot represent this universe. Set num_sectors to at least "
+            f"{max(hi, default_num_sectors())} (leave it unset to derive it "
+            f"from SECTOR_IDS)."
+        )
 
 
 def _mlp(in_dim: int, hidden: int, out_dim: int, layers: int = 2) -> nn.Sequential:
@@ -158,7 +217,7 @@ class CriticHead(nn.Module):
         portfolio ([B, N+1])         — current weights inc. cash.
         t_frac ([B])                 — episode progress.
         sector_ids ([B, N])          — used to compute per-sector exposure
-                                        via scatter-add (8 dims).
+                                        via scatter-add (`num_sectors` dims).
         recent_return_1d ([B])       — last day's portfolio log return.
         recent_vol_20d   ([B])       — std of the last 20 daily log returns.
         nav_log_progress ([B])       — log(current_nav / initial_cash).
@@ -178,13 +237,17 @@ class CriticHead(nn.Module):
     def __init__(
         self,
         embed_dim: int,
-        num_sectors: int = 8,
+        num_sectors: int | None = None,
         hidden: int = 64,
         regime_dim: int = 0,
         regime_normalizer: RegimeNormalizer | None = None,
     ) -> None:
         super().__init__()
-        self.num_sectors = num_sectors
+        # None → derive from SECTOR_IDS (see `default_num_sectors`). An explicit
+        # value still wins, so tests and ablations can use a narrow universe.
+        self.num_sectors = (
+            default_num_sectors() if num_sectors is None else num_sectors
+        )
         self.regime_dim = regime_dim
         # The critic owns its own normaliser handle (often shared with FiLM).
         # When `regime_dim==0` this attribute is None and `forward` ignores
@@ -193,7 +256,7 @@ class CriticHead(nn.Module):
             regime_normalizer if regime_dim > 0 else None
         )
         # z_mean (d) || summary scalars (7) || sector exposure (S) || regime (R)
-        in_dim = embed_dim + 7 + num_sectors + regime_dim
+        in_dim = embed_dim + 7 + self.num_sectors + regime_dim
         self.mlp = _mlp(in_dim, hidden, 1)
         _init_last_linear(self.mlp, gain=1.0)
 
@@ -209,6 +272,9 @@ class CriticHead(nn.Module):
         regime: torch.Tensor | None = None,   # [B, R]
     ) -> torch.Tensor:
         B, _, _ = z.shape
+        # Guard before scatter_add_: an id above num_sectors is a taxonomy /
+        # model mismatch, not a tensor-indexing accident. Report it as such.
+        check_sector_ids(sector_ids, self.num_sectors, where="CriticHead")
         z_mean = z.mean(dim=1)                            # [B, d]
         eq_w = portfolio[:, 1:]                           # [B, N]
 

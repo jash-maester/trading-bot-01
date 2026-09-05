@@ -1,9 +1,28 @@
-"""Baseline agents that emit the same logit-vector action as the RL policy."""
+"""Baseline agents that emit the same logit-vector action as the RL policy.
+
+A note on what a baseline can and cannot express here
+----------------------------------------------------
+`PanelTradingEnv.step` turns the logit vector into *target weights* and then
+into target share counts, **every step** (`panel_env.py:230-249`).  An agent
+that returns the same logits twice therefore does not "hold" — the env marks
+the book to the new NAV and trades back to those weights.  Nothing an agent
+returns through this interface can produce a genuine buy-and-hold or a
+lower-than-daily rebalance cadence; that would need a no-trade action or a
+turnover budget in the env itself.  Class docstrings below say what each
+baseline actually does rather than what it was named after.
+"""
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 import numpy as np
+
+from trader.data.features import FEATURE_COLS
+
+# The column MomentumTopK ranks on.  Resolved by *name* against the feature
+# list the env was built with — never by hardcoded position.
+_MOMENTUM_COL = "log_return_20d"
 
 
 class BaselineAgent:
@@ -55,17 +74,45 @@ def _top_k_logits(mask: np.ndarray, scores: np.ndarray, k: int) -> np.ndarray:
 
 
 class EqualWeightRebalanced(BaselineAgent):
-    """1/N_tradeable across all tradeable equities, rebalanced each step."""
+    """1/N_tradeable across all tradeable equities, rebalanced **every step**.
+
+    Daily, not monthly.  `03_environment.md` and `05_training.md` described
+    this baseline as monthly-rebalanced and used that to argue the RL agent was
+    unfairly compared against a lower-turnover, lower-tax benchmark; that
+    premise was never true of this code and is not true now.  It pays the full
+    daily turnover drag, exactly like the agent.
+
+    A monthly variant cannot be built agent-side — see the module docstring —
+    so this class deliberately has no `rebalance_freq` knob rather than a
+    knob that would not do what its name says.
+    """
 
     def act(self, obs: dict[str, np.ndarray]) -> np.ndarray:
         mask = obs["mask"].astype(bool)
         return _equal_weight_logits(mask).astype(np.float32)
 
 
-class BuyAndHoldIndex(BaselineAgent):
-    """Buy equal weight on first tradeable day, never rebalance.
+class EqualWeightFrozenUniverse(BaselineAgent):
+    """Equal weight over the set of names tradeable on the episode's **first**
+    day, held fixed for the rest of the episode.
 
-    Approximates buy-and-hold of the universe index.
+    Renamed from `BuyAndHoldIndex`, which misdescribed it twice:
+
+    * **It tracks no index.**  There is no index membership anywhere in this
+      class — it holds the entire tradeable universe (a ~500-name midcap-tilted
+      NSE list), which is not a proxy for the NIFTY 50 in the expected-ordering
+      table of `05_training.md`.  Nothing here is comparable to a real index
+      until an index definition (constituents + weights) exists in the data
+      layer; that is a data-side change, not a baseline-side one.
+    * **It is not buy-and-hold.**  Returning frozen logits freezes only the
+      *universe*; the env re-derives target shares from those weights every
+      step and trades the drift back out (see the module docstring).  The only
+      difference from `EqualWeightRebalanced` is that names becoming tradeable
+      mid-episode are never added, and names dropping out are never removed
+      from the target.
+
+    The old name is kept as a module-level alias below purely because
+    `scripts/evaluate.py` and `scripts/paper_run.py` import it.
     """
 
     def __init__(self) -> None:
@@ -81,16 +128,68 @@ class BuyAndHoldIndex(BaselineAgent):
         return self._fixed_logits
 
 
-class MomentumTopK(BaselineAgent):
-    """Top K tickers by trailing 20-day log return, equal-weighted.
+# Deprecated alias.  `BuyAndHoldIndex` neither tracks an index nor holds; use
+# `EqualWeightFrozenUniverse`.  Retained only so that `scripts/evaluate.py:29`
+# and `scripts/paper_run.py:113` keep importing — both are outside this
+# change's file ownership and should be switched over, along with their
+# "buy_and_hold" display key.
+BuyAndHoldIndex = EqualWeightFrozenUniverse
 
-    Uses the precomputed ``log_return_20d`` feature from the observation.
-    Rebalanced every `rebalance_freq` steps.
+
+class MomentumTopK(BaselineAgent):
+    """Top-K tickers by trailing 20-day log return, equal-weighted.
+
+    Ranking column
+    --------------
+    Scores are the most recent row of the observation's feature window for
+    ``log_return_20d``.  ``obs["features"]`` is an unlabelled ``(lookback, N,
+    F)`` array, so the column index is resolved by name against the same list
+    the env was built from — ``trader.data.features.FEATURE_COLS`` by default,
+    or an explicit ``feature_columns`` for an env configured with a different
+    list.  Never by position: this previously read ``features[-1, :, 0]``,
+    which is ``log_return_1d``, so "momentum top-K" was a one-day
+    reversal/continuation signal with no 20-day content at all.  ``act`` also
+    checks the observation's F against the resolved list and raises on a
+    mismatch, so a future edit to ``FEATURE_COLS`` fails loudly instead of
+    silently sliding onto another column.
+
+    K and the per-name weight cap
+    -----------------------------
+    K must be chosen against the env's ``max_weight_per_name`` (0.10 by
+    default, `panel_env.py:50`).  K equal-weighted names can hold at most
+    ``K * cap`` of the book; the remainder is forced into cash by
+    ``_cap_and_renormalize``.  So K < 1/cap = 10 leaves the "momentum"
+    baseline part money-market fund.  Measured at N=40 tradeable, cap=0.10:
+    **K=5 → 49.8% cash; K=20 → 1.8% cash** (the residual is the deliberate
+    ``logit_cash = -1.0`` tilt in ``_top_k_logits``, not the cap).  Hence the
+    default K=20.  Raise `max_weight_per_name` if you want a smaller K.
+
+    Rebalance cadence
+    -----------------
+    ``rebalance_freq`` freezes the *selection* for that many steps.  It does
+    not make the position static: the env trades the weight drift out of the
+    held names every step regardless (see the module docstring).
     """
 
-    def __init__(self, k: int = 5, rebalance_freq: int = 21) -> None:
+    def __init__(
+        self,
+        k: int = 20,
+        rebalance_freq: int = 21,
+        feature_columns: Sequence[str] | None = None,
+        momentum_col: str = _MOMENTUM_COL,
+    ) -> None:
+        cols = list(FEATURE_COLS if feature_columns is None else feature_columns)
+        if momentum_col not in cols:
+            raise ValueError(
+                f"MomentumTopK ranks on {momentum_col!r}, which is not in the "
+                f"feature columns it was given ({cols!r}). Pass the same "
+                f"feature_columns list the env was built with."
+            )
         self._k = k
         self._rebalance_freq = rebalance_freq
+        self._momentum_col = momentum_col
+        self._score_idx = cols.index(momentum_col)
+        self._n_features = len(cols)
         self._step = 0
         self._cached_logits: np.ndarray | None = None
 
@@ -102,12 +201,14 @@ class MomentumTopK(BaselineAgent):
         mask = obs["mask"].astype(bool)
         if self._step % self._rebalance_freq == 0 or self._cached_logits is None:
             features = obs["features"]          # (lookback, N, F)
-            # Use the last lookback step's feature values.
-            # We need log_return_20d, but we don't know its feature index here.
-            # Fall back to the last row of features col 0 as a proxy score.
-            # In practice the env should be configured with feature_columns that
-            # includes log_return_20d; this picks whatever feature is at index 0.
-            scores = features[-1, :, 0].astype(np.float64)   # (N,)
+            if features.shape[-1] != self._n_features:
+                raise ValueError(
+                    f"MomentumTopK resolved {self._momentum_col!r} to column "
+                    f"{self._score_idx} of a {self._n_features}-column feature "
+                    f"list, but the observation has {features.shape[-1]} "
+                    f"columns. Pass feature_columns=<the env's list>."
+                )
+            scores = features[-1, :, self._score_idx].astype(np.float64)   # (N,)
             self._cached_logits = _top_k_logits(mask, scores, self._k).astype(np.float32)
         self._step += 1
         return self._cached_logits

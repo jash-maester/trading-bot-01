@@ -201,8 +201,16 @@ def train_one_run(
         from trader.models.graph import GNNActorCritic, GNNConfig
 
         gc = cfg.model.graph
+        # `num_sectors` is deliberately NOT defaulted here.  GNNConfig derives it
+        # from trader.data.universe.SECTOR_IDS via `default_num_sectors()`, so an
+        # explicit fallback would override the derivation with a stale literal —
+        # which is what an `8` here did once SECTOR_IDS grew.  Only pass it when a
+        # config actually asks for a specific width.
+        gnn_kwargs: dict[str, Any] = {}
+        if gc.get("num_sectors") is not None:
+            gnn_kwargs["num_sectors"] = int(gc["num_sectors"])
         gnn_cfg = GNNConfig(
-            num_sectors=int(gc.get("num_sectors", 8)),
+            **gnn_kwargs,
             num_layers=int(gc.get("layers", 2)),
             num_heads=int(gc.get("num_heads", 2)),
             dropout=float(gc.get("dropout", 0.1)),
@@ -418,6 +426,16 @@ def _evaluate_split(
         initial_cash=float(base_kwargs.get("initial_cash", 1_000_000.0)),
         seed=seed + 999,
     )
+
+    # Evaluation must be deterministic: dropout off, and (for the GNN) no edge
+    # dropping.  This used to be correct only by inheritance — PPOTrainer.train()
+    # happens to leave the model in eval() — which is a property of another
+    # module that nobody here would notice changing.  Set it explicitly and
+    # restore the caller's mode afterwards, so this function neither depends on
+    # nor silently alters the training state.
+    was_training = model.training
+    model.eval()
+
     metrics: list[EpisodeMetrics] = []
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=seed + 999 + ep)
@@ -437,6 +455,8 @@ def _evaluate_split(
                 turnovers.append(float(info["turnover"]))
                 done = terminated or truncated
         metrics.append(compute_episode_metrics(nav_series, turnovers))
+
+    model.train(was_training)
     return metrics
 
 
@@ -553,13 +573,25 @@ def _check_guardrails(episode_metrics: list[Any]) -> None:
     if not episodes:
         return
 
+    # UNCALIBRATED. These two thresholds were picked when `turnover_ann` was
+    # measuring NAV drift rather than traded value; the metric has since been
+    # fixed, so the numbers below were never calibrated against what they now
+    # measure. Indicative synthetic figures (NOT production, no run id):
+    # EqualWeightRebalanced 5.47, MomentumTopK(k=20, freq=21) 17.71,
+    # RandomPolicy 154.44 — so the >20 arm fires on a legitimate momentum
+    # baseline and the numbers are deliberately left alone rather than
+    # re-guessed. Re-derive both from a real panel run before treating either
+    # as a gate; today they are a prompt to look, not a verdict.
     turnovers = [e.turnover_ann for e in episodes]
     mean_turnover = float(np.mean(turnovers))
     if mean_turnover < 0.1:
         logger.warning(
-            f"GUARDRAIL: turnover collapsed to {mean_turnover:.2f}/yr — cash-hoarding?"
+            f"GUARDRAIL (uncalibrated): turnover {mean_turnover:.2f}/yr is below "
+            "0.1 — cash-hoarding?"
         )
     if mean_turnover > 20.0:
         logger.warning(
-            f"GUARDRAIL: turnover exploded to {mean_turnover:.2f}/yr — churning?"
+            f"GUARDRAIL (uncalibrated): turnover {mean_turnover:.2f}/yr is above "
+            "20.0 — churning? Note equal-weight measures ~5.5 and a k=20 momentum "
+            "baseline ~17.7 on synthetic data, so this bound is not yet a gate."
         )

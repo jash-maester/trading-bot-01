@@ -206,7 +206,7 @@ def test_equal_weight_sums_to_one_after_softmax() -> None:
 
 def test_all_baselines_return_correct_shape() -> None:
     from trader.env.baselines import (
-        BuyAndHoldIndex,
+        EqualWeightFrozenUniverse,
         EqualWeightRebalanced,
         MomentumTopK,
         RandomPolicy,
@@ -217,7 +217,7 @@ def test_all_baselines_return_correct_shape() -> None:
     obs = _fake_obs(n=N, n_tradeable=5)
     for AgentCls in [
         EqualWeightRebalanced,
-        BuyAndHoldIndex,
+        EqualWeightFrozenUniverse,
         MomentumTopK,
         SixtyFortyCash,
         RandomPolicy,
@@ -228,10 +228,10 @@ def test_all_baselines_return_correct_shape() -> None:
         assert logits.shape == (N + 1,), f"{AgentCls.__name__} shape mismatch"
 
 
-def test_buy_and_hold_does_not_change_after_first_step() -> None:
-    from trader.env.baselines import BuyAndHoldIndex
+def test_frozen_universe_logits_do_not_change_after_first_step() -> None:
+    from trader.env.baselines import EqualWeightFrozenUniverse
 
-    agent = BuyAndHoldIndex()
+    agent = EqualWeightFrozenUniverse()
     obs1 = _fake_obs(n=5, n_tradeable=3)
     obs2 = _fake_obs(n=5, n_tradeable=5, seed=99)  # different tradeable set
     agent.reset()
@@ -252,3 +252,128 @@ def test_sixty_forty_cash_weight_approx_040() -> None:
     w = masked_softmax(logits, mask, max_weight=0.10)
     # Cash weight should be ≈ 0.40
     assert w[0] == pytest.approx(0.40, abs=0.02)
+
+
+# ── MomentumTopK: ranking column and K vs the per-name weight cap ─────────────
+
+
+def _momentum_obs(n: int, feats: np.ndarray) -> dict[str, np.ndarray]:
+    return {
+        "mask": np.ones(n, dtype=np.int8),
+        "features": feats,
+        "portfolio": np.zeros(n + 1, dtype=np.float32),
+        "cash": np.float32(1_000_000.0),
+        "nav": np.float32(1_000_000.0),
+        "t_frac": np.float32(0.0),
+        "sector_ids": np.zeros(n, dtype=np.int32),
+    }
+
+
+def _opposed_rank_features(n: int) -> np.ndarray:
+    """Feature block whose 1-day and 20-day rankings are exact opposites.
+
+    Ticker i gets log_return_1d = +i and log_return_20d = -i, so the 1-day
+    winners are the last K tickers and the 20-day winners are the first K.
+    """
+    from trader.data.features import FEATURE_COLS
+
+    feats = np.zeros((60, n, len(FEATURE_COLS)), dtype=np.float32)
+    feats[-1, :, FEATURE_COLS.index("log_return_1d")] = np.arange(n, dtype=np.float32)
+    feats[-1, :, FEATURE_COLS.index("log_return_20d")] = -np.arange(n, dtype=np.float32)
+    return feats
+
+
+def _picked(logits: np.ndarray) -> set[int]:
+    """Ticker indices the top-K logits select (non-picked names get -1e9)."""
+    return set(np.flatnonzero(logits[1:] > -1e8).tolist())
+
+
+def test_momentum_ranks_on_the_20d_column_not_the_1d_one() -> None:
+    """MomentumTopK must rank on `log_return_20d`.
+
+    It used to read `features[-1, :, 0]`, and `FEATURE_COLS[0]` is
+    `log_return_1d` — so "momentum top-K" was a one-day signal. With the two
+    rankings made exact opposites, the old code picks {n-3, n-2, n-1}.
+    """
+    from trader.env.baselines import MomentumTopK
+
+    n, k = 10, 3
+    obs = _momentum_obs(n, _opposed_rank_features(n))
+
+    agent = MomentumTopK(k=k)
+    agent.reset()
+    picked = _picked(agent.act(obs))
+
+    assert picked == {0, 1, 2}, f"ranked on the wrong column: picked {sorted(picked)}"
+    assert picked.isdisjoint({n - 3, n - 2, n - 1}), "these are the 1-day winners"
+
+
+def test_momentum_column_index_is_resolved_by_name_not_position() -> None:
+    """A caller-supplied feature list must be honoured positionally-correctly,
+    so a reordering of FEATURE_COLS cannot silently move the ranking column."""
+    from trader.data.features import FEATURE_COLS
+    from trader.env.baselines import MomentumTopK
+
+    n, k = 8, 2
+    # Same data, feature axis reversed → log_return_20d lands on a new index.
+    reversed_cols = list(reversed(FEATURE_COLS))
+    feats = _opposed_rank_features(n)[:, :, ::-1].copy()
+    obs = _momentum_obs(n, feats)
+
+    agent = MomentumTopK(k=k, feature_columns=reversed_cols)
+    agent.reset()
+    assert _picked(agent.act(obs)) == {0, 1}
+
+    with pytest.raises(ValueError, match="log_return_20d"):
+        MomentumTopK(feature_columns=["log_return_1d", "rsi_14"])
+
+
+def test_momentum_raises_on_feature_width_mismatch() -> None:
+    """Wrong-width observations must fail loudly, not rank on whatever column
+    happens to sit at the resolved index."""
+    from trader.data.features import FEATURE_COLS
+    from trader.env.baselines import MomentumTopK
+
+    n = 6
+    obs = _momentum_obs(n, np.zeros((60, n, len(FEATURE_COLS) + 3), dtype=np.float32))
+    agent = MomentumTopK()
+    agent.reset()
+    with pytest.raises(ValueError, match="feature list"):
+        agent.act(obs)
+
+
+def test_momentum_default_k_leaves_under_5pct_cash_at_the_10pct_cap() -> None:
+    """K must be >= 1/max_weight_per_name or the cap parks the rest in cash.
+
+    Measured at N=40 tradeable, cap=0.10: K=20 → 1.81% cash, K=5 → 49.79%.
+    """
+    from trader.env.baselines import MomentumTopK
+    from trader.env.panel_env import masked_softmax
+
+    n, cap = 40, 0.10
+    obs = _momentum_obs(n, _opposed_rank_features(n))
+    mask = obs["mask"].astype(bool)
+
+    agent = MomentumTopK()
+    agent.reset()
+    w = masked_softmax(agent.act(obs).astype(np.float64), mask, cap)
+    assert w[0] < 0.05, f"default K leaves {w[0]:.2%} in cash"
+    assert np.all(w[1:] <= cap + 1e-9)
+    assert w.sum() == pytest.approx(1.0, abs=1e-6)
+
+    # The old default: five names capped at 10% each cannot hold more than
+    # half the book, so the "momentum" baseline was half money-market fund.
+    agent_k5 = MomentumTopK(k=5)
+    agent_k5.reset()
+    w5 = masked_softmax(agent_k5.act(obs).astype(np.float64), mask, cap)
+    assert w5[0] > 0.45
+
+
+def test_buy_and_hold_index_alias_points_at_the_renamed_class() -> None:
+    """`BuyAndHoldIndex` tracks no index and does not hold; the honest name is
+    `EqualWeightFrozenUniverse`. The alias exists only because
+    `scripts/evaluate.py` and `scripts/paper_run.py` still import the old name.
+    """
+    from trader.env import baselines
+
+    assert baselines.BuyAndHoldIndex is baselines.EqualWeightFrozenUniverse

@@ -328,3 +328,292 @@ def test_seeding_utility() -> None:
     seed_everything(42)
     y = torch.randn(5)
     assert torch.allclose(x, y)
+
+
+# ── B1: num_sectors is derived from SECTOR_IDS, not hardcoded ─────────────────
+#
+# The universe grew from 8 to 14 sectors on 2026-09-04 while `num_sectors`
+# stayed at a literal 8 in CriticHead, ModelConfig and GNNConfig.  The bug was
+# dormant only because the panel on disk carried stale sector ids; the first
+# rebuilt panel would have crashed the critic's scatter_add_ with
+# "index 13 is out of bounds for dimension 1 with size 8".
+
+
+def test_default_num_sectors_matches_sector_ids() -> None:
+    """The model's sector width is the taxonomy's largest id, not a literal."""
+    from trader.data.universe import SECTOR_IDS
+    from trader.models.heads import default_num_sectors
+
+    assert default_num_sectors() == max(SECTOR_IDS.values())
+
+
+def test_num_sectors_tracks_a_newly_added_sector(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Adding a sector must widen every model default — no silent desync.
+
+    This is the test that would have caught B1: it fails against a hardcoded
+    ``8`` (and against any other literal) the moment SECTOR_IDS grows.
+    """
+    from trader.data import universe
+    from trader.models.actor_critic import ModelConfig
+    from trader.models.heads import CriticHead, default_num_sectors
+
+    before = default_num_sectors()
+    monkeypatch.setitem(universe.SECTOR_IDS, "unit_test_sector", before + 1)
+
+    assert default_num_sectors() == before + 1
+    assert ModelConfig(in_features=4, n_tickers=3).num_sectors == before + 1
+    assert CriticHead(embed_dim=8).num_sectors == before + 1
+
+    from trader.models.graph import GNNConfig  # imported late: needs torch_geometric
+
+    assert GNNConfig().num_sectors == before + 1
+
+
+def test_critic_head_accepts_top_of_range_sector_id() -> None:
+    """sector_id == max(SECTOR_IDS) must work with the default configuration."""
+    from trader.data.universe import SECTOR_IDS
+    from trader.models.heads import CriticHead
+
+    top = max(SECTOR_IDS.values())
+    B, N, d = 2, 6, 16
+    head = CriticHead(embed_dim=d)          # no explicit num_sectors
+    assert head.num_sectors >= top
+    z = torch.randn(B, N, d)
+    portfolio = torch.softmax(torch.randn(B, N + 1), dim=-1)
+    t_frac = torch.rand(B)
+    # Every stock in the highest-numbered sector — the exact case that raised
+    # "index 13 is out of bounds for dimension 1 with size 8".
+    sector_ids = torch.full((B, N), top, dtype=torch.long)
+    zero = torch.zeros(B)
+    v = head(z, portfolio, t_frac, sector_ids, zero, zero, zero)
+    assert v.shape == (B,)
+    assert torch.isfinite(v).all()
+
+
+def test_critic_head_rejects_sector_id_above_num_sectors() -> None:
+    """An out-of-range id raises a *clear* ValueError, not an index error."""
+    from trader.models.heads import CriticHead
+
+    B, N, d, S = 2, 4, 16, 8
+    head = CriticHead(embed_dim=d, num_sectors=S)
+    z = torch.randn(B, N, d)
+    portfolio = torch.softmax(torch.randn(B, N + 1), dim=-1)
+    t_frac = torch.rand(B)
+    sector_ids = torch.tensor([[1, 2, 3, S + 6]] * B, dtype=torch.long)
+    zero = torch.zeros(B)
+
+    with pytest.raises(ValueError, match="sector_id out of range") as exc:
+        head(z, portfolio, t_frac, sector_ids, zero, zero, zero)
+    msg = str(exc.value)
+    assert "num_sectors=8" in msg          # names the misconfigured width
+    assert str(S + 6) in msg               # names the offending id
+    assert "SECTOR_IDS" in msg             # points at the source of truth
+
+
+def test_critic_head_rejects_negative_sector_id() -> None:
+    """Negative ids used to be silently clamped into bucket 0."""
+    from trader.models.heads import CriticHead
+
+    B, N, d = 1, 3, 8
+    head = CriticHead(embed_dim=d, num_sectors=4)
+    z = torch.randn(B, N, d)
+    portfolio = torch.softmax(torch.randn(B, N + 1), dim=-1)
+    zero = torch.zeros(B)
+    sector_ids = torch.tensor([[1, -1, 2]], dtype=torch.long)
+    with pytest.raises(ValueError, match="sector_id out of range"):
+        head(z, portfolio, torch.zeros(B), sector_ids, zero, zero, zero)
+
+
+def test_actor_critic_handles_full_sector_range() -> None:
+    """End-to-end regression for B1 on the default (derived) configuration."""
+    from trader.data.universe import SECTOR_IDS
+    from trader.models.actor_critic import ActorCritic, ModelConfig
+
+    top = max(SECTOR_IDS.values())
+    N, F, B = top, 15, 2
+    cfg = ModelConfig(in_features=F, n_tickers=N, embed_dim=32)
+    model = ActorCritic(cfg)
+    obs = _make_obs(B=B, N=N, F=F)
+    # One stock per sector, covering 1..top inclusive.
+    obs["sector_ids"] = (
+        torch.arange(1, top + 1, dtype=torch.int32).unsqueeze(0).expand(B, -1)
+    )
+    action_mean, value, _ = model(obs)
+    assert action_mean.shape == (B, N + 1)
+    assert torch.isfinite(value).all()
+
+
+# ── B6: PPO train/eval mode discipline ────────────────────────────────────────
+#
+# Rollout must run under eval() (deterministic log_prob_old — see the note in
+# ppo.py), the gradient update must run under train() (or dropout / DropEdge
+# never regularise anything), and train() must return with the model in eval()
+# (runner._evaluate_split does not set the mode itself, so val/test would
+# otherwise run with dropout ON).
+
+
+def test_dropout_changes_output_in_train_mode_only() -> None:
+    """The premise of the whole fix: mode actually changes the computation.
+
+    Two forward passes must differ under train() and be identical under
+    eval().  If this ever stops holding, the mode-discipline assertions below
+    are vacuous.
+    """
+    from trader.models.actor_critic import ActorCritic, ModelConfig
+
+    N, F, B = 5, 15, 2
+    cfg = ModelConfig(in_features=F, n_tickers=N, embed_dim=32, dropout=0.5)
+    model = ActorCritic(cfg)
+    obs = _make_obs(B=B, N=N, F=F)
+
+    model.eval()
+    with torch.no_grad():
+        a1, v1, _ = model(obs)
+        a2, v2, _ = model(obs)
+    assert torch.allclose(a1, a2), "eval() must be deterministic"
+    assert torch.allclose(v1, v2), "eval() must be deterministic"
+
+    model.train()
+    with torch.no_grad():
+        b1, _, _ = model(obs)
+        b2, _, _ = model(obs)
+    assert not torch.allclose(b1, b2), "train() must apply dropout"
+
+
+class _ModeRecordingModel(torch.nn.Module):
+    """Minimal actor-critic stub that records train/eval mode at each call site.
+
+    Mode discipline is a property of :class:`PPOTrainer`, not of any particular
+    network, so the stub keeps the test fast and unambiguous.  The nested
+    ``Dropout`` is recorded alongside the module's own flag to prove the mode
+    actually propagates to submodules.
+    """
+
+    def __init__(self, n_actions: int) -> None:
+        super().__init__()
+        self.body = torch.nn.Sequential(
+            torch.nn.Linear(n_actions, n_actions),
+            torch.nn.Dropout(0.5),
+        )
+        self.log_std = torch.nn.Parameter(torch.zeros(n_actions))
+        self.rollout_modes: list[tuple[bool, bool]] = []
+        self.update_modes: list[tuple[bool, bool]] = []
+
+    def _modes(self) -> tuple[bool, bool]:
+        return (self.training, self.body[1].training)
+
+    def _dist(self, obs: dict) -> tuple[torch.distributions.Normal, torch.Tensor]:
+        mean = self.body(obs["portfolio"].float())
+        dist = torch.distributions.Normal(mean, self.log_std.exp().expand_as(mean))
+        return dist, mean
+
+    def get_action_and_value(self, obs: dict, action=None):
+        # `action is None` only during rollout sampling; the PPO update always
+        # re-evaluates an action stored in the rollout buffer.
+        (self.rollout_modes if action is None else self.update_modes).append(self._modes())
+        dist, mean = self._dist(obs)
+        if action is None:
+            action = dist.sample()
+        return (
+            action,
+            dist.log_prob(action).sum(-1),
+            dist.entropy().sum(-1),
+            mean.sum(-1),
+        )
+
+    def get_value(self, obs: dict):
+        self.rollout_modes.append(self._modes())
+        _, mean = self._dist(obs)
+        return mean.sum(-1)
+
+
+class _ConstantVecEnv:
+    """Minimal stand-in for the vectorised PanelTradingEnv."""
+
+    def __init__(self, n_envs: int, n_tickers: int) -> None:
+        import numpy as np
+
+        self._np = np
+        self.n_envs = n_envs
+        self.n_tickers = n_tickers
+        self._rng = np.random.default_rng(0)
+
+    def _obs(self) -> dict:
+        np = self._np
+        E, N = self.n_envs, self.n_tickers
+        return {
+            "portfolio": np.full((E, N + 1), 1.0 / (N + 1), dtype=np.float32),
+        }
+
+    def reset(self):
+        return self._obs(), {}
+
+    def step(self, action):
+        np = self._np
+        reward = self._rng.standard_normal(self.n_envs).astype(np.float32) * 0.01
+        terminated = np.zeros(self.n_envs, dtype=bool)
+        truncated = np.zeros(self.n_envs, dtype=bool)
+        info = {
+            "nav": [1_000_000.0] * self.n_envs,
+            "turnover": [0.0] * self.n_envs,
+        }
+        return self._obs(), reward, terminated, truncated, info
+
+
+def test_ppo_mode_discipline(tmp_path) -> None:
+    """Rollout in eval(), gradient update in train(), return in eval()."""
+    from trader.training.ppo import PPOConfig, PPOTrainer
+
+    E, N = 2, 4
+    n_steps, n_epochs, n_minibatches = 4, 2, 2
+    cfg = PPOConfig(
+        total_steps=2 * n_steps * E,      # exactly two update iterations
+        n_envs=E,
+        n_steps=n_steps,
+        n_epochs=n_epochs,
+        n_minibatches=n_minibatches,
+        target_kl=None,                   # don't early-stop out of the epochs
+        checkpoint_dir=tmp_path / "ckpt",
+        log_interval=10**6,
+        checkpoint_interval=10**6,
+    )
+    model = _ModeRecordingModel(N + 1)
+    trainer = PPOTrainer(_ConstantVecEnv(E, N), model, cfg, torch.device("cpu"))
+    trainer.train()
+
+    # 2 updates x (n_steps sampling calls + 1 bootstrap get_value)
+    assert len(model.rollout_modes) == 2 * (n_steps + 1)
+    # 2 updates x n_epochs x n_minibatches
+    assert len(model.update_modes) == 2 * n_epochs * n_minibatches
+
+    assert all(m == (False, False) for m in model.rollout_modes), (
+        "rollout must run in eval() — log_prob_old has to be a deterministic "
+        "function of the weights, or the importance ratio measures dropout masks"
+    )
+    assert all(m == (True, True) for m in model.update_modes), (
+        "the gradient update must run in train(), or dropout / DropEdge never "
+        "regularise anything"
+    )
+    assert not model.training, (
+        "train() must return with the model in eval(): runner._evaluate_split "
+        "never sets the mode, so val/test would otherwise run with dropout on"
+    )
+
+
+def test_ppo_leaves_model_in_eval_with_zero_updates(tmp_path) -> None:
+    """Even when the loop body never runs, the model must come back in eval()."""
+    from trader.training.ppo import PPOConfig, PPOTrainer
+
+    E, N = 2, 3
+    cfg = PPOConfig(
+        total_steps=0,                    # n_updates == 0
+        n_envs=E,
+        n_steps=4,
+        n_minibatches=2,
+        checkpoint_dir=tmp_path / "ckpt",
+    )
+    model = _ModeRecordingModel(N + 1)
+    model.train()
+    trainer = PPOTrainer(_ConstantVecEnv(E, N), model, cfg, torch.device("cpu"))
+    trainer.train()
+    assert not model.training

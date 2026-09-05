@@ -25,7 +25,7 @@ the full GNN (``gnn_v1``) and the no-graph MLP baseline (``mlp_baseline``).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import cast
 
 import torch
@@ -36,7 +36,12 @@ from torch_geometric.nn import GATv2Conv, HeteroConv
 
 from trader.models.actor_critic import ModelConfig
 from trader.models.encoders import CrossStockAttention, TCNEncoder
-from trader.models.heads import ActorHead, CriticHead
+from trader.models.heads import (
+    ActorHead,
+    CriticHead,
+    check_sector_ids,
+    default_num_sectors,
+)
 
 # ---------------------------------------------------------------------------
 # Type alias
@@ -62,8 +67,13 @@ class GNNConfig:
         Overridden in :class:`GNNActorCritic` to match the TCN encoder's
         actual output dimension.
     num_sectors:
-        Total number of sector IDs in the universe (matches ``SECTOR_IDS``
-        in ``universe.py``; IDs are 1-indexed, sector embeddings are 0-indexed).
+        Total number of sector IDs in the universe. Defaults to the number
+        derived from ``trader.data.universe.SECTOR_IDS`` — the single source of
+        truth — so widening the taxonomy cannot silently desynchronise the
+        sector-embedding table. IDs are 1-indexed, sector embeddings are
+        0-indexed. Override explicitly only for tests/ablations on a narrower
+        universe; a value below the largest live sector id raises in
+        :meth:`HeteroGNN.forward` rather than indexing out of bounds.
     num_layers:
         Number of :class:`~torch_geometric.nn.HeteroConv` layers.
     num_heads:
@@ -79,7 +89,7 @@ class GNNConfig:
     """
 
     embed_dim: int = 64
-    num_sectors: int = 8
+    num_sectors: int = field(default_factory=default_num_sectors)
     num_layers: int = 2
     num_heads: int = 2
     dropout: float = 0.1
@@ -321,6 +331,10 @@ class HeteroGNN(nn.Module):
         B, N, d = stock_x.shape
         device = stock_x.device
         S = self.num_sectors
+        # A sector id above S would index past `sector_emb` / the tiled sector
+        # node block and surface as an opaque scatter/gather error deep inside
+        # HeteroConv. Name the real cause instead.
+        check_sector_ids(sector_ids, S, where="HeteroGNN")
 
         # ── Zero untradeable stock features ───────────────────────────────────
         if tradeable_mask is not None:

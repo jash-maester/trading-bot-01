@@ -1,7 +1,7 @@
 """ActorCritic model: TCN encoder → (FiLM) → CrossStockAttention → (FiLM) → heads."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import torch
@@ -9,7 +9,12 @@ import torch.nn as nn
 from torch.distributions import Normal
 
 from trader.models.encoders import CrossStockAttention, FiLM, RegimeNormalizer, TCNEncoder
-from trader.models.heads import ActorHead, CriticHead, ReturnPredictionHead
+from trader.models.heads import (
+    ActorHead,
+    CriticHead,
+    ReturnPredictionHead,
+    default_num_sectors,
+)
 
 
 @dataclass
@@ -27,7 +32,11 @@ class ModelConfig:
     # entropy bonus + ent_coef will still let the policy widen σ if there
     # is real exploration value to it.
     log_std_init: float = -2.0
-    num_sectors: int = 8                     # used by the critic for sector exposure
+    # Sector-exposure width for the critic. Derived from SECTOR_IDS at
+    # construction time (`heads.default_num_sectors`) rather than hardcoded —
+    # a literal here is what let the universe reach 14 sectors while the
+    # model still allocated 8. Pass an explicit value to override.
+    num_sectors: int = field(default_factory=default_num_sectors)
     # Cross-stock self-attention layer between encoder and heads.
     # Provides the inductive bias needed for portfolio ranking — see
     # encoders.CrossStockAttention.  Default ON for r9+; flip to False

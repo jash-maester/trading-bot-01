@@ -24,12 +24,22 @@ from loguru import logger
 from omegaconf import DictConfig
 
 # Split boundaries (inclusive), used when the data config does not override them.
-# 1-month purge gaps between segments, cut from the START of each later segment so
-# that no 60-day feature window straddles a boundary.
+# 3-month purge gaps between segments, cut from the START of each later segment so
+# that no feature window straddles a boundary.
+#
+# It used to be 1 month. That is 17–23 NSE trading days (measured over
+# data/kite_ohlcv, 2014–2026), against `realized_vol_60d` and `beta_nifty_60d`,
+# which look back 60. Every boundary therefore had ~40 contaminated rows on each
+# side. 3 calendar months is the shortest gap that clears 60 trading days
+# (62 over Jan–Mar 2024 and Jan–Mar 2025); 4 gives margin — the worst 3-month
+# span in the last decade, Feb–Apr 2014, is only 58.
+#
+# NOTE: the panels currently on disk under data/panels were built with the old
+# 1-month gap and are contaminated at both boundaries. They need a rebuild.
 _TRAIN_END = date(2021, 12, 31)
-_VAL_START = date(2022, 2, 1)   # Jan 2022 purged
+_VAL_START = date(2022, 4, 1)   # Jan–Mar 2022 purged
 _VAL_END = date(2022, 12, 31)
-_TEST_START = date(2023, 2, 1)  # Jan 2023 purged
+_TEST_START = date(2023, 4, 1)  # Jan–Mar 2023 purged
 # _TEST_END: no upper bound — use all available data
 
 
@@ -46,13 +56,13 @@ def main(cfg: DictConfig) -> None:
         format_triage_report,
         mask_corporate_events,
     )
-    from trader.data.features import FEATURE_COLS, compute_features
+    from trader.data.features import FEATURE_COLS, compute_features, resolve_panels_root
     from trader.data.storage import OhlcvStore
     from trader.data.universe import all_tickers, sector_id_of
 
     orig_cwd = Path(hydra.utils.get_original_cwd())
     parquet_root = orig_cwd / str(cfg.data.parquet_root)
-    panels_root = orig_cwd / str(cfg.data.get("panels_root", "data/panels"))
+    panels_root = resolve_panels_root(cfg, orig_cwd)
     panels_root.mkdir(parents=True, exist_ok=True)
 
     store = OhlcvStore(root=parquet_root)
@@ -74,11 +84,23 @@ def main(cfg: DictConfig) -> None:
         f"Loaded {len(ohlcv):,} rows  {ohlcv['date'].min()} → {ohlcv['date'].max()}"
     )
 
-    # Try loading NIFTY 50 index for beta computation (optional). Same start as
-    # the panel: a shorter index series leaves beta null on the uncovered dates,
-    # and compute_features turns a null feature into is_tradeable=False — so a
-    # 2010-limited index would quietly delete 2005-2009 from the panel.
+    # NIFTY 50 index returns for beta. NOT optional: compute_features raises
+    # MissingBenchmarkError rather than let beta_nifty_60d collapse to a constant
+    # 1.0, which is what silently happened to data/panels (data/ohlcv has no
+    # ^NSEI at all). Same start as the panel: a shorter index series leaves beta
+    # null on the uncovered dates, and compute_features turns a null feature into
+    # is_tradeable=False — so a 2010-limited index would delete 2005-2009 from
+    # the panel. That is now logged as a warning by _add_beta, not left to be
+    # noticed in a row count.
     index_rets: pl.DataFrame | None = _load_index_rets(store, start)
+    if index_rets is None:
+        logger.error(
+            f"No benchmark index returns found in {parquet_root}. "
+            "beta_nifty_60d cannot be computed and will NOT be faked as 1.0. "
+            "Fetch the index first: scripts/fetch_data.py with "
+            "data.fetch_index=true (data=kite_v1 already sets it)."
+        )
+        return
 
     calendar = build_calendar(ohlcv)
     logger.info(f"Calendar: {calendar[0]} .. {calendar[-1]}  ({len(calendar)} days)")
@@ -134,6 +156,7 @@ def main(cfg: DictConfig) -> None:
     _write_split(panel, panels_root, "train", None, train_end, universe_name)
     _write_split(panel, panels_root, "val", val_start, val_end, universe_name)
     _write_split(panel, panels_root, "test", test_start, None, universe_name)
+    _write_full_panel(panel, panels_root)
 
     logger.info("Done.")
 
@@ -182,6 +205,38 @@ def _load_index_rets(store: object, start: datetime) -> object | None:
     except Exception:
         pass
     return None
+
+
+def _write_full_panel(panel: object, out_dir: Path) -> None:
+    """Write the un-split panel as ``full.parquet``.
+
+    The three split parquets do NOT tile the history: the purge months between
+    them are dropped entirely, so ``concat(train, val, test)`` has month-long
+    holes at each boundary. `scripts/walk_forward.py` rebuilt its "full
+    historical panel" exactly that way, and its own windows — which carry their
+    own purge structure and land nowhere near the build-time boundaries — were
+    silently sliced against a calendar with two months missing. On the panel in
+    data/panels that truncated 4 of 12 walk-forward segments.
+
+    Purge gaps belong to the *split*, not to the data, so the un-split panel is
+    the correct source for any downstream re-splitting. No DB row: this is not a
+    split, it is the material the splits are cut from.
+    """
+    import polars as pl
+
+    if not isinstance(panel, pl.DataFrame):
+        return
+
+    full = panel.sort(["date", "ticker"])
+    path = out_dir / "full.parquet"
+    full.write_parquet(path)
+    sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    (out_dir / "full.sha256").write_text(sha256 + "\n")
+    logger.info(
+        f"  full.parquet: {len(full):,} rows"
+        f" ({full['date'].n_unique()} days, no purge holes)"
+        f"  SHA256={sha256[:16]}..."
+    )
 
 
 def _write_split(

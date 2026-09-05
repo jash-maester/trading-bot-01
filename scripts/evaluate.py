@@ -23,10 +23,10 @@ def main(cfg: DictConfig) -> None:
     import hydra.utils
     import mlflow
 
-    from trader.data.features import FEATURE_COLS
+    from trader.data.features import FEATURE_COLS, resolve_panels_root
     from trader.data.universe import active_tickers
     from trader.env.baselines import (
-        BuyAndHoldIndex,
+        EqualWeightFrozenUniverse,
         EqualWeightRebalanced,
         MomentumTopK,
         RandomPolicy,
@@ -40,7 +40,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     orig_cwd = Path(hydra.utils.get_original_cwd())
-    panels_root = orig_cwd / "data" / "panels"
+    panels_root = resolve_panels_root(cfg, orig_cwd)
     universe = active_tickers()
 
     n_episodes: int = int(cfg.get("n_episodes", 10))
@@ -54,12 +54,23 @@ def main(cfg: DictConfig) -> None:
     if target_split != "all":
         splits = {target_split: splits[target_split]}
 
+    # Names are the row labels of the R2 baseline table — the bar every RL run is
+    # judged against — so they have to describe what actually ran.
+    #
+    # `buy_and_hold` was neither: `EqualWeightFrozenUniverse` tracks no index and
+    # does not hold (the env rebalances the drift out every step regardless).
+    #
+    # `MomentumTopK` takes no explicit `k` here on purpose. K equal-weighted names
+    # can hold at most K * max_weight_per_name of the book; at the env's 0.10 cap,
+    # the old explicit k=5 forced 49.8% of the "momentum" baseline into cash
+    # (measured at N=40 tradeable; k=20 → 1.8%). The class default is now 20 and
+    # pinning a number here would silently override it again.
     baselines = {
-        "equal_weight":   EqualWeightRebalanced(),
-        "buy_and_hold":   BuyAndHoldIndex(),
-        "momentum_top5":  MomentumTopK(k=5),
-        "sixty_forty":    SixtyFortyCash(),
-        "random":         RandomPolicy(seed=0),
+        "equal_weight":        EqualWeightRebalanced(),
+        "equal_weight_frozen": EqualWeightFrozenUniverse(),
+        "momentum_topk":       MomentumTopK(),
+        "sixty_forty":         SixtyFortyCash(),
+        "random":              RandomPolicy(seed=0),
     }
 
     env_base = dict(
