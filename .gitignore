@@ -88,3 +88,4 @@ multirun/
 
 # Project-local docker config (training box credential-helper workaround)
 .docker/
+backups/
