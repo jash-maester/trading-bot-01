@@ -25,8 +25,8 @@ Dependency order:
 | A0 — read-only forensics | **PASS** | Written answers to all 14 contradictions + 7 R0 questions | `audit/A0_findings.md` | 2 |
 | A1 — leakage & correctness | **PASS** | Six checks answered with call graphs / measurements | `audit/A1_leakage.md` | 2 |
 | A2 — compute forensics | **PASS (partial)** | Profile + measured H2D bytes + encoder-invocation ratio | `audit/A2_compute.md` | 2 |
-| A3 — reconcile specs | NOT_STARTED | Every spec carries a `## Status` block + verifying commit | `02/03/05/08_*.md` | — |
-| A4 — quarantine (optional) | NOT_STARTED | Untrained code moved to `experimental/`, tests still green | `experimental/*/README.md` | — |
+| A3 — reconcile specs | **PASS** | Every spec carries a `## Status` block + verifying commit | `02/03/05/08_*.md` | 2 |
+| A4 — quarantine (optional) | DEFERRED to before R6 | Untrained code moved to `experimental/`, tests still green | `experimental/*/README.md` | — |
 | A5 — standing rules | **DONE** | `CLAUDE.md` exists with the five rules | `CLAUDE.md` | 1 |
 | R1 — one panel, one truth | NOT_STARTED | Deterministic SHA256; every feature nonzero variance; purge ≥ lookback; point-in-time universe | panel hashes | — |
 | R2 — honest baselines | NOT_STARTED | 5 baselines × 3 frequencies × 4 benchmarks, net of cost **and tax** | metrics table + run IDs | — |
@@ -36,7 +36,16 @@ Dependency order:
 | R6 — reinstate RL | NOT_STARTED | Beats R5's allocator | run ID | — |
 | R7 — regime conditioning | NOT_STARTED | `corr(val,test)` CI over ≥8 windows excludes zero, then Phase 1 A/B | walk-forward summary | — |
 
-**Current unit: A3 — reconcile the specs.** A0, A1 and A2 all pass; their
+**Current unit: R1 — one panel, one truth.** A0–A3 all pass. A4 deferred to
+before R6 (large refactor, no new information, and `heads.py`/`encoders.py` mix
+live and quarantined code so it is not a clean directory move).
+
+**No run has been launched.** The queue is `09` §10; the config is N=504, L=30,
+minibatch 64. Seven blocking code fixes (B1–B7 in §10.0) must land before any
+number off a run means anything.
+
+<!-- superseded: -->
+**Previously: A3 — reconcile the specs.** A0, A1 and A2 all pass; their
 headline claims were independently re-verified rather than accepted on report.
 A2 passes *partially*: four 4060 measurements are marked NOT MEASURED because the
 box began refusing SSH mid-run and has not recovered. None of A2's conclusions
@@ -153,6 +162,27 @@ verification log at `09` §9.
 - **Target hardware changed twice.** The RTX 5090 is gone; an RTX 4060 8 GB is
   incoming. VRAM is not binding (~3 GB of activations at 504 names); **system RAM
   is** — the host-side rollout buffer is 6.9 GB, so ≥16 GB is required.
+
+---
+
+## Run queue
+
+Full detail in `09_revamp_and_audit.md` §10. Nothing launched.
+
+| # | Run | Est. | Gates on |
+|---|---|---|---|
+| Q1 | Config confirmation, 504/L=30/mb=64 | ~20 min | B1, B2 |
+| Q2 | Panel rebuild (R1) | ~20–40 min CPU | B1, B2, B3, B7 |
+| Q3 | Baseline table (R2) — **the bar** | ~2–4 h | Q2, B4, B5 |
+| Q4 | Supervised rank IC (R4) — **go/no-go on signal** | ~1–2 h | Q2 |
+| Q5 | Encoder-caching validation (R3) | ~1 h | Q4 |
+| Q6 | Deterministic allocator (R5) | ~2–4 h | Q3, Q4 |
+| Q7 | PPO 2M steps, 1 window 1 seed | ~7–8 h | Q1–Q6 |
+| Q8 | Phase 1 A/B, 3 seeds × 2 arms | ~45–48 h | Q7 |
+| Q9 | Full walk-forward | ~8–10 days | Q8 |
+
+Q1 first: every estimate below it is extrapolated from a synthetic measurement on
+a 72%-padded workload, and 20 minutes replaces all of them with a real number.
 
 ---
 

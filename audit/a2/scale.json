@@ -1,0 +1,112 @@
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.29548458900098923,
+      "h2d_s_per_grad_step": 0.0069556137998006305,
+      "mb_features_MiB": 43.9453125,
+      "vram_peak_alloc_GiB": 3.6651439666748047
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48379974279960153,
+      "h2d_s_per_grad_step": 0.010062321199802682,
+      "mb_features_MiB": 65.91796875,
+      "vram_peak_alloc_GiB": 5.422248840332031
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 14.321226626601128,
+      "h2d_s_per_grad_step": 0.021011021798767616,
+      "mb_features_MiB": 131.8359375,
+      "vram_peak_alloc_GiB": 10.674352645874023
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.7931282664008904,
+      "h2d_s_per_grad_step": 0.01101256140100304,
+      "mb_features_MiB": 73.828125,
+      "vram_peak_alloc_GiB": 6.141744136810303
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 10.869563632800418,
+      "h2d_s_per_grad_step": 0.018722878400876653,
+      "mb_features_MiB": 110.7421875,
+      "vram_peak_alloc_GiB": 9.073164463043213
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 33.42130986139964,
+      "h2d_s_per_grad_step": 0.03338721860054648,
+      "mb_features_MiB": 221.484375,
+      "vram_peak_alloc_GiB": 17.92463445663452
+    },
+    {
+      "n_tickers": 645,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 2.8931521063990657,
+      "h2d_s_per_grad_step": 0.014373717999842484,
+      "mb_features_MiB": 94.482421875,
+      "vram_peak_alloc_GiB": 7.843648433685303
+    },
+    {
+      "n_tickers": 645,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 11.996353427799477,
+      "h2d_s_per_grad_step": 0.10028496919985627,
+      "mb_features_MiB": 141.7236328125,
+      "vram_peak_alloc_GiB": 11.603358745574951
+    },
+    {
+      "n_tickers": 645,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": null,
+      "error": "OutOfMemoryError: CUDA out of memory. Tried to allocate 1.18 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has "
+    }
+  ]
+}

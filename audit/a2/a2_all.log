@@ -1,0 +1,1665 @@
+=== a2_all start 2026-09-05T03:06:29+00:00 ===
+NVIDIA GeForce RTX 4060 Laptop GPU, 368 MiB, 8188 MiB, 3.14 W
+### 300 uv run python scripts/profiling/a2_ppo_update.py analytic --n-tickers 504 --lookback 60 --outdir outputs/a2 ###
+{
+  "n_tickers": 504,
+  "lookback": 60,
+  "minibatch": 128,
+  "tcn_MFLOP_per_stock_sequence": 7.8336,
+  "tcn_MACs_per_stock_sequence": 3.9168,
+  "tcn_per_block_MACs": {
+    "block0": 0.96768,
+    "block1": 1.47456,
+    "block2": 1.47456
+  },
+  "attn_GFLOP_per_grad_step": 10.437525504,
+  "head_GFLOP_per_grad_step": 0.54607872,
+  "sequences_per_grad_step": 64512,
+  "fwd_GFLOP_per_grad_step": 516.344807424,
+  "fwd_bwd_GFLOP_per_grad_step_x3": 1549.034422272,
+  "grad_steps_per_update": 128,
+  "fwd_bwd_TFLOP_per_update": 198.276406050816,
+  "updates_for_2M_env_steps": 488.28125,
+  "PFLOP_for_2M_env_steps": 96.814651392
+}
+### rc=0 ###
+### 900 uv run python scripts/profiling/a2_ppo_update.py dates --panel synthetic --n-tickers 504 --seeds 0,1,2 --outdir outputs/a2 ###
+{"seed": 0, "n_tickers": 504, "panel_dates": 1972, "distinct_dates_per_update": 1537, "distinct_date_stock_pairs_per_update": 774648, "encoder_sequences_per_update": 10329984, "redundancy_ratio_per_update": 13.335068314899154, "sequences_if_cached_whole_panel_once": 993888}
+{"seed": 1, "n_tickers": 504, "panel_dates": 1972, "distinct_dates_per_update": 1585, "distinct_date_stock_pairs_per_update": 798840, "encoder_sequences_per_update": 10329984, "redundancy_ratio_per_update": 12.931230283911672, "sequences_if_cached_whole_panel_once": 993888}
+{"seed": 2, "n_tickers": 504, "panel_dates": 1972, "distinct_dates_per_update": 1681, "distinct_date_stock_pairs_per_update": 847224, "encoder_sequences_per_update": 10329984, "redundancy_ratio_per_update": 12.19274241522903, "sequences_if_cached_whole_panel_once": 993888}
+{
+  "panel": "synthetic",
+  "rows": [
+    {
+      "seed": 0,
+      "n_tickers": 504,
+      "panel_dates": 1972,
+      "distinct_dates_per_update": 1537,
+      "distinct_date_stock_pairs_per_update": 774648,
+      "encoder_sequences_per_update": 10329984,
+      "redundancy_ratio_per_update": 13.335068314899154,
+      "sequences_if_cached_whole_panel_once": 993888
+    },
+    {
+      "seed": 1,
+      "n_tickers": 504,
+      "panel_dates": 1972,
+      "distinct_dates_per_update": 1585,
+      "distinct_date_stock_pairs_per_update": 798840,
+      "encoder_sequences_per_update": 10329984,
+      "redundancy_ratio_per_update": 12.931230283911672,
+      "sequences_if_cached_whole_panel_once": 993888
+    },
+    {
+      "seed": 2,
+      "n_tickers": 504,
+      "panel_dates": 1972,
+      "distinct_dates_per_update": 1681,
+      "distinct_date_stock_pairs_per_update": 847224,
+      "encoder_sequences_per_update": 10329984,
+      "redundancy_ratio_per_update": 12.19274241522903,
+      "sequences_if_cached_whole_panel_once": 993888
+    }
+  ]
+}
+### rc=0 ###
+### 900 uv run python scripts/profiling/a2_ppo_update.py dates --panel real --seeds 0,1,2 --outdir outputs/a2 ###
+{"seed": 0, "n_tickers": 143, "panel_dates": 1972, "distinct_dates_per_update": 1414, "distinct_date_stock_pairs_per_update": 202202, "encoder_sequences_per_update": 2930928, "redundancy_ratio_per_update": 14.495049504950495, "sequences_if_cached_whole_panel_once": 281996}
+{"seed": 1, "n_tickers": 143, "panel_dates": 1972, "distinct_dates_per_update": 1414, "distinct_date_stock_pairs_per_update": 202202, "encoder_sequences_per_update": 2930928, "redundancy_ratio_per_update": 14.495049504950495, "sequences_if_cached_whole_panel_once": 281996}
+{"seed": 2, "n_tickers": 143, "panel_dates": 1972, "distinct_dates_per_update": 1414, "distinct_date_stock_pairs_per_update": 202202, "encoder_sequences_per_update": 2930928, "redundancy_ratio_per_update": 14.495049504950495, "sequences_if_cached_whole_panel_once": 281996}
+{
+  "panel": "real",
+  "rows": [
+    {
+      "seed": 0,
+      "n_tickers": 143,
+      "panel_dates": 1972,
+      "distinct_dates_per_update": 1414,
+      "distinct_date_stock_pairs_per_update": 202202,
+      "encoder_sequences_per_update": 2930928,
+      "redundancy_ratio_per_update": 14.495049504950495,
+      "sequences_if_cached_whole_panel_once": 281996
+    },
+    {
+      "seed": 1,
+      "n_tickers": 143,
+      "panel_dates": 1972,
+      "distinct_dates_per_update": 1414,
+      "distinct_date_stock_pairs_per_update": 202202,
+      "encoder_sequences_per_update": 2930928,
+      "redundancy_ratio_per_update": 14.495049504950495,
+      "sequences_if_cached_whole_panel_once": 281996
+    },
+    {
+      "seed": 2,
+      "n_tickers": 143,
+      "panel_dates": 1972,
+      "distinct_dates_per_update": 1414,
+      "distinct_date_stock_pairs_per_update": 202202,
+      "encoder_sequences_per_update": 2930928,
+      "redundancy_ratio_per_update": 14.495049504950495,
+      "sequences_if_cached_whole_panel_once": 281996
+    }
+  ]
+}
+### rc=0 ###
+### 900 uv run python scripts/profiling/a2_hw_probe.py | tee outputs/a2/hw_probe.json ###
+{
+  "torch": "2.11.0+cu130",
+  "device": "cuda",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "vram_GiB": 7.996,
+    "sm_count": 24,
+    "capability": "8.9",
+    "bf16": true,
+    "cuda": "13.0"
+  },
+  "throughput_TFLOPS": {
+    "fp32_notf32_2048": 8.246421334746222,
+    "fp32_tf32_2048": 12.754173522450841,
+    "bf16_2048": 30.202115192173824,
+    "fp32_notf32_4096": 8.875386881731446,
+    "fp32_tf32_4096": 15.132807613404452,
+    "bf16_4096": 31.21066583049823,
+    "fp32_notf32_8192": 8.325297850989868,
+    "fp32_tf32_8192": 14.983750759193532,
+    "bf16_8192": 29.783212711040246
+  },
+  "conv1d_TFLOPS": {
+    "in_ch_15_fp32": 1.3023027196249575,
+    "in_ch_16_fp32": 1.391104077097953,
+    "in_ch_64_fp32": 2.8162170738352184,
+    "in_ch_15_bf16": 0.2804544847515049,
+    "in_ch_16_bf16": 0.2832161406254533,
+    "in_ch_64_bf16": 2.749389411744385
+  },
+  "pcie": {
+    "h2d_GiBs_pageable": 8.179104715287416,
+    "d2h_GiBs_pageable": 7.035750369209595,
+    "h2d_GiBs_pinned": 9.997638207593624,
+    "d2h_GiBs_pinned": 10.47780426101907
+  }
+}
+### rc=0 ###
+### 7200 uv run python scripts/profiling/a2_ppo_update.py scale --tickers 163,300,504,645 --lookbacks 20,30,60 --iters 5 --outdir outputs/a2 ###
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.29548458900098923,
+      "h2d_s_per_grad_step": 0.0069556137998006305,
+      "mb_features_MiB": 43.9453125,
+      "vram_peak_alloc_GiB": 3.6651439666748047
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.29548458900098923,
+      "h2d_s_per_grad_step": 0.0069556137998006305,
+      "mb_features_MiB": 43.9453125,
+      "vram_peak_alloc_GiB": 3.6651439666748047
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48379974279960153,
+      "h2d_s_per_grad_step": 0.010062321199802682,
+      "mb_features_MiB": 65.91796875,
+      "vram_peak_alloc_GiB": 5.422248840332031
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.29548458900098923,
+      "h2d_s_per_grad_step": 0.0069556137998006305,
+      "mb_features_MiB": 43.9453125,
+      "vram_peak_alloc_GiB": 3.6651439666748047
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48379974279960153,
+      "h2d_s_per_grad_step": 0.010062321199802682,
+      "mb_features_MiB": 65.91796875,
+      "vram_peak_alloc_GiB": 5.422248840332031
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 14.321226626601128,
+      "h2d_s_per_grad_step": 0.021011021798767616,
+      "mb_features_MiB": 131.8359375,
+      "vram_peak_alloc_GiB": 10.674352645874023
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.29548458900098923,
+      "h2d_s_per_grad_step": 0.0069556137998006305,
+      "mb_features_MiB": 43.9453125,
+      "vram_peak_alloc_GiB": 3.6651439666748047
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48379974279960153,
+      "h2d_s_per_grad_step": 0.010062321199802682,
+      "mb_features_MiB": 65.91796875,
+      "vram_peak_alloc_GiB": 5.422248840332031
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 14.321226626601128,
+      "h2d_s_per_grad_step": 0.021011021798767616,
+      "mb_features_MiB": 131.8359375,
+      "vram_peak_alloc_GiB": 10.674352645874023
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.7931282664008904,
+      "h2d_s_per_grad_step": 0.01101256140100304,
+      "mb_features_MiB": 73.828125,
+      "vram_peak_alloc_GiB": 6.141744136810303
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.29548458900098923,
+      "h2d_s_per_grad_step": 0.0069556137998006305,
+      "mb_features_MiB": 43.9453125,
+      "vram_peak_alloc_GiB": 3.6651439666748047
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48379974279960153,
+      "h2d_s_per_grad_step": 0.010062321199802682,
+      "mb_features_MiB": 65.91796875,
+      "vram_peak_alloc_GiB": 5.422248840332031
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 14.321226626601128,
+      "h2d_s_per_grad_step": 0.021011021798767616,
+      "mb_features_MiB": 131.8359375,
+      "vram_peak_alloc_GiB": 10.674352645874023
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.7931282664008904,
+      "h2d_s_per_grad_step": 0.01101256140100304,
+      "mb_features_MiB": 73.828125,
+      "vram_peak_alloc_GiB": 6.141744136810303
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 10.869563632800418,
+      "h2d_s_per_grad_step": 0.018722878400876653,
+      "mb_features_MiB": 110.7421875,
+      "vram_peak_alloc_GiB": 9.073164463043213
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.29548458900098923,
+      "h2d_s_per_grad_step": 0.0069556137998006305,
+      "mb_features_MiB": 43.9453125,
+      "vram_peak_alloc_GiB": 3.6651439666748047
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48379974279960153,
+      "h2d_s_per_grad_step": 0.010062321199802682,
+      "mb_features_MiB": 65.91796875,
+      "vram_peak_alloc_GiB": 5.422248840332031
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 14.321226626601128,
+      "h2d_s_per_grad_step": 0.021011021798767616,
+      "mb_features_MiB": 131.8359375,
+      "vram_peak_alloc_GiB": 10.674352645874023
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.7931282664008904,
+      "h2d_s_per_grad_step": 0.01101256140100304,
+      "mb_features_MiB": 73.828125,
+      "vram_peak_alloc_GiB": 6.141744136810303
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 10.869563632800418,
+      "h2d_s_per_grad_step": 0.018722878400876653,
+      "mb_features_MiB": 110.7421875,
+      "vram_peak_alloc_GiB": 9.073164463043213
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 33.42130986139964,
+      "h2d_s_per_grad_step": 0.03338721860054648,
+      "mb_features_MiB": 221.484375,
+      "vram_peak_alloc_GiB": 17.92463445663452
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.29548458900098923,
+      "h2d_s_per_grad_step": 0.0069556137998006305,
+      "mb_features_MiB": 43.9453125,
+      "vram_peak_alloc_GiB": 3.6651439666748047
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48379974279960153,
+      "h2d_s_per_grad_step": 0.010062321199802682,
+      "mb_features_MiB": 65.91796875,
+      "vram_peak_alloc_GiB": 5.422248840332031
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 14.321226626601128,
+      "h2d_s_per_grad_step": 0.021011021798767616,
+      "mb_features_MiB": 131.8359375,
+      "vram_peak_alloc_GiB": 10.674352645874023
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.7931282664008904,
+      "h2d_s_per_grad_step": 0.01101256140100304,
+      "mb_features_MiB": 73.828125,
+      "vram_peak_alloc_GiB": 6.141744136810303
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 10.869563632800418,
+      "h2d_s_per_grad_step": 0.018722878400876653,
+      "mb_features_MiB": 110.7421875,
+      "vram_peak_alloc_GiB": 9.073164463043213
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 33.42130986139964,
+      "h2d_s_per_grad_step": 0.03338721860054648,
+      "mb_features_MiB": 221.484375,
+      "vram_peak_alloc_GiB": 17.92463445663452
+    },
+    {
+      "n_tickers": 645,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 2.8931521063990657,
+      "h2d_s_per_grad_step": 0.014373717999842484,
+      "mb_features_MiB": 94.482421875,
+      "vram_peak_alloc_GiB": 7.843648433685303
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.29548458900098923,
+      "h2d_s_per_grad_step": 0.0069556137998006305,
+      "mb_features_MiB": 43.9453125,
+      "vram_peak_alloc_GiB": 3.6651439666748047
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48379974279960153,
+      "h2d_s_per_grad_step": 0.010062321199802682,
+      "mb_features_MiB": 65.91796875,
+      "vram_peak_alloc_GiB": 5.422248840332031
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 14.321226626601128,
+      "h2d_s_per_grad_step": 0.021011021798767616,
+      "mb_features_MiB": 131.8359375,
+      "vram_peak_alloc_GiB": 10.674352645874023
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.7931282664008904,
+      "h2d_s_per_grad_step": 0.01101256140100304,
+      "mb_features_MiB": 73.828125,
+      "vram_peak_alloc_GiB": 6.141744136810303
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 10.869563632800418,
+      "h2d_s_per_grad_step": 0.018722878400876653,
+      "mb_features_MiB": 110.7421875,
+      "vram_peak_alloc_GiB": 9.073164463043213
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 33.42130986139964,
+      "h2d_s_per_grad_step": 0.03338721860054648,
+      "mb_features_MiB": 221.484375,
+      "vram_peak_alloc_GiB": 17.92463445663452
+    },
+    {
+      "n_tickers": 645,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 2.8931521063990657,
+      "h2d_s_per_grad_step": 0.014373717999842484,
+      "mb_features_MiB": 94.482421875,
+      "vram_peak_alloc_GiB": 7.843648433685303
+    },
+    {
+      "n_tickers": 645,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 11.996353427799477,
+      "h2d_s_per_grad_step": 0.10028496919985627,
+      "mb_features_MiB": 141.7236328125,
+      "vram_peak_alloc_GiB": 11.603358745574951
+    }
+  ]
+}
+{
+  "amp_bf16": true,
+  "compile": false,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.16760006779950345,
+      "h2d_s_per_grad_step": 0.004379317400162108,
+      "mb_features_MiB": 23.876953125,
+      "vram_peak_alloc_GiB": 2.003054618835449
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.23468173959990962,
+      "h2d_s_per_grad_step": 0.007003917399561033,
+      "mb_features_MiB": 35.8154296875,
+      "vram_peak_alloc_GiB": 2.9552297592163086
+    },
+    {
+      "n_tickers": 163,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48071844639925987,
+      "h2d_s_per_grad_step": 0.010770594600762707,
+      "mb_features_MiB": 71.630859375,
+      "vram_peak_alloc_GiB": 5.81984281539917
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.29548458900098923,
+      "h2d_s_per_grad_step": 0.0069556137998006305,
+      "mb_features_MiB": 43.9453125,
+      "vram_peak_alloc_GiB": 3.6651439666748047
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 0.48379974279960153,
+      "h2d_s_per_grad_step": 0.010062321199802682,
+      "mb_features_MiB": 65.91796875,
+      "vram_peak_alloc_GiB": 5.422248840332031
+    },
+    {
+      "n_tickers": 300,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 14.321226626601128,
+      "h2d_s_per_grad_step": 0.021011021798767616,
+      "mb_features_MiB": 131.8359375,
+      "vram_peak_alloc_GiB": 10.674352645874023
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 0.7931282664008904,
+      "h2d_s_per_grad_step": 0.01101256140100304,
+      "mb_features_MiB": 73.828125,
+      "vram_peak_alloc_GiB": 6.141744136810303
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 10.869563632800418,
+      "h2d_s_per_grad_step": 0.018722878400876653,
+      "mb_features_MiB": 110.7421875,
+      "vram_peak_alloc_GiB": 9.073164463043213
+    },
+    {
+      "n_tickers": 504,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 33.42130986139964,
+      "h2d_s_per_grad_step": 0.03338721860054648,
+      "mb_features_MiB": 221.484375,
+      "vram_peak_alloc_GiB": 17.92463445663452
+    },
+    {
+      "n_tickers": 645,
+      "lookback": 20,
+      "minibatch": 128,
+      "s_per_grad_step": 2.8931521063990657,
+      "h2d_s_per_grad_step": 0.014373717999842484,
+      "mb_features_MiB": 94.482421875,
+      "vram_peak_alloc_GiB": 7.843648433685303
+    },
+    {
+      "n_tickers": 645,
+      "lookback": 30,
+      "minibatch": 128,
+      "s_per_grad_step": 11.996353427799477,
+      "h2d_s_per_grad_step": 0.10028496919985627,
+      "mb_features_MiB": 141.7236328125,
+      "vram_peak_alloc_GiB": 11.603358745574951
+    },
+    {
+      "n_tickers": 645,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": null,
+      "error": "OutOfMemoryError: CUDA out of memory. Tried to allocate 1.18 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has "
+    }
+  ]
+}
+### rc=0 ###
+### 7200 uv run python scripts/profiling/a2_ppo_update.py ceiling --tickers 163,300,504,645 --minibatches 32,64,128,256,512 --lookback 60 --outdir outputs/a2 ###
+{"n_tickers": 163, "minibatch": 32, "lookback": 60, "mb_features_MiB": 17.90771484375, "ok": true, "s_per_grad_step": 0.12612865899912626, "vram_peak_alloc_GiB": 1.477175235748291, "host_peak_rss_GiB": 1.7122917175292969}
+{"n_tickers": 163, "minibatch": 64, "lookback": 60, "mb_features_MiB": 35.8154296875, "ok": true, "s_per_grad_step": 0.2356674490001751, "vram_peak_alloc_GiB": 2.9210572242736816, "host_peak_rss_GiB": 1.732818603515625}
+{"n_tickers": 163, "minibatch": 128, "lookback": 60, "mb_features_MiB": 71.630859375, "ok": true, "s_per_grad_step": 0.4843516770003286, "vram_peak_alloc_GiB": 5.81955623626709, "host_peak_rss_GiB": 1.7706756591796875}
+{"n_tickers": 163, "minibatch": 256, "lookback": 60, "mb_features_MiB": 143.26171875, "ok": true, "s_per_grad_step": 10.755288402666338, "vram_peak_alloc_GiB": 11.606040477752686, "host_peak_rss_GiB": 1.8415336608886719}
+{"n_tickers": 163, "minibatch": 512, "lookback": 60, "mb_features_MiB": 286.5234375, "ok": false, "error": "CUDA out of memory. Tried to allocate 1.20 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m", "host_peak_rss_GiB": 1.9864501953125}
+{"n_tickers": 300, "minibatch": 32, "lookback": 60, "mb_features_MiB": 32.958984375, "ok": true, "s_per_grad_step": 3.6793863049994493, "vram_peak_alloc_GiB": 2.689659595489502, "host_peak_rss_GiB": 1.9864501953125}
+{"n_tickers": 300, "minibatch": 64, "lookback": 60, "mb_features_MiB": 65.91796875, "ok": true, "s_per_grad_step": 0.45208779333430965, "vram_peak_alloc_GiB": 5.359984397888184, "host_peak_rss_GiB": 1.9864501953125}
+{"n_tickers": 300, "minibatch": 128, "lookback": 60, "mb_features_MiB": 131.8359375, "ok": true, "s_per_grad_step": 7.702385297665994, "vram_peak_alloc_GiB": 10.673688888549805, "host_peak_rss_GiB": 1.9864501953125}
+{"n_tickers": 300, "minibatch": 256, "lookback": 60, "mb_features_MiB": 263.671875, "ok": false, "error": "CUDA out of memory. Tried to allocate 1.10 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m", "host_peak_rss_GiB": 1.9864501953125}
+{"n_tickers": 300, "minibatch": 512, "lookback": 60, "mb_features_MiB": 527.34375, "ok": false, "error": "CUDA out of memory. Tried to allocate 2.20 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m", "host_peak_rss_GiB": 2.225513458251953}
+{"n_tickers": 504, "minibatch": 32, "lookback": 60, "mb_features_MiB": 55.37109375, "ok": true, "s_per_grad_step": 12.880921643666321, "vram_peak_alloc_GiB": 4.5003180503845215, "host_peak_rss_GiB": 2.225513458251953}
+{"n_tickers": 504, "minibatch": 64, "lookback": 60, "mb_features_MiB": 110.7421875, "ok": true, "s_per_grad_step": 10.605174120001417, "vram_peak_alloc_GiB": 8.971474170684814, "host_peak_rss_GiB": 2.225513458251953}
+{"n_tickers": 504, "minibatch": 128, "lookback": 60, "mb_features_MiB": 221.484375, "ok": true, "s_per_grad_step": 29.13399528266503, "vram_peak_alloc_GiB": 17.92452096939087, "host_peak_rss_GiB": 2.225513458251953}
+{"n_tickers": 504, "minibatch": 256, "lookback": 60, "mb_features_MiB": 442.96875, "ok": false, "error": "CUDA out of memory. Tried to allocate 1008.00 MiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 Gi", "host_peak_rss_GiB": 2.225513458251953}
+{"n_tickers": 504, "minibatch": 512, "lookback": 60, "mb_features_MiB": 885.9375, "ok": false, "error": "CUDA out of memory. Tried to allocate 1.91 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m", "host_peak_rss_GiB": 2.5784263610839844}
+{"n_tickers": 645, "minibatch": 32, "lookback": 60, "mb_features_MiB": 70.86181640625, "ok": true, "s_per_grad_step": 16.473481272664987, "vram_peak_alloc_GiB": 5.751791000366211, "host_peak_rss_GiB": 2.5784263610839844}
+{"n_tickers": 645, "minibatch": 64, "lookback": 60, "mb_features_MiB": 141.7236328125, "ok": true, "s_per_grad_step": 10.350152231333292, "vram_peak_alloc_GiB": 11.47393798828125, "host_peak_rss_GiB": 2.5784263610839844}
+{"n_tickers": 645, "minibatch": 128, "lookback": 60, "mb_features_MiB": 283.447265625, "ok": false, "error": "CUDA out of memory. Tried to allocate 1.18 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m", "host_peak_rss_GiB": 2.5784263610839844}
+{"n_tickers": 645, "minibatch": 256, "lookback": 60, "mb_features_MiB": 566.89453125, "ok": false, "error": "CUDA out of memory. Tried to allocate 2.36 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m", "host_peak_rss_GiB": 2.5784263610839844}
+{"n_tickers": 645, "minibatch": 512, "lookback": 60, "mb_features_MiB": 1133.7890625, "ok": false, "error": "CUDA error: device not ready", "host_peak_rss_GiB": 2.8238487243652344}
+{
+  "amp_bf16": true,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "minibatch": 32,
+      "lookback": 60,
+      "mb_features_MiB": 17.90771484375,
+      "ok": true,
+      "s_per_grad_step": 0.12612865899912626,
+      "vram_peak_alloc_GiB": 1.477175235748291,
+      "host_peak_rss_GiB": 1.7122917175292969
+    },
+    {
+      "n_tickers": 163,
+      "minibatch": 64,
+      "lookback": 60,
+      "mb_features_MiB": 35.8154296875,
+      "ok": true,
+      "s_per_grad_step": 0.2356674490001751,
+      "vram_peak_alloc_GiB": 2.9210572242736816,
+      "host_peak_rss_GiB": 1.732818603515625
+    },
+    {
+      "n_tickers": 163,
+      "minibatch": 128,
+      "lookback": 60,
+      "mb_features_MiB": 71.630859375,
+      "ok": true,
+      "s_per_grad_step": 0.4843516770003286,
+      "vram_peak_alloc_GiB": 5.81955623626709,
+      "host_peak_rss_GiB": 1.7706756591796875
+    },
+    {
+      "n_tickers": 163,
+      "minibatch": 256,
+      "lookback": 60,
+      "mb_features_MiB": 143.26171875,
+      "ok": true,
+      "s_per_grad_step": 10.755288402666338,
+      "vram_peak_alloc_GiB": 11.606040477752686,
+      "host_peak_rss_GiB": 1.8415336608886719
+    },
+    {
+      "n_tickers": 163,
+      "minibatch": 512,
+      "lookback": 60,
+      "mb_features_MiB": 286.5234375,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 1.20 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 1.9864501953125
+    },
+    {
+      "n_tickers": 300,
+      "minibatch": 32,
+      "lookback": 60,
+      "mb_features_MiB": 32.958984375,
+      "ok": true,
+      "s_per_grad_step": 3.6793863049994493,
+      "vram_peak_alloc_GiB": 2.689659595489502,
+      "host_peak_rss_GiB": 1.9864501953125
+    },
+    {
+      "n_tickers": 300,
+      "minibatch": 64,
+      "lookback": 60,
+      "mb_features_MiB": 65.91796875,
+      "ok": true,
+      "s_per_grad_step": 0.45208779333430965,
+      "vram_peak_alloc_GiB": 5.359984397888184,
+      "host_peak_rss_GiB": 1.9864501953125
+    },
+    {
+      "n_tickers": 300,
+      "minibatch": 128,
+      "lookback": 60,
+      "mb_features_MiB": 131.8359375,
+      "ok": true,
+      "s_per_grad_step": 7.702385297665994,
+      "vram_peak_alloc_GiB": 10.673688888549805,
+      "host_peak_rss_GiB": 1.9864501953125
+    },
+    {
+      "n_tickers": 300,
+      "minibatch": 256,
+      "lookback": 60,
+      "mb_features_MiB": 263.671875,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 1.10 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 1.9864501953125
+    },
+    {
+      "n_tickers": 300,
+      "minibatch": 512,
+      "lookback": 60,
+      "mb_features_MiB": 527.34375,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 2.20 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 2.225513458251953
+    },
+    {
+      "n_tickers": 504,
+      "minibatch": 32,
+      "lookback": 60,
+      "mb_features_MiB": 55.37109375,
+      "ok": true,
+      "s_per_grad_step": 12.880921643666321,
+      "vram_peak_alloc_GiB": 4.5003180503845215,
+      "host_peak_rss_GiB": 2.225513458251953
+    },
+    {
+      "n_tickers": 504,
+      "minibatch": 64,
+      "lookback": 60,
+      "mb_features_MiB": 110.7421875,
+      "ok": true,
+      "s_per_grad_step": 10.605174120001417,
+      "vram_peak_alloc_GiB": 8.971474170684814,
+      "host_peak_rss_GiB": 2.225513458251953
+    },
+    {
+      "n_tickers": 504,
+      "minibatch": 128,
+      "lookback": 60,
+      "mb_features_MiB": 221.484375,
+      "ok": true,
+      "s_per_grad_step": 29.13399528266503,
+      "vram_peak_alloc_GiB": 17.92452096939087,
+      "host_peak_rss_GiB": 2.225513458251953
+    },
+    {
+      "n_tickers": 504,
+      "minibatch": 256,
+      "lookback": 60,
+      "mb_features_MiB": 442.96875,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 1008.00 MiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 Gi",
+      "host_peak_rss_GiB": 2.225513458251953
+    },
+    {
+      "n_tickers": 504,
+      "minibatch": 512,
+      "lookback": 60,
+      "mb_features_MiB": 885.9375,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 1.91 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 2.5784263610839844
+    },
+    {
+      "n_tickers": 645,
+      "minibatch": 32,
+      "lookback": 60,
+      "mb_features_MiB": 70.86181640625,
+      "ok": true,
+      "s_per_grad_step": 16.473481272664987,
+      "vram_peak_alloc_GiB": 5.751791000366211,
+      "host_peak_rss_GiB": 2.5784263610839844
+    },
+    {
+      "n_tickers": 645,
+      "minibatch": 64,
+      "lookback": 60,
+      "mb_features_MiB": 141.7236328125,
+      "ok": true,
+      "s_per_grad_step": 10.350152231333292,
+      "vram_peak_alloc_GiB": 11.47393798828125,
+      "host_peak_rss_GiB": 2.5784263610839844
+    },
+    {
+      "n_tickers": 645,
+      "minibatch": 128,
+      "lookback": 60,
+      "mb_features_MiB": 283.447265625,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 1.18 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 2.5784263610839844
+    },
+    {
+      "n_tickers": 645,
+      "minibatch": 256,
+      "lookback": 60,
+      "mb_features_MiB": 566.89453125,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 2.36 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 2.5784263610839844
+    },
+    {
+      "n_tickers": 645,
+      "minibatch": 512,
+      "lookback": 60,
+      "mb_features_MiB": 1133.7890625,
+      "ok": false,
+      "error": "CUDA error: device not ready",
+      "host_peak_rss_GiB": 2.8238487243652344
+    }
+  ]
+}
+### rc=0 ###
+### 3600 uv run python scripts/profiling/a2_ppo_update.py scale --tickers 504 --lookbacks 60 --iters 5 --compile --outdir outputs/a2/compiled ###
+{
+  "amp_bf16": true,
+  "compile": true,
+  "rows": [
+    {
+      "n_tickers": 504,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 29.766243376999046,
+      "h2d_s_per_grad_step": 0.05298264940065565,
+      "mb_features_MiB": 221.484375,
+      "vram_peak_alloc_GiB": 17.924275875091553
+    }
+  ]
+}
+### rc=0 ###
+### 3600 uv run python scripts/profiling/a2_ppo_update.py profile --n-tickers 504 --lookback 60 --steps 6 --outdir outputs/a2 ###
+/mnt/d/trading-bot-01/.venv/lib/python3.12/site-packages/torch/profiler/profiler.py:224: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+{
+  "device": "cuda",
+  "n_tickers": 504,
+  "lookback": 60,
+  "minibatch": 128,
+  "amp_bf16": true,
+  "compile": false,
+  "profiled_grad_steps": 6,
+  "profiler_flops_per_grad_step": 8763433469.0,
+  "profiler_self_device_ms_per_grad_step": 58520.346098499904,
+  "grad_steps_per_update": 128,
+  "untimed_s_per_grad_step": 29.265746949500073,
+  "untimed_s_per_update_gradonly": 3746.0156095360094,
+  "memcpy": {
+    "Memcpy HtoD (Pageable -> Device)": {
+      "GiB_per_grad_step": 0.21708059310913086,
+      "GiB_per_update": 27.78631591796875,
+      "calls_per_grad_step": 12.0,
+      "ms_per_grad_step": 130.0126954999999
+    },
+    "Memcpy DtoD (Device -> Device)": {
+      "GiB_per_grad_step": 0.023312091827392578,
+      "GiB_per_update": 2.98394775390625,
+      "calls_per_grad_step": 4.0,
+      "ms_per_grad_step": 5.057898166666667
+    },
+    "Memset (Device)": {
+      "GiB_per_grad_step": 0.00023582857102155685,
+      "GiB_per_update": 0.030186057090759277,
+      "calls_per_grad_step": 33.0,
+      "ms_per_grad_step": 0.035477166666666685
+    },
+    "Memcpy DtoH (Device -> Pinned)": {
+      "GiB_per_grad_step": 3.725290298461914e-09,
+      "GiB_per_update": 4.76837158203125e-07,
+      "calls_per_grad_step": 4.0,
+      "ms_per_grad_step": 0.0043623333333333335
+    }
+  },
+  "memcpy_total_h2d_GiB_per_update": 27.78631591796875,
+  "memcpy_total_d2h_GiB_per_update": 4.76837158203125e-07,
+  "leading_dim_one_ops": [
+    {
+      "op": "aten::transpose",
+      "shapes": "[[1, 504, 128, 3, 64], [], []]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::as_strided",
+      "shapes": "[[1, 504, 128, 3, 64], [], [], []]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "aten::to",
+      "shapes": "[[1, 64], [], [], [], []]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::_to_copy",
+      "shapes": "[[1, 64], [], [], [], [], [], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::copy_",
+      "shapes": "[[1, 64], [1, 64], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::t",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::transpose",
+      "shapes": "[[1, 64], [], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::as_strided",
+      "shapes": "[[1, 64], [], [], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 505], []]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::mm",
+      "shapes": "[[1, 128], [128, 64]]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 1], []]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "ToCopyBackward0",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::to",
+      "shapes": "[[1, 64], [], [], [], [], [], [], []]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "torch::autograd::AccumulateGrad",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::detach",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "detach",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 64], []]",
+      "calls_per_update": 512.0
+    },
+    {
+      "op": "aten::mm",
+      "shapes": "[[1, 64512], [64512, 64]]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 128], []]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 32], []]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "UnsqueezeBackward0",
+      "shapes": "[[1, 504, 128, 3, 64]]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::squeeze",
+      "shapes": "[[1, 504, 128, 3, 64], []]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 1, 192], []]",
+      "calls_per_update": 128.0
+    }
+  ],
+  "trace": "outputs/a2/trace_n504_L60_mb128.json",
+  "vram_peak_alloc_GiB": 17.924275875091553,
+  "vram_peak_reserved_GiB": 20.6640625
+}
+
+===== KEY AVERAGES =====
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg       CPU Mem  Self CPU Mem      CUDA Mem  Self CUDA Mem    # of Calls  Total MFLOPs  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_         0.01%      19.396ms        52.35%       91.918s      75.096ms       86.991s        49.56%       87.077s      71.141ms           0 B           0 B           0 B           0 B          1224            --  
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       70.422s        40.12%       70.422s     355.665ms           0 B           0 B           0 B           0 B           198            --  
+                                    aten::gelu_backward         0.00%       1.484ms         0.00%       2.561ms      38.802us       23.874s        13.60%       23.874s     361.722ms           0 B           0 B      33.35 GB      33.35 GB            66            --  
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       23.836s        13.58%       23.836s     662.107ms           0 B           0 B           0 B           0 B            36            --  
+                             aten::convolution_backward         0.01%       9.704ms         0.01%      21.812ms     519.323us       15.315s         8.73%       15.901s     378.602ms           0 B           0 B      15.04 GB      -2.22 GB            42            --  
+                       aten::native_layer_norm_backward         0.00%       3.086ms         0.01%      13.123ms     218.711us       13.371s         7.62%       45.947s     765.792ms           0 B           0 B      33.44 GB     -66.78 GB            60            --  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us        8.762s         4.99%        8.762s     162.261ms           0 B           0 B           0 B           0 B            54            --  
+                                aten::cudnn_convolution         0.01%      11.643ms         0.01%      13.927ms     331.599us        8.252s         4.70%        8.252s     196.484ms           0 B           0 B      19.38 GB      19.38 GB            42            --  
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us        7.790s         4.44%        7.790s      21.640ms           0 B           0 B           0 B           0 B           360            --  
+void at::native::(anonymous namespace)::GammaBetaBac...         0.00%       0.000us         0.00%       0.000us       0.000us        7.365s         4.20%        7.365s     204.586ms           0 B           0 B           0 B           0 B            36            --  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us        7.256s         4.13%        7.256s      16.797ms           0 B           0 B           0 B           0 B           432            --  
+sm80_xmma_wgrad_implicit_gemm_indexed_bf16bf16_bf16f...         0.00%       0.000us         0.00%       0.000us       0.000us        6.763s         3.85%        6.763s     225.429ms           0 B           0 B           0 B           0 B            30            --  
+                                             aten::gelu         0.00%       2.059ms         0.00%       4.035ms      61.141us        6.290s         3.58%        6.290s      95.310ms           0 B           0 B      33.34 GB      33.34 GB            66            --  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us        6.290s         3.58%        6.290s     116.490ms           0 B           0 B           0 B           0 B            54            --  
+void at::native::(anonymous namespace)::layer_norm_g...         0.00%       0.000us         0.00%       0.000us       0.000us        5.974s         3.40%        5.974s      99.560ms           0 B           0 B           0 B           0 B            60            --  
+                                              aten::add         0.00%       2.648ms         0.00%       5.437ms      75.518us        5.746s         3.27%        5.746s      79.800ms           0 B           0 B      16.90 GB      16.90 GB            72      4533.873  
+void implicit_convolve_sgemm<__nv_bfloat16, __nv_bfl...         0.00%       0.000us         0.00%       0.000us       0.000us        5.409s         3.08%        5.409s     225.382ms           0 B           0 B           0 B           0 B            24            --  
+                                             aten::add_         0.00%       3.193ms         0.00%       5.507ms      12.076us        5.194s         2.96%        5.194s      11.391ms           0 B           0 B           0 B           0 B           456            --  
+void cudnn::engines_precompiled::nchwToNhwcKernel<__...         0.00%       0.000us         0.00%       0.000us       0.000us        4.417s         2.52%        4.417s      36.810ms           0 B           0 B           0 B           0 B           120            --  
+                                            aten::fill_         0.00%       2.555ms         0.01%       8.839ms      92.073us        3.991s         2.27%        3.991s      41.575ms           0 B           0 B           0 B           0 B            96            --  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us        3.915s         2.23%        3.915s      54.375ms           0 B           0 B           0 B           0 B            72            --  
+                                aten::native_layer_norm         0.00%       4.431ms         0.01%      10.125ms     168.745us        3.624s         2.06%       17.698s     294.971ms           0 B           0 B      34.48 GB     -33.25 GB            60            --  
+void at::native::(anonymous namespace)::vectorized_l...         0.00%       0.000us         0.00%       0.000us       0.000us        3.624s         2.06%        3.624s      60.400ms           0 B           0 B           0 B           0 B            60            --  
+void cutlass::Kernel2<cutlass_75_tensorop_bf16_s1688...         0.00%       0.000us         0.00%       0.000us       0.000us        2.292s         1.31%        2.292s     191.038ms           0 B           0 B           0 B           0 B            12            --  
+void cudnn::engines_precompiled::nhwcToNchwKernel<__...         0.00%       0.000us         0.00%       0.000us       0.000us        2.107s         1.20%        2.107s      35.123ms           0 B           0 B           0 B           0 B            60            --  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 175.567s
+Self CUDA time total: 175.518s
+
+### rc=0 ###
+### 3600 uv run python scripts/profiling/a2_ppo_update.py profile --n-tickers 163 --lookback 60 --steps 6 --outdir outputs/a2 ###
+/mnt/d/trading-bot-01/.venv/lib/python3.12/site-packages/torch/profiler/profiler.py:224: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+{
+  "device": "cuda",
+  "n_tickers": 163,
+  "lookback": 60,
+  "minibatch": 128,
+  "amp_bf16": true,
+  "compile": false,
+  "profiled_grad_steps": 6,
+  "profiler_flops_per_grad_step": 2843673128.0,
+  "profiler_self_device_ms_per_grad_step": 966.1215000000025,
+  "grad_steps_per_update": 128,
+  "untimed_s_per_grad_step": 0.4898906553341173,
+  "untimed_s_per_update_gradonly": 62.706003882767014,
+  "memcpy": {
+    "Memcpy HtoD (Pageable -> Device)": {
+      "GiB_per_grad_step": 0.07021081447601318,
+      "GiB_per_update": 8.986984252929688,
+      "calls_per_grad_step": 12.0,
+      "ms_per_grad_step": 10.205079500000005
+    },
+    "Memcpy DtoD (Device -> Device)": {
+      "GiB_per_grad_step": 0.0075397491455078125,
+      "GiB_per_update": 0.965087890625,
+      "calls_per_grad_step": 4.0,
+      "ms_per_grad_step": 0.0159645
+    },
+    "Memset (Device)": {
+      "GiB_per_grad_step": 0.00023582857102155685,
+      "GiB_per_update": 0.030186057090759277,
+      "calls_per_grad_step": 33.0,
+      "ms_per_grad_step": 0.024977833333333335
+    },
+    "Memcpy DtoH (Device -> Pinned)": {
+      "GiB_per_grad_step": 3.725290298461914e-09,
+      "GiB_per_update": 4.76837158203125e-07,
+      "calls_per_grad_step": 4.0,
+      "ms_per_grad_step": 0.004195666666666666
+    }
+  },
+  "memcpy_total_h2d_GiB_per_update": 8.986984252929688,
+  "memcpy_total_d2h_GiB_per_update": 4.76837158203125e-07,
+  "leading_dim_one_ops": [
+    {
+      "op": "aten::transpose",
+      "shapes": "[[1, 163, 128, 3, 64], [], []]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::as_strided",
+      "shapes": "[[1, 163, 128, 3, 64], [], [], []]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "aten::to",
+      "shapes": "[[1, 64], [], [], [], []]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::_to_copy",
+      "shapes": "[[1, 64], [], [], [], [], [], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::copy_",
+      "shapes": "[[1, 64], [1, 64], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::t",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::transpose",
+      "shapes": "[[1, 64], [], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::as_strided",
+      "shapes": "[[1, 64], [], [], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 164], []]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::mm",
+      "shapes": "[[1, 128], [128, 64]]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 1], []]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "ToCopyBackward0",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::to",
+      "shapes": "[[1, 64], [], [], [], [], [], [], []]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "torch::autograd::AccumulateGrad",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::detach",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "detach",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 64], []]",
+      "calls_per_update": 512.0
+    },
+    {
+      "op": "aten::mm",
+      "shapes": "[[1, 20864], [20864, 64]]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 128], []]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 32], []]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "UnsqueezeBackward0",
+      "shapes": "[[1, 163, 128, 3, 64]]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::squeeze",
+      "shapes": "[[1, 163, 128, 3, 64], []]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 1, 192], []]",
+      "calls_per_update": 128.0
+    }
+  ],
+  "trace": "outputs/a2/trace_n163_L60_mb128.json",
+  "vram_peak_alloc_GiB": 5.818819999694824,
+  "vram_peak_reserved_GiB": 6.9921875
+}
+
+===== KEY AVERAGES =====
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg       CPU Mem  Self CPU Mem      CUDA Mem  Self CUDA Mem    # of Calls  Total MFLOPs  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_         0.51%      15.332ms        43.22%        1.305s       1.061ms     916.240ms        31.67%     925.859ms     752.731us           0 B           0 B           0 B           0 B          1230            --  
+                             aten::convolution_backward         0.26%       7.767ms         0.70%      21.220ms     505.245us     496.687ms        17.17%     580.635ms      13.825ms           0 B           0 B       4.87 GB    -734.46 MB            42            --  
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us     489.415ms        16.92%     489.415ms       2.472ms           0 B           0 B           0 B           0 B           198            --  
+                                aten::cudnn_convolution         0.10%       3.171ms         0.14%       4.364ms     103.915us     341.409ms        11.80%     341.409ms       8.129ms           0 B           0 B       6.27 GB       6.27 GB            42            --  
+                       aten::native_layer_norm_backward         0.11%       3.318ms         0.56%      16.873ms     281.222us     302.783ms        10.47%     504.810ms       8.413ms           0 B           0 B      10.82 GB     -21.80 GB            60            --  
+                                aten::native_layer_norm         0.10%       3.128ms         0.29%       8.633ms     143.887us     287.746ms         9.95%     389.075ms       6.485ms           0 B           0 B      11.16 GB     -10.76 GB            60            --  
+void at::native::(anonymous namespace)::vectorized_l...         0.00%       0.000us         0.00%       0.000us       0.000us     287.746ms         9.95%     287.746ms       4.796ms           0 B           0 B           0 B           0 B            60            --  
+void at::native::(anonymous namespace)::layer_norm_g...         0.00%       0.000us         0.00%       0.000us       0.000us     201.364ms         6.96%     201.364ms       3.356ms           0 B           0 B           0 B           0 B            60            --  
+void wgrad_alg0_engine<__nv_bfloat16, 128, 5, 5, 3, ...         0.00%       0.000us         0.00%       0.000us       0.000us     197.440ms         6.82%     197.440ms      32.907ms           0 B           0 B           0 B           0 B             6            --  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     165.304ms         5.71%     165.304ms     382.647us           0 B           0 B           0 B           0 B           432            --  
+void implicit_convolve_sgemm<__nv_bfloat16, __nv_bfl...         0.00%       0.000us         0.00%       0.000us       0.000us     155.215ms         5.36%     155.215ms       6.467ms           0 B           0 B           0 B           0 B            24            --  
+                                    aten::gelu_backward         0.04%       1.283ms         0.09%       2.614ms      39.606us     154.279ms         5.33%     154.279ms       2.338ms           0 B           0 B      10.79 GB      10.79 GB            66            --  
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us     154.185ms         5.33%     154.185ms       4.283ms           0 B           0 B           0 B           0 B            36            --  
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us     141.491ms         4.89%     141.491ms     393.029us           0 B           0 B           0 B           0 B           360            --  
+void cudnn::cnn::conv2d_grouped_direct_kernel<false,...         0.00%       0.000us         0.00%       0.000us       0.000us     140.099ms         4.84%     140.099ms      23.350ms           0 B           0 B           0 B           0 B             6            --  
+void cudnn::engines_precompiled::nchwToNhwcKernel<__...         0.00%       0.000us         0.00%       0.000us       0.000us     132.527ms         4.58%     132.527ms       1.104ms           0 B           0 B           0 B           0 B           120            --  
+                                             aten::add_         0.07%       2.212ms         0.14%       4.092ms       8.973us     115.000ms         3.97%     115.000ms     252.193us           0 B           0 B           0 B           0 B           456            --  
+                                             aten::gelu         0.06%       1.718ms         0.11%       3.286ms      49.780us     104.016ms         3.60%     104.016ms       1.576ms           0 B           0 B      10.79 GB      10.79 GB            66            --  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     104.002ms         3.59%     104.002ms       1.926ms           0 B           0 B           0 B           0 B            54            --  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     102.280ms         3.54%     102.280ms       1.894ms           0 B           0 B           0 B           0 B            54            --  
+void at::native::(anonymous namespace)::GammaBetaBac...         0.00%       0.000us         0.00%       0.000us       0.000us     100.537ms         3.47%     100.537ms       2.793ms           0 B           0 B           0 B           0 B            36            --  
+                                              aten::add         0.07%       2.179ms         0.13%       3.853ms      53.519us      72.665ms         2.51%      72.665ms       1.009ms           0 B           0 B       5.47 GB       5.47 GB            72      1466.379  
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us      62.870ms         2.17%      62.870ms       1.310ms           0 B           0 B           0 B           0 B            48            --  
+void cutlass__5x_cudnn::Kernel<cutlass_tensorop_bf16...         0.00%       0.000us         0.00%       0.000us       0.000us      62.517ms         2.16%      62.517ms       2.084ms           0 B           0 B           0 B           0 B            30            --  
+                       Memcpy HtoD (Pageable -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us      61.230ms         2.12%      61.230ms     850.423us           0 B           0 B           0 B           0 B            72            --  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 3.021s
+Self CUDA time total: 2.893s
+
+### rc=0 ###
+### 7200 uv run python scripts/profiling/a2_ppo_update.py update --n-tickers 504 --n-steps 32 --n-minibatches 4 --updates 1 --outdir outputs/a2 ###
+{
+  "panel": "synthetic",
+  "n_tickers": 504,
+  "lookback": 60,
+  "n_envs": 16,
+  "n_steps": 32,
+  "n_epochs": 4,
+  "n_minibatches": 4,
+  "compile": false,
+  "updates": 1,
+  "instrumented": true,
+  "minibatch_transitions": 128,
+  "grad_steps_per_update": 16,
+  "wall_s_total": 439.6883863619951,
+  "wall_s_per_update": 439.6883863619951,
+  "phase_s_per_update": {
+    "backward": 275.0380087060039,
+    "batch_obs": 0.8670395049994113,
+    "d2h": 1.1523399459038046,
+    "env": 0.18274270503025036,
+    "fwd_rollout": 4.233492752013262,
+    "fwd_update": 155.82943975298986,
+    "h2d": 0.5547961700576707,
+    "optim": 0.26693915202486096
+  },
+  "phase_calls_per_update": {
+    "backward": 16.0,
+    "batch_obs": 1.0,
+    "env": 32.0,
+    "fwd_rollout": 33.0,
+    "fwd_update": 16.0,
+    "optim": 32.0
+  },
+  "h2d_GiB_per_update": 4.36971777677536,
+  "d2h_GiB_per_update": 0.8702526688575745,
+  "h2d_calls_per_update": 593.0,
+  "d2h_calls_per_update": 513.0,
+  "analytic_minibatch_features_MiB": 221.484375,
+  "analytic_rollout_buffer_GiB": 0.86517333984375,
+  "encoder_calls_per_update": 49.0,
+  "encoder_sequences_per_update": 1298304.0,
+  "host_peak_rss_GiB": 4.218391418457031,
+  "distinct_dates_visited": 452,
+  "distinct_date_stock_pairs": 227808,
+  "vram_peak_alloc_GiB": 17.95224094390869,
+  "vram_peak_reserved_GiB": 20.70703125
+}
+### rc=0 ###
+### 10800 uv run python scripts/profiling/a2_ppo_update.py update --n-tickers 504 --n-steps 32 --n-minibatches 4 --updates 1 --no-probe --outdir outputs/a2 ###
+{
+  "panel": "synthetic",
+  "n_tickers": 504,
+  "lookback": 60,
+  "n_envs": 16,
+  "n_steps": 32,
+  "n_epochs": 4,
+  "n_minibatches": 4,
+  "compile": false,
+  "updates": 1,
+  "instrumented": false,
+  "minibatch_transitions": 128,
+  "grad_steps_per_update": 16,
+  "wall_s_total": 430.17645834599534,
+  "wall_s_per_update": 430.17645834599534,
+  "phase_s_per_update": {},
+  "phase_calls_per_update": {},
+  "h2d_GiB_per_update": 0.0,
+  "d2h_GiB_per_update": 0.0,
+  "h2d_calls_per_update": 0.0,
+  "d2h_calls_per_update": 0.0,
+  "analytic_minibatch_features_MiB": 221.484375,
+  "analytic_rollout_buffer_GiB": 0.86517333984375,
+  "encoder_calls_per_update": 0.0,
+  "encoder_sequences_per_update": 0.0,
+  "host_peak_rss_GiB": 4.2177276611328125,
+  "distinct_dates_visited": 452,
+  "distinct_date_stock_pairs": 227808,
+  "vram_peak_alloc_GiB": 17.95224094390869,
+  "vram_peak_reserved_GiB": 20.70703125
+}
+### rc=0 ###
+### 10800 uv run python scripts/profiling/a2_ppo_update.py update --panel real --n-steps 32 --n-minibatches 4 --updates 1 --no-probe --outdir outputs/a2 ###
+Traceback (most recent call last):
+  File "/mnt/d/trading-bot-01/scripts/profiling/a2_ppo_update.py", line 884, in <module>
+    main()
+  File "/mnt/d/trading-bot-01/scripts/profiling/a2_ppo_update.py", line 880, in main
+    a.fn(a)
+  File "/mnt/d/trading-bot-01/scripts/profiling/a2_ppo_update.py", line 418, in cmd_update
+    trainer.train()
+  File "/mnt/d/trading-bot-01/src/trader/training/ppo.py", line 350, in train
+    _, new_lp, entropy, new_val = self.model.get_action_and_value(  # type: ignore[operator]
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/trading-bot-01/src/trader/models/actor_critic.py", line 235, in get_action_and_value
+    dist = Normal(mean, std)
+           ^^^^^^^^^^^^^^^^^
+  File "/mnt/d/trading-bot-01/.venv/lib/python3.12/site-packages/torch/distributions/normal.py", line 66, in __init__
+    super().__init__(batch_shape, validate_args=validate_args)
+  File "/mnt/d/trading-bot-01/.venv/lib/python3.12/site-packages/torch/distributions/distribution.py", line 77, in __init__
+    raise ValueError(
+ValueError: Expected parameter loc (Tensor of shape (128, 144)) of distribution Normal(loc: torch.Size([128, 144]), scale: torch.Size([128, 144])) to satisfy the constraint Real(), but found invalid values:
+tensor([[nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan],
+        ...,
+        [nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan]], device='cuda:0',
+       dtype=torch.bfloat16, grad_fn=<CatBackward0>)
+### rc=1 ###
+=== a2_all done 2026-09-05T04:02:16+00:00 ===

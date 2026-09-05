@@ -1,0 +1,15 @@
+{
+  "amp_bf16": true,
+  "compile": true,
+  "rows": [
+    {
+      "n_tickers": 504,
+      "lookback": 60,
+      "minibatch": 128,
+      "s_per_grad_step": 29.766243376999046,
+      "h2d_s_per_grad_step": 0.05298264940065565,
+      "mb_features_MiB": 221.484375,
+      "vram_peak_alloc_GiB": 17.924275875091553
+    }
+  ]
+}

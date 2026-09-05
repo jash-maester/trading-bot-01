@@ -1,0 +1,197 @@
+{
+  "amp_bf16": true,
+  "rows": [
+    {
+      "n_tickers": 163,
+      "minibatch": 32,
+      "lookback": 60,
+      "mb_features_MiB": 17.90771484375,
+      "ok": true,
+      "s_per_grad_step": 0.12612865899912626,
+      "vram_peak_alloc_GiB": 1.477175235748291,
+      "host_peak_rss_GiB": 1.7122917175292969
+    },
+    {
+      "n_tickers": 163,
+      "minibatch": 64,
+      "lookback": 60,
+      "mb_features_MiB": 35.8154296875,
+      "ok": true,
+      "s_per_grad_step": 0.2356674490001751,
+      "vram_peak_alloc_GiB": 2.9210572242736816,
+      "host_peak_rss_GiB": 1.732818603515625
+    },
+    {
+      "n_tickers": 163,
+      "minibatch": 128,
+      "lookback": 60,
+      "mb_features_MiB": 71.630859375,
+      "ok": true,
+      "s_per_grad_step": 0.4843516770003286,
+      "vram_peak_alloc_GiB": 5.81955623626709,
+      "host_peak_rss_GiB": 1.7706756591796875
+    },
+    {
+      "n_tickers": 163,
+      "minibatch": 256,
+      "lookback": 60,
+      "mb_features_MiB": 143.26171875,
+      "ok": true,
+      "s_per_grad_step": 10.755288402666338,
+      "vram_peak_alloc_GiB": 11.606040477752686,
+      "host_peak_rss_GiB": 1.8415336608886719
+    },
+    {
+      "n_tickers": 163,
+      "minibatch": 512,
+      "lookback": 60,
+      "mb_features_MiB": 286.5234375,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 1.20 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 1.9864501953125
+    },
+    {
+      "n_tickers": 300,
+      "minibatch": 32,
+      "lookback": 60,
+      "mb_features_MiB": 32.958984375,
+      "ok": true,
+      "s_per_grad_step": 3.6793863049994493,
+      "vram_peak_alloc_GiB": 2.689659595489502,
+      "host_peak_rss_GiB": 1.9864501953125
+    },
+    {
+      "n_tickers": 300,
+      "minibatch": 64,
+      "lookback": 60,
+      "mb_features_MiB": 65.91796875,
+      "ok": true,
+      "s_per_grad_step": 0.45208779333430965,
+      "vram_peak_alloc_GiB": 5.359984397888184,
+      "host_peak_rss_GiB": 1.9864501953125
+    },
+    {
+      "n_tickers": 300,
+      "minibatch": 128,
+      "lookback": 60,
+      "mb_features_MiB": 131.8359375,
+      "ok": true,
+      "s_per_grad_step": 7.702385297665994,
+      "vram_peak_alloc_GiB": 10.673688888549805,
+      "host_peak_rss_GiB": 1.9864501953125
+    },
+    {
+      "n_tickers": 300,
+      "minibatch": 256,
+      "lookback": 60,
+      "mb_features_MiB": 263.671875,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 1.10 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 1.9864501953125
+    },
+    {
+      "n_tickers": 300,
+      "minibatch": 512,
+      "lookback": 60,
+      "mb_features_MiB": 527.34375,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 2.20 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 2.225513458251953
+    },
+    {
+      "n_tickers": 504,
+      "minibatch": 32,
+      "lookback": 60,
+      "mb_features_MiB": 55.37109375,
+      "ok": true,
+      "s_per_grad_step": 12.880921643666321,
+      "vram_peak_alloc_GiB": 4.5003180503845215,
+      "host_peak_rss_GiB": 2.225513458251953
+    },
+    {
+      "n_tickers": 504,
+      "minibatch": 64,
+      "lookback": 60,
+      "mb_features_MiB": 110.7421875,
+      "ok": true,
+      "s_per_grad_step": 10.605174120001417,
+      "vram_peak_alloc_GiB": 8.971474170684814,
+      "host_peak_rss_GiB": 2.225513458251953
+    },
+    {
+      "n_tickers": 504,
+      "minibatch": 128,
+      "lookback": 60,
+      "mb_features_MiB": 221.484375,
+      "ok": true,
+      "s_per_grad_step": 29.13399528266503,
+      "vram_peak_alloc_GiB": 17.92452096939087,
+      "host_peak_rss_GiB": 2.225513458251953
+    },
+    {
+      "n_tickers": 504,
+      "minibatch": 256,
+      "lookback": 60,
+      "mb_features_MiB": 442.96875,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 1008.00 MiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 Gi",
+      "host_peak_rss_GiB": 2.225513458251953
+    },
+    {
+      "n_tickers": 504,
+      "minibatch": 512,
+      "lookback": 60,
+      "mb_features_MiB": 885.9375,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 1.91 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 2.5784263610839844
+    },
+    {
+      "n_tickers": 645,
+      "minibatch": 32,
+      "lookback": 60,
+      "mb_features_MiB": 70.86181640625,
+      "ok": true,
+      "s_per_grad_step": 16.473481272664987,
+      "vram_peak_alloc_GiB": 5.751791000366211,
+      "host_peak_rss_GiB": 2.5784263610839844
+    },
+    {
+      "n_tickers": 645,
+      "minibatch": 64,
+      "lookback": 60,
+      "mb_features_MiB": 141.7236328125,
+      "ok": true,
+      "s_per_grad_step": 10.350152231333292,
+      "vram_peak_alloc_GiB": 11.47393798828125,
+      "host_peak_rss_GiB": 2.5784263610839844
+    },
+    {
+      "n_tickers": 645,
+      "minibatch": 128,
+      "lookback": 60,
+      "mb_features_MiB": 283.447265625,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 1.18 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 2.5784263610839844
+    },
+    {
+      "n_tickers": 645,
+      "minibatch": 256,
+      "lookback": 60,
+      "mb_features_MiB": 566.89453125,
+      "ok": false,
+      "error": "CUDA out of memory. Tried to allocate 2.36 GiB. GPU 0 has a total capacity of 8.00 GiB of which 0 bytes is free. Including non-PyTorch memory, this process has 17179869184.00 GiB m",
+      "host_peak_rss_GiB": 2.5784263610839844
+    },
+    {
+      "n_tickers": 645,
+      "minibatch": 512,
+      "lookback": 60,
+      "mb_features_MiB": 1133.7890625,
+      "ok": false,
+      "error": "CUDA error: device not ready",
+      "host_peak_rss_GiB": 2.8238487243652344
+    }
+  ]
+}

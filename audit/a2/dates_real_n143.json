@@ -1,0 +1,35 @@
+{
+  "panel": "real",
+  "rows": [
+    {
+      "seed": 0,
+      "n_tickers": 143,
+      "panel_dates": 1972,
+      "distinct_dates_per_update": 1414,
+      "distinct_date_stock_pairs_per_update": 202202,
+      "encoder_sequences_per_update": 2930928,
+      "redundancy_ratio_per_update": 14.495049504950495,
+      "sequences_if_cached_whole_panel_once": 281996
+    },
+    {
+      "seed": 1,
+      "n_tickers": 143,
+      "panel_dates": 1972,
+      "distinct_dates_per_update": 1414,
+      "distinct_date_stock_pairs_per_update": 202202,
+      "encoder_sequences_per_update": 2930928,
+      "redundancy_ratio_per_update": 14.495049504950495,
+      "sequences_if_cached_whole_panel_once": 281996
+    },
+    {
+      "seed": 2,
+      "n_tickers": 143,
+      "panel_dates": 1972,
+      "distinct_dates_per_update": 1414,
+      "distinct_date_stock_pairs_per_update": 202202,
+      "encoder_sequences_per_update": 2930928,
+      "redundancy_ratio_per_update": 14.495049504950495,
+      "sequences_if_cached_whole_panel_once": 281996
+    }
+  ]
+}

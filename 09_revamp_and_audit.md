@@ -597,3 +597,69 @@ own theoretical floor.
 depth and series-code availability (§4.4), and the assertion that share-rounding
 mismatch causes most of the 11% NAV divergence (§2, row 12) — that one is
 plausible and untested.
+
+---
+
+## 10. Run queue
+
+Written 2026-09-05 after A0–A3. **Nothing here has been launched.** Ordered so
+that each run answers a question the next one depends on, and so that no GPU time
+is spent on a workload that is still padding.
+
+### 10.0 Blocking code fixes — no GPU, must land first
+
+Every run below is meaningless until these are done. All are verified defects
+with `file:line`; none is speculative.
+
+| # | Fix | Why it blocks runs |
+|---|---|---|
+| B1 | `num_sectors` 8 → 14 (`heads.py:181`, `actor_critic.py:30`, `graph.py:82`) | hard crash: `sector_id=14` → `index 13 is out of bounds`. Introduced by the universe expansion. |
+| B2 | Panel path plumbing — `train.py:33`, `walk_forward.py:59`, `paper_run.py:266`, `evaluate.py:43` hardcode `data/panels` | the rebuilt panel is unreachable; runs silently use the stale 163-ticker one |
+| B3 | Purge gap 1 → 3 months (4 for margin) | 19–23 trading days against 60-day features on all 8 boundaries |
+| B4 | `turnover` computed from post-trade shares (`panel_env.py:279,286-288`) | it measures NAV drift, not turnover — it feeds `turnover_penalty` in the reward |
+| B5 | `MomentumTopK` K=5→20 and rank on `log_return_20d` not `[:,0]` (`baselines.py:110`) | the momentum benchmark is wrong in two ways |
+| B6 | Dropout inversion (`ppo.py:218` / `:445`) | no dropout during updates, dropout ON during eval |
+| B7 | `beta_nifty_60d` silent `pl.lit(1.0)` fallback (`features.py:293`) | the feature dies again on any rebuild whose config omits the index |
+
+B1, B2, B7 are required for R1 to produce a usable panel. B3–B6 are required for
+any *number* off that panel to mean anything.
+
+### 10.1 The queue
+
+Durations are projections from A2's measured scaling unless marked MEASURED.
+Config throughout: **N=504, L=30, minibatch 64** — see §5 R3 and the VRAM cliff.
+
+| # | Run | Needs | Est. | Answers |
+|---|---|---|---|---|
+| Q1 | **Config confirmation** — short train at 504/L=30/mb=64 | B1, B2 | **~20 min** | does it fit under 8 GiB, and what is the real s/grad-step? Everything below is re-costed from this. |
+| Q2 | **Panel rebuild** (R1) — `build_features` over the 645-ticker store | B1, B2, B3, B7 | ~20–40 min, CPU | a panel whose 504 columns are real, not 72% padding |
+| Q3 | **Baseline table** (R2) — 5 baselines × 3 rebalance frequencies × 4 benchmarks, net of cost **and tax** | Q2, B4, B5 | ~2–4 h, mostly CPU | **the bar.** Nothing else in the project means anything without it. |
+| Q4 | **Supervised rank IC** (R4) — forward 5d/20d cross-sectional | Q2 | ~1–2 h | is there signal in these 15 features *at all*? A hard no here stops the programme, and that is a good outcome. |
+| Q5 | **Encoder-caching validation** (R3) — only if R4 clears and the encoder is frozen | Q4 | ~1 h | does caching deliver the projected 47×? |
+| Q6 | **Deterministic allocator** (R5) | Q3, Q4 | ~2–4 h | does a no-learning allocator beat the Q3 bar? |
+| Q7 | **PPO, 2M steps, 1 window, 1 seed** | Q1–Q6 | **~7–8 h** | the first honest RL number |
+| Q8 | **Phase 1 A/B** — 1 window × 3 seeds × 2 arms | Q7 | **~45–48 h** | only if R7's correlation CI excludes zero |
+| Q9 | **Full walk-forward** — 4+ windows × 3 seeds × 2 arms | Q8 | **~8–10 days** | the real out-of-sample result |
+
+### 10.2 Notes on scheduling
+
+**Q1 first, always.** Every downstream estimate is extrapolated from a synthetic
+measurement on a padded workload. Twenty minutes replaces all of it with a real
+number, and if `504/L=30/mb=64` does not fit, everything below is wrong.
+
+**Q3 and Q4 are the decision points**, not Q7. Q3 sets the bar; Q4 says whether
+signal exists. Reaching Q7 without them means spending 8 hours to compare against
+a benchmark that is wrong (§4.3) and a feature set that may carry nothing.
+
+**Q8 and Q9 are overnight/multi-day jobs.** Everything above fits in a working
+day. Do not start Q9 until Q8's correlation is in hand — `09` §3 shows the −0.86
+motivating Phase 1 has a 95% CI of (−0.997, +0.583).
+
+**Never launch a spilling configuration.** The penalty is a step function: at 504
+tickers, L=30 at mb=128 costs 188 h against L=20's 13.8 h. If a config change
+pushes past ~7.5 GiB, re-measure before committing wall clock.
+
+**Launch discipline** (learned the hard way in A2): every long remote run writes
+its result to a file *on the box* and is launched by bare path through a script.
+An inline `nohup … & echo $!` loses its redirect to PowerShell's argv re-parsing
+and the job dies unnoticed.

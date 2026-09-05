@@ -1,0 +1,162 @@
+{
+  "device": "cuda",
+  "n_tickers": 504,
+  "lookback": 60,
+  "minibatch": 128,
+  "amp_bf16": true,
+  "compile": false,
+  "profiled_grad_steps": 6,
+  "profiler_flops_per_grad_step": 8763433469.0,
+  "profiler_self_device_ms_per_grad_step": 58520.346098499904,
+  "grad_steps_per_update": 128,
+  "untimed_s_per_grad_step": 29.265746949500073,
+  "untimed_s_per_update_gradonly": 3746.0156095360094,
+  "memcpy": {
+    "Memcpy HtoD (Pageable -> Device)": {
+      "GiB_per_grad_step": 0.21708059310913086,
+      "GiB_per_update": 27.78631591796875,
+      "calls_per_grad_step": 12.0,
+      "ms_per_grad_step": 130.0126954999999
+    },
+    "Memcpy DtoD (Device -> Device)": {
+      "GiB_per_grad_step": 0.023312091827392578,
+      "GiB_per_update": 2.98394775390625,
+      "calls_per_grad_step": 4.0,
+      "ms_per_grad_step": 5.057898166666667
+    },
+    "Memset (Device)": {
+      "GiB_per_grad_step": 0.00023582857102155685,
+      "GiB_per_update": 0.030186057090759277,
+      "calls_per_grad_step": 33.0,
+      "ms_per_grad_step": 0.035477166666666685
+    },
+    "Memcpy DtoH (Device -> Pinned)": {
+      "GiB_per_grad_step": 3.725290298461914e-09,
+      "GiB_per_update": 4.76837158203125e-07,
+      "calls_per_grad_step": 4.0,
+      "ms_per_grad_step": 0.0043623333333333335
+    }
+  },
+  "memcpy_total_h2d_GiB_per_update": 27.78631591796875,
+  "memcpy_total_d2h_GiB_per_update": 4.76837158203125e-07,
+  "leading_dim_one_ops": [
+    {
+      "op": "aten::transpose",
+      "shapes": "[[1, 504, 128, 3, 64], [], []]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::as_strided",
+      "shapes": "[[1, 504, 128, 3, 64], [], [], []]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "aten::to",
+      "shapes": "[[1, 64], [], [], [], []]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::_to_copy",
+      "shapes": "[[1, 64], [], [], [], [], [], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::copy_",
+      "shapes": "[[1, 64], [1, 64], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::t",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::transpose",
+      "shapes": "[[1, 64], [], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::as_strided",
+      "shapes": "[[1, 64], [], [], []]",
+      "calls_per_update": 768.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 505], []]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::mm",
+      "shapes": "[[1, 128], [128, 64]]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 1], []]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "ToCopyBackward0",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::to",
+      "shapes": "[[1, 64], [], [], [], [], [], [], []]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "torch::autograd::AccumulateGrad",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::detach",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "detach",
+      "shapes": "[[1, 64]]",
+      "calls_per_update": 384.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 64], []]",
+      "calls_per_update": 512.0
+    },
+    {
+      "op": "aten::mm",
+      "shapes": "[[1, 64512], [64512, 64]]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 128], []]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 32], []]",
+      "calls_per_update": 256.0
+    },
+    {
+      "op": "UnsqueezeBackward0",
+      "shapes": "[[1, 504, 128, 3, 64]]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::squeeze",
+      "shapes": "[[1, 504, 128, 3, 64], []]",
+      "calls_per_update": 128.0
+    },
+    {
+      "op": "aten::view",
+      "shapes": "[[1, 1, 192], []]",
+      "calls_per_update": 128.0
+    }
+  ],
+  "trace": "outputs/a2/trace_n504_L60_mb128.json",
+  "vram_peak_alloc_GiB": 17.924275875091553,
+  "vram_peak_reserved_GiB": 20.6640625
+}

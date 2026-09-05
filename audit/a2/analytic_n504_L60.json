@@ -1,0 +1,21 @@
+{
+  "n_tickers": 504,
+  "lookback": 60,
+  "minibatch": 128,
+  "tcn_MFLOP_per_stock_sequence": 7.8336,
+  "tcn_MACs_per_stock_sequence": 3.9168,
+  "tcn_per_block_MACs": {
+    "block0": 0.96768,
+    "block1": 1.47456,
+    "block2": 1.47456
+  },
+  "attn_GFLOP_per_grad_step": 10.437525504,
+  "head_GFLOP_per_grad_step": 0.54607872,
+  "sequences_per_grad_step": 64512,
+  "fwd_GFLOP_per_grad_step": 516.344807424,
+  "fwd_bwd_GFLOP_per_grad_step_x3": 1549.034422272,
+  "grad_steps_per_update": 128,
+  "fwd_bwd_TFLOP_per_update": 198.276406050816,
+  "updates_for_2M_env_steps": 488.28125,
+  "PFLOP_for_2M_env_steps": 96.814651392
+}
