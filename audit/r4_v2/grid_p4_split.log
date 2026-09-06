@@ -1,0 +1,20 @@
+2026-09-06 18:01:34.122 | INFO     | __main__:main:349 - Eligibility from data/panels_kite/full.parquet (2005-01-03..2026-09-04): 360 of 645 tickers have >= 252 tradeable days strictly before 2014-12-31.
+2026-09-06 18:01:34.200 | INFO     | __main__:main:355 -   already trading at panel start (2005): 236
+2026-09-06 18:01:34.201 | INFO     | __main__:main:355 -   listed 2006..2014: 126
+2026-09-06 18:01:34.201 | INFO     | __main__:main:355 -   listed after 2014: 283
+2026-09-06 18:01:34.242 | INFO     | __main__:main:371 -   UNRECOVERABLE: 645 of 645 tickers are still tradeable on 2026-09-04 (0 deaths in 2005..2026). Restricting the listing side does not fix this.
+2026-09-06 18:01:34.243 | INFO     | __main__:main:384 -   of active_tickers() (504): 277 eligible
+2026-09-06 18:01:34.586 | INFO     | __main__:main:407 - oos_r4_v2 (2016-07-01..2024-06-28): 645 tickers -> 360 kept, 285 dropped.
+2026-09-06 18:01:34.611 | INFO     | __main__:main:411 -   rows 1,277,100 -> 712,800; tradeable 924,559 -> 712,253
+2026-09-06 18:01:34.776 | INFO     | __main__:main:417 -   breadth (panel-wide, 645 tickers): tradeable names/date 466.9 (min 382, max 570) -> 359.7 (min 356, max 360)
+2026-09-06 18:01:34.776 | INFO     | __main__:main:417 -   breadth (env universe, active_tickers()=504): tradeable names/date 362.8 (min 295, max 443) -> 276.7 (min 273, max 277); k=30 is 8.27% -> 10.84% of the cross-section; names removed 86.1/date
+2026-09-06 18:01:34.777 | INFO     | __main__:main:417 -   sector retention (env universe): 1: 107->53 (50%), 2: 32->19 (59%), 3: 59->29 (49%), 4: 43->31 (72%), 5: 38->31 (82%), 6: 19->13 (68%), 7: 42->30 (71%), 8: 22->19 (86%), 9: 81->52 (64%)
+2026-09-06 18:01:34.777 | INFO     | __main__:main:417 -   phantom sectors: 227 of 504 active tickers have no rows in the restricted split and become all-zero columns with sector_id == 0 (0 of them are already absent from the source split). Never hand this split to a graph model (CLAUDE.md, phantom sectors).
+2026-09-06 18:01:34.777 | INFO     | __main__:main:417 -   cohort return (kept   ): equal-weight log return +0.1857/yr (~+20.4% CAGR), ann vol 0.1896, over 1980 dates
+2026-09-06 18:01:34.777 | INFO     | __main__:main:417 -   cohort return (dropped): equal-weight log return +0.2160/yr (~+24.1% CAGR), ann vol 0.1883, over 1980 dates
+2026-09-06 18:01:35.166 | INFO     | __main__:main:424 -   tail exposure (1960 dates, top-30 by r_hat_20d vs realised forward 20d return):
+2026-09-06 18:01:35.167 | INFO     | __main__:main:424 -     in the bottom decile: 11.40% of picks (a rate-blind pick would be 10%) -> 1.14x the population share
+2026-09-06 18:01:35.168 | INFO     | __main__:main:424 -     in the bottom 5%: 6.41% of picks (a rate-blind pick would be 5%) -> 1.28x the population share
+2026-09-06 18:01:35.882 | INFO     | __main__:main:448 - data/panels_kite/oos_r4_v2_pre2015.parquet: 712,800 rows, 360 tickers, 1980 dates
+2026-09-06 18:01:35.883 | INFO     | __main__:main:452 - SHA256=993d37b26751946a...  manifest=data/panels_kite/oos_r4_v2_pre2015.manifest.json
+2026-09-06 18:01:35.884 | INFO     | __main__:main:453 - Written only. Backtesting it is the orchestrator's serialised grid run: `uv run python scripts/run_allocator.py +split=oos_r4_v2_pre2015 ...`

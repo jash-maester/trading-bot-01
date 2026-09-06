@@ -1,0 +1,36 @@
+2026-09-06 17:58:40.819 | INFO     | trader.data.features:resolve_panels_root:115 - Panels root: /mnt/d/trading-bot-01/data/panels_kite  (data.panels_root)
+2026-09-06 17:58:40.924 | INFO     | trader.data.features:resolve_panels_root:142 -   train.parquet: 645 tickers, 3,038,595 rows, 2005-01-03..2023-12-29
+2026-09-06 17:58:40.937 | INFO     | trader.data.features:resolve_panels_root:142 -   val.parquet: 645 tickers, 120,615 rows, 2024-04-01..2024-12-31
+2026-09-06 17:58:40.952 | INFO     | trader.data.features:resolve_panels_root:142 -   test.parquet: 645 tickers, 228,975 rows, 2025-04-01..2026-09-04
+2026-09-06 17:58:41.001 | INFO     | trader.data.features:resolve_panels_root:142 -   full.parquet: 645 tickers, 3,468,165 rows, 2005-01-03..2026-09-04
+2026-09-06 17:58:41.060 | INFO     | __main__:main:452 - universe 504 from active_tickers(); 504 of them have rows in /mnt/d/trading-bot-01/data/panels_kite/oos_r4_v2.parquet — the rest are all-zero columns, mask False.
+2026-09-06 17:58:41.549 | INFO     | __main__:_dense_signal:136 - Signal /mnt/d/trading-bot-01/data/signal/r4_v2/predictions.parquet: 718340 rows, 718340 on-grid, 72.0% of the [T=1980, N=504] grid populated.
+2026-09-06 17:59:50.651 | INFO     | __main__:main:681 - 
+--------------------------------------------------------------------------------------------------------------------------
+R4 signal gate [r4_v2]: PASS — mean_ic_5d=0.03922295969298621 mean_ic_20d=0.043875958025581877 ic_ci_low=0.030818834372034008 n_windows=8
+--------------------------------------------------------------------------------------------------------------------------
+strategy                     K   band     freq  hor   Sharpe     CAGR      MDD     Turn  sold/reb       DP ₹  vs EW Δ CAGR
+--------------------------------------------------------------------------------------------------------------------------
+equal_weight                 -      -  monthly    -    1.336    0.270   -0.515    0.814       2.4     69,843             —
+null_signal (control)       30  0.000  monthly    -    1.275    0.258   -0.544    3.536     149.4    215,435       -0.0118
+allocator                   30  0.000  monthly  20d    1.902    0.452   -0.530    3.554     115.6    166,761       +0.1815
+allocator                   30  0.002  monthly  20d    1.779    0.408   -0.539    3.462      38.2     55,147       +0.1381
+allocator                   30  0.005  monthly  20d    1.737    0.384   -0.529    2.500      18.5     26,615       +0.1139
+allocator                   30  0.010  monthly  20d    1.815    0.385   -0.506    1.995      13.1     18,945       +0.1145
+allocator                   30  0.020  monthly  20d    1.992    0.414   -0.454    2.093      12.7     18,270       +0.1440
+--------------------------------------------------------------------------------------------------------------------------
+2026-09-06 17:59:50.653 | INFO     | __main__:main:682 - 6 runs logged to MLflow experiment 'allocator' (split=oos_r4_v2, signal_tag=r4_v2). A row here is a measurement, not a verdict: nothing is a winner without a walk-forward and a run ID (CLAUDE.md rule 2).
+🏃 View run equal_weight_monthly_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/f56dba7957b64516b25e491fc625b586
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run null_signal_k30_b0.0_monthly_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/c8d0d01ed85c494bb0736f90ddd61c94
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_b0.0_monthly_20d_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/1b87154e5423485cb68c6719dda8f94b
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_b0.002_monthly_20d_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/b2641920b5e142ca9b900fe39ae854c8
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_b0.005_monthly_20d_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/bc8cd50765a44f90877bd82333ad0e77
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_b0.01_monthly_20d_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/699a9e95d9394d2ba07f774a9927fcbe
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_b0.02_monthly_20d_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/4d32f14cb2394a57a2775359fbbbe3c8
+🧪 View experiment at: http://localhost:5555/#/experiments/2
