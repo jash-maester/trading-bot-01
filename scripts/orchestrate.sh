@@ -19,7 +19,15 @@ cd "$(dirname "$0")/.." || exit 1
 # needs a new RUN_TAG and the OLD SIGNAL_TAG.
 SIGNAL_TAG="${SIGNAL_TAG:-r4_v1}"
 TAG="${RUN_TAG:-$SIGNAL_TAG}"
-SPLIT="${SPLIT:-oos}"
+# The OOS slice is cut to the signal's prediction span, so it is per-signal:
+# r4_v2's warm-up prefix starts its predictions 59 trading days before r4_v1's,
+# and a slice built for one silently truncates the other.
+SPLIT="${SPLIT:-oos_${SIGNAL_TAG}}"
+# Whether run_allocator must see a PASS in gate.json. Default on: the gate is
+# now a window-level test (12_gate_decision.md) that r4_v1 and r4_v2 both
+# clear. Set REQUIRE_GATE=false only to measure a failed signal deliberately;
+# the verdict is stamped into every MLflow run either way.
+REQUIRE_GATE="${REQUIRE_GATE:-true}"
 STATUS="logs/orchestrate_${TAG}.status"
 mkdir -p logs
 : > "$STATUS"
@@ -44,13 +52,9 @@ else
 fi
 
 # ── Stage 2: R5 deterministic allocator grid ─────────────────────────────────
-# require_gate_pass=false is deliberate and loud: R4's gate returned FAIL, and
-# this stage exists to find out whether that verdict matters economically. Every
-# MLflow run it writes carries signal_gate_verdict=FAIL as a param, so no result
-# from tonight can later be mistaken for one that cleared the gate.
-say "stage 2: allocator grid on ${SPLIT} (signal ${SIGNAL_TAG}, run ${TAG}, gate override ON)"
+say "stage 2: allocator grid on ${SPLIT} (signal ${SIGNAL_TAG}, run ${TAG}, require_gate_pass=${REQUIRE_GATE})"
 if uv run python scripts/run_allocator.py data=kite_v1 \
-      +split="$SPLIT" +signal_tag="$SIGNAL_TAG" +require_gate_pass=false \
+      +split="$SPLIT" +signal_tag="$SIGNAL_TAG" +require_gate_pass="$REQUIRE_GATE" \
       +allocator.null_control=true \
       > "logs/${TAG}_allocator.log" 2>&1; then
     stamp "stage2 OK"

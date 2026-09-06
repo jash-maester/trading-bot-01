@@ -1,0 +1,3 @@
+2026-09-06 15:49:55.707 | INFO     | __main__:main:40 - r4_v2 predictions span 2016-07-01..2024-06-28  (718,340 rows)
+2026-09-06 15:49:57.365 | INFO     | __main__:main:55 - data/panels_kite/oos_r4_v2.parquet: 1,277,100 rows, 645 tickers, 1980 dates, tradeable 924,559
+2026-09-06 15:49:57.365 | INFO     | __main__:main:60 - SHA256=c2253677754a6662...

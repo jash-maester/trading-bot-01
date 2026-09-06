@@ -54,6 +54,24 @@ services)
         "select 'alembic: '||version_num from alembic_version" 2>&1 | sed 's/^/  /'
     ;;
 
+wait)
+    # Block until an orchestrate.sh status file reports DONE or FAIL, then print
+    # it and the tail of the named log. Exists because every inline SSH wait
+    # loop with a quoted pattern has been re-parsed by PowerShell in transit —
+    # a regex containing `|` inside escaped quotes becomes a pipeline on the
+    # Windows side. Bare-path invocation with plain arguments is the one
+    # shape that survives.  usage: win_bootstrap.sh wait <status-file> [log] [timeout_s]
+    shift || true
+    status="${1:?status file}"; logf="${2:-}"; limit="${3:-3600}"
+    t=0
+    until grep -q DONE "$status" 2>/dev/null || grep -q FAIL "$status" 2>/dev/null; do
+        sleep 15; t=$((t+15))
+        if [ "$t" -ge "$limit" ]; then say "TIMEOUT after ${limit}s"; break; fi
+    done
+    say "status"; cat "$status"
+    if [ -n "$logf" ] && [ -f "$logf" ]; then say "tail $logf"; tail -40 "$logf"; fi
+    ;;
+
 chainbg)
     # Background a shell stage-runner (scripts/orchestrate.sh) the same way
     # `runbg` backgrounds a Python entrypoint. Separate command because runbg
