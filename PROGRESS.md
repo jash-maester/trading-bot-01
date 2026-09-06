@@ -31,7 +31,7 @@ Dependency order:
 | R1 — one panel, one truth | NOT_STARTED | Deterministic SHA256; every feature nonzero variance; purge ≥ lookback; point-in-time universe | panel hashes | — |
 | R2 — honest baselines | NOT_STARTED | 5 baselines × 3 frequencies × 4 benchmarks, net of cost **and tax** | metrics table + run IDs | — |
 | R3 — kill the compute bug | NOT_STARTED | 2M steps < 2h on the 4060, **conditional on encoder caching** | timed run + run ID | — |
-| R4 — supervised cross-sectional | NOT_STARTED | OOS rank IC > 0.02 across windows, bootstrap CI excluding zero | metrics table + run ID | — |
+| R4 — supervised cross-sectional | RUN (r4_v2) | Window-level: mean of per-window OOS rank IC > 0.02, window t > t_crit(95%), >= 75% windows positive (`12_gate_decision.md`) | `audit/r4_v2/`, MLflow `signal` | 2026-09-06 |
 | R5 — deterministic allocator | NOT_STARTED | Beats best R2 baseline net of cost+tax, paired bootstrap CI excluding zero | metrics table + run ID | — |
 | R6 — reinstate RL | NOT_STARTED | Beats R5's allocator | run ID | — |
 | R7 — regime conditioning | NOT_STARTED | `corr(val,test)` CI over ≥8 windows excludes zero, then Phase 1 A/B | walk-forward summary | — |

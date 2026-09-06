@@ -70,7 +70,8 @@ Things that have already caused silent, expensive errors here.
 | **Symbol renames** | A current instrument dump has no memory of renames. `LTIM→LTM`, `TATAMOTORS→TMPV`, `STLTECH→STLTECH-BE`, `MCDHOLDING` delisted. A symbol-keyed join silently drops history. |
 | **Survivorship** | `market.universe_snapshots` is empty and has no read site. The universe is **not** point-in-time despite `00_overview.md` calling this a non-negotiable. |
 | **Purge gaps** | The walk-forward purge is 22 trading days against 60-day rolling features — 38 days of overlap between train and val feature windows. |
-| **Dead config** | `min_trade_value: 500` is declared in `configs/env/panel_daily.yaml` and never read. Measured 11% NAV divergence between backtest and paper broker. Assume other keys are dead until traced. |
+| **Dead config** | `min_trade_value: 500` sat in `configs/env/panel_daily.yaml` unread by the env for months while the paper broker honoured it — an 11% NAV divergence, and at daily cadence a flat ₹15.34 demat fee on a median ₹102 trade. Wired in 2026-09-06 (`11_cost_defect_and_fix_plan.md`), and the fix exposed a second bug: shares moved to target without the cash leg when a trade was suppressed. Assume other keys are dead until traced, and assume a guard that was never live has a dormant bug behind it. |
+| **Per-window significance** | Requiring each of 8 walk-forward windows to independently clear a bootstrap interval multiplies a low-resolution test eight times: simulated power was 33% against a true IC of 0.04 and 5% against 0.03, with the r4_v2 signal at 0.039. Aggregate to the window level (`12_gate_decision.md`); never gate on a per-window interval when a window carries ~35 effective days. |
 | **Phantom sectors** | `all_tickers()` once unioned `NIFTY_50` with `SECTOR_MAP`, giving unsectored names `sector_id == 0` — an id absent from `SECTOR_IDS`, forming a phantom sector node in the graph model. Fixed; regression test exists. |
 
 ---

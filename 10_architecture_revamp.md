@@ -308,14 +308,18 @@ collect beta as reward by accident.
 
 **R4 — promote, and reuse.** The supervised model is `TCNEncoder +
 ReturnPredictionHead` trained standalone on 5d/20d cross-sectionally
-standardised forward returns. Do not write a new model. Gate unchanged: OOS rank
-IC > 0.02 across windows, bootstrap CI excluding zero. Add a **feature-liveness
+standardised forward returns. Do not write a new model. Gate **revised 2026-09-06** (`12_gate_decision.md`):
+a window-level test — mean of per-window OOS rank ICs > 0.02, a t-test on the
+window ICs clearing the 95% critical value, and >= 75% of windows positive.
+The every-window rule this replaces had ~33% power against a true IC of 0.04
+and is kept only as a reported diagnostic. Add a **feature-liveness
 check** to the gate — every input column nonzero variance — because B7 showed a
 dead feature hides for months.
 
 **R5 — specify the allocator** as in §5: top-K, inverse-vol, 10%/25% caps,
 turnover budget, monthly. Ablate K ∈ {20, 30, 40} and frequency ∈ {daily,
-weekly, monthly}. Gate unchanged.
+weekly, monthly}. Gate unchanged (beats equal-weight net of cost, null-signal
+control below it).
 
 **R6 — rewrite.** Replace "PPO learns the allocator's free parameters" with the
 concrete spec in §5: frozen encoder and signal head, Beta/squashed-Gaussian

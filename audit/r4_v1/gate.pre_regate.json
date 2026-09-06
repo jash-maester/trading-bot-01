@@ -1,0 +1,50 @@
+{
+  "verdict": "FAIL",
+  "mean_ic_5d": 0.04145092039129582,
+  "mean_ic_20d": 0.045595155533162714,
+  "ic_ci_low": 0.02970339242287336,
+  "ic_ci_high": 0.0626037846997924,
+  "icir": 0.5092448613504746,
+  "n_windows": 8,
+  "gate_horizon": 20,
+  "min_mean_ic": 0.02,
+  "per_horizon": {
+    "5": {
+      "passed": false,
+      "mean_ic": 0.04145092039129582,
+      "ci_low": 0.03288087863345629,
+      "ci_high": 0.05010156012262082,
+      "icir": 0.44165615812362313,
+      "hit_rate": 0.6886920980926431,
+      "decile_spread": 0.006915013207097163,
+      "n_days": 1468,
+      "n_skipped_thin": 512,
+      "n_skipped_degenerate": 0,
+      "ic_acf_lag1": 0.752440673877541,
+      "n_eff": 207.37768539898948
+    },
+    "20": {
+      "passed": false,
+      "mean_ic": 0.045595155533162714,
+      "ci_low": 0.02970339242287336,
+      "ci_high": 0.0626037846997924,
+      "icir": 0.5092448613504746,
+      "hit_rate": 0.7181008902077152,
+      "decile_spread": 0.015864289711227237,
+      "n_days": 1348,
+      "n_skipped_thin": 632,
+      "n_skipped_degenerate": 0,
+      "ic_acf_lag1": 0.9030076183732705,
+      "n_eff": 68.70478560910622
+    }
+  },
+  "reasons": [
+    "W3 h=5: mean IC +0.0198 <= 0.020",
+    "W3 h=5: 95% CI [-0.0144, +0.0518] includes zero",
+    "W3 h=20: mean IC +0.0070 <= 0.020",
+    "W3 h=20: 95% CI [-0.0529, +0.0600] includes zero",
+    "W5 h=20: 95% CI [-0.0023, +0.0768] includes zero",
+    "W8 h=20: mean IC +0.0141 <= 0.020",
+    "W8 h=20: 95% CI [-0.0298, +0.0555] includes zero"
+  ]
+}

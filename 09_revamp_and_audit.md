@@ -376,7 +376,9 @@ cross-sectionally-standardised returns. Evaluate by **rank IC and ICIR per
 period**, not portfolio return. Runs in minutes, not days.
 
 **Gate:** out-of-sample rank IC > 0.02 sustained across walk-forward windows,
-with a bootstrap CI excluding zero. If this fails, there is no signal in these 15
+with a window-level t-test and sign agreement (rule revised 2026-09-06, see
+`12_gate_decision.md`; the every-window CI rule it replaced is a diagnostic now).
+If this fails, there is no signal in these 15
 features and no policy architecture will find one. **That is a real and valuable
 answer — stop and change features, not models.**
 

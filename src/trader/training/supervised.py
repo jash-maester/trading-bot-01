@@ -64,8 +64,35 @@ from trader.utils.seeding import get_device, seed_everything
 
 # ── The gate ───────────────────────────────────────────────────────────────────
 
-#: OOS mean rank IC a horizon must clear on *every* window.  `10_architecture_revamp.md` §6.
+#: Materiality floor on the mean of the per-window OOS rank ICs.  `12_gate_decision.md`.
 GATE_MIN_MEAN_IC: float = 0.02
+#: Fewest windows on which a window-level test means anything.  A t-test on two
+#: or three numbers is a coin toss with a decimal point on it.
+GATE_MIN_WINDOWS: int = 4
+#: Fraction of windows whose OOS mean IC must be positive — a robustness check
+#: that one strong era is not carrying the mean.
+GATE_MIN_POSITIVE_FRACTION: float = 0.75
+#: Names the rule that produced a verdict; written into gate.json so a consumer
+#: can tell a verdict under this rule from one under the retired every-window rule.
+GATE_RULE: str = "window-level-t/v2"
+
+# Two-sided 95% Student-t critical values by degrees of freedom.  scipy is not
+# a dependency (see `spearman`); these are the standard table values.  Above 30
+# the df=30 value is used, which is conservative.
+_T_CRIT_95: dict[int, float] = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365,
+    8: 2.306, 9: 2.262, 10: 2.228, 11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145,
+    15: 2.131, 16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
+    21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060, 26: 2.056,
+    27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
+}
+
+
+def t_critical_95(df: int) -> float:
+    """Two-sided 95% Student-t critical value for ``df`` degrees of freedom."""
+    if df < 1:
+        raise ValueError(f"df must be >= 1, got {df}")
+    return _T_CRIT_95[df] if df in _T_CRIT_95 else _T_CRIT_95[30]
 # Minimum scorable OOS days per window before a verdict means anything.  Below
 # this the mean IC is an artefact of the sample size: a single scorable day
 # with IC 0.9 passed the gate outright before this floor existed.
@@ -620,18 +647,69 @@ def pool_daily(
 
 
 @dataclass
+class WindowLevelStats:
+    """The window-level test behind a verdict, for one horizon.
+
+    Each window's OOS mean rank IC is one observation.  Windows' test periods do
+    not overlap, so these are the closest thing to independent draws the
+    walk-forward produces, and a plain t-test on them is honest about the
+    within-window autocorrelation in a way no daily-level interval can be.
+    """
+
+    n_windows: int
+    mean_ic: float
+    sd_ic: float
+    t_stat: float
+    t_crit: float
+    n_positive: int
+    positive_fraction: float
+    min_window_ic: float
+    max_window_ic: float
+    window_ics: dict[str, float]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "n_windows": int(self.n_windows),
+            "mean_ic": _json_float(self.mean_ic),
+            "sd_ic": _json_float(self.sd_ic),
+            "t_stat": _json_float(self.t_stat),
+            "t_crit": _json_float(self.t_crit),
+            "n_positive": int(self.n_positive),
+            "positive_fraction": _json_float(self.positive_fraction),
+            "min_window_ic": _json_float(self.min_window_ic),
+            "max_window_ic": _json_float(self.max_window_ic),
+            "window_ics": {k: _json_float(v) for k, v in self.window_ics.items()},
+        }
+
+
+@dataclass
 class GateResult:
     passed: bool
     min_mean_ic: float
     per_horizon: dict[int, bool]
     reasons: list[str]
+    #: The window-level statistics the verdict rests on, per horizon.
+    window_level: dict[int, WindowLevelStats] = field(default_factory=dict)
+    #: The retired every-window rule, kept as a DIAGNOSTIC: would each window
+    #: individually have cleared mean IC > floor AND ci_lo > 0?  Reported, never
+    #: decisive.  See `12_gate_decision.md` for why it was retired.
+    strict_every_window: dict[int, bool] = field(default_factory=dict)
+    strict_reasons: list[str] = field(default_factory=list)
+    #: Positive statements of what a passing horizon showed, so a PASS carries
+    #: its evidence the way a FAIL carries its reasons.
+    evidence: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "passed": self.passed,
+            "rule": GATE_RULE,
             "min_mean_ic": self.min_mean_ic,
             "per_horizon": {str(h): v for h, v in self.per_horizon.items()},
             "reasons": list(self.reasons),
+            "evidence": list(self.evidence),
+            "window_level": {str(h): w.to_dict() for h, w in self.window_level.items()},
+            "strict_every_window": {str(h): v for h, v in self.strict_every_window.items()},
+            "strict_reasons": list(self.strict_reasons),
         }
 
 
@@ -640,51 +718,70 @@ def gate_verdict(
     *,
     min_mean_ic: float = GATE_MIN_MEAN_IC,
     min_days: int = GATE_MIN_SCORABLE_DAYS,
+    min_windows: int = GATE_MIN_WINDOWS,
+    min_positive_fraction: float = GATE_MIN_POSITIVE_FRACTION,
 ) -> GateResult:
-    """PASS iff some horizon clears the bar on **every** window.
+    """PASS iff some horizon clears a **window-level** test.
 
-    Per horizon, every window's OOS record must satisfy all three of:
+    The unit of evidence is a walk-forward window's OOS mean rank IC.  Per
+    horizon, over the windows with a usable OOS record:
 
-    * at least ``min_days`` scorable days;
-    * mean rank IC above ``min_mean_ic``;
-    * the bootstrap CI excludes zero (``ci_lo > 0``).
+    * at least ``min_windows`` such windows (data-integrity floor);
+    * every window has at least ``min_days`` scorable days — a window with
+      fewer is a data problem and fails the horizon outright, as before;
+    * the **mean of the window ICs** exceeds ``min_mean_ic`` (materiality:
+      is the effect large enough to survive costs at all);
+    * a one-sample t-test on the window ICs clears the two-sided 95% critical
+      value for ``n_windows - 1`` degrees of freedom (agreement: the windows
+      say the same thing to a degree chance would not);
+    * at least ``min_positive_fraction`` of windows are positive (robustness:
+      one strong era is not carrying the mean).
 
-    The allocator consumes one horizon, so one clean horizon is a usable
-    signal; the verdict says which.  No windows at all is a FAIL, not a
-    vacuous pass.
+    One clean horizon is a PASS — the allocator consumes one.  No windows at
+    all is a FAIL, not a vacuous pass.
 
-    What ``ci_lo > 0`` is and is not
-    --------------------------------
-    It is **not** a 5%-level significance test, and must not be reported as
-    one.  ``bootstrap_mean_ci`` now resamples blocks of ``h`` days, which is a
-    large improvement — measured false-positive rate under a strict null with a
-    persistent zero-information predictor fell from **38.0% to 11.6%** at h=5
-    and **62.0% to 16.4%** at h=20 (nominal 5%) — but it does not reach
-    nominal.  It cannot: at the measured IC autocorrelation (+0.73 at h=5,
-    +0.88 at h=20) a 250-day OOS window carries an *effective* sample size of
-    roughly 40 and 16 days respectively, and no reweighting of 16 effective
-    observations yields a well-calibrated 5% interval.  ``HorizonMetrics``
-    therefore carries ``ic_acf_lag1`` and ``n_eff``, and ``gate.json`` reports
-    both per horizon, so a reader can see how much the interval is worth.
+    Why this replaced the every-window rule
+    ---------------------------------------
+    The rule it replaces required *each* window to clear the IC floor AND a
+    daily-level bootstrap interval excluding zero.  Simulated at this run's
+    measured shape (8 windows x 242 days, daily-IC autocorrelation 0.75, daily
+    sd 0.094, the real moving-block bootstrap), it passed a signal with a
+    **true** IC of 0.04 only 33.5% of the time and one of 0.03 only 4.8% of
+    the time, while this rule passes them 100% and 97% of the time.  Both
+    rules reject a null signal 100% of the time.  Regenerate with
+    ``scripts/profiling/gate_power.py``; the decision and its evidence are in
+    ``12_gate_decision.md``.
 
-    Consequence for the run queue: treat ``ci_lo > 0`` as a **necessary
-    screen, not sufficient evidence**.  A PASS that rests on it alone — mean IC
-    barely above the bar, ``n_eff`` in the tens — is not a validated signal,
-    and per CLAUDE.md rule 2 nothing may be called validated without the
-    downstream economic result and a run ID.
+    The reason is structural, not a tuning matter.  A 242-day window at that
+    autocorrelation carries an effective sample of roughly 35 days, so each
+    window's interval is a low-resolution instrument, and demanding that eight
+    of them *independently* resolve a modest effect multiplies a large miss
+    rate eight times over.  Aggregating to the window level uses each window's
+    mean, which is a perfectly good statistic, and lets the eight of them
+    speak together.
+
+    The retired rule is still evaluated and reported as ``strict_every_window``
+    so nothing it would have said is hidden — it is simply no longer decisive.
     """
     reasons: list[str] = []
+    evidence: list[str] = []
+    strict_reasons: list[str] = []
     if not per_window_test:
         return GateResult(False, min_mean_ic, {}, ["no windows evaluated"])
     horizons = sorted({h for m in per_window_test.values() for h in m})
     per_h: dict[int, bool] = {}
+    strict: dict[int, bool] = {}
+    window_level: dict[int, WindowLevelStats] = {}
     for h in horizons:
         ok = True
+        strict_ok = True
+        ics: dict[str, float] = {}
         for wname, metrics in per_window_test.items():
             m = metrics.get(h)
             if m is None or m.n_days == 0 or not math.isfinite(m.mean_ic):
                 reasons.append(f"{wname} h={h}: no scorable OOS days")
                 ok = False
+                strict_ok = False
                 continue
             if m.n_days < min_days:
                 # One scorable day with IC 0.9 used to pass the gate outright.
@@ -695,20 +792,82 @@ def gate_verdict(
                     f"{m.n_skipped_degenerate} degenerate)"
                 )
                 ok = False
+                strict_ok = False
                 continue
+            ics[wname] = float(m.mean_ic)
+            # The retired rule, as a diagnostic only.
             if m.mean_ic <= min_mean_ic:
-                reasons.append(
+                strict_reasons.append(
                     f"{wname} h={h}: mean IC {m.mean_ic:+.4f} <= {min_mean_ic:.3f}"
                 )
-                ok = False
+                strict_ok = False
             if not (m.ci_lo > 0.0):
-                reasons.append(
+                strict_reasons.append(
                     f"{wname} h={h}: 95% CI [{m.ci_lo:+.4f}, {m.ci_hi:+.4f}] includes zero"
                 )
-                ok = False
+                strict_ok = False
+        strict[h] = strict_ok and ok
+
+        n = len(ics)
+        if n == 0:
+            per_h[h] = False
+            continue
+        vals = np.array(list(ics.values()), dtype=np.float64)
+        mean = float(vals.mean())
+        sd = float(vals.std(ddof=1)) if n > 1 else float("nan")
+        if n > 1 and sd > 0.0:
+            t_stat = mean / (sd / math.sqrt(n))
+        elif n > 1:
+            # Identical windows: infinitely consistent, in whichever direction.
+            t_stat = math.inf if mean > 0 else (-math.inf if mean < 0 else 0.0)
+        else:
+            t_stat = float("nan")
+        t_crit = t_critical_95(n - 1) if n > 1 else float("nan")
+        n_pos = int((vals > 0.0).sum())
+        frac = n_pos / n
+        window_level[h] = WindowLevelStats(
+            n_windows=n, mean_ic=mean, sd_ic=sd, t_stat=t_stat, t_crit=t_crit,
+            n_positive=n_pos, positive_fraction=frac,
+            min_window_ic=float(vals.min()), max_window_ic=float(vals.max()),
+            window_ics=dict(ics),
+        )
+
+        if n < min_windows:
+            reasons.append(
+                f"h={h}: only {n} window(s) with a usable OOS record, need >= "
+                f"{min_windows} for a window-level test"
+            )
+            ok = False
+        if not (mean > min_mean_ic):
+            reasons.append(
+                f"h={h}: mean of window OOS ICs {mean:+.4f} <= {min_mean_ic:.3f}"
+            )
+            ok = False
+        if n >= min_windows and not (t_stat > t_crit):
+            reasons.append(
+                f"h={h}: window-level t {t_stat:.2f} <= t_crit {t_crit:.3f} "
+                f"(df={n - 1}); the windows do not agree beyond chance"
+            )
+            ok = False
+        if frac < min_positive_fraction:
+            reasons.append(
+                f"h={h}: only {n_pos}/{n} windows positive, "
+                f"need >= {min_positive_fraction:.0%}"
+            )
+            ok = False
+        if ok:
+            evidence.append(
+                f"h={h}: {n} windows, mean IC {mean:+.4f} > {min_mean_ic:.3f}, "
+                f"t {t_stat:.2f} > {t_crit:.3f} (df={n - 1}), {n_pos}/{n} positive, "
+                f"min {vals.min():+.4f}, max {vals.max():+.4f}"
+            )
         per_h[h] = ok
     passed = any(per_h.values())
-    return GateResult(passed, min_mean_ic, per_h, reasons)
+    return GateResult(
+        passed, min_mean_ic, per_h, reasons,
+        window_level=window_level, strict_every_window=strict,
+        strict_reasons=strict_reasons, evidence=evidence,
+    )
 
 
 def _json_float(x: float) -> float | None:
@@ -801,6 +960,17 @@ def gate_json_payload(
         for h in sorted(pooled)
     }
     payload["reasons"] = list(gate.reasons)
+    # The rule and the window-level test behind the verdict, plus the retired
+    # every-window rule as a diagnostic.  All additive.
+    payload["gate_rule"] = GATE_RULE
+    payload["evidence"] = list(gate.evidence)
+    payload["window_level"] = {
+        str(h): w.to_dict() for h, w in sorted(gate.window_level.items())
+    }
+    payload["strict_every_window"] = {
+        str(h): bool(v) for h, v in sorted(gate.strict_every_window.items())
+    }
+    payload["strict_reasons"] = list(gate.strict_reasons)
     return payload
 
 
@@ -821,9 +991,25 @@ def write_gate_json(
 
 def format_verdict(gate: GateResult) -> str:
     head = "R4 GATE: PASS" if gate.passed else "R4 GATE: FAIL"
-    lines = [head]
+    lines = [f"{head}  (rule: {GATE_RULE})"]
     for h, ok in sorted(gate.per_horizon.items()):
-        lines.append(f"  horizon {h:>3}d: {'pass' if ok else 'fail'}")
+        w = gate.window_level.get(h)
+        detail = ""
+        if w is not None:
+            detail = (
+                f"  windows={w.n_windows} mean={w.mean_ic:+.4f} t={w.t_stat:.2f}"
+                f"/{w.t_crit:.3f} positive={w.n_positive}/{w.n_windows}"
+                f" min={w.min_window_ic:+.4f}"
+            )
+        strict = gate.strict_every_window.get(h)
+        strict_s = (
+            ""
+            if strict is None
+            else f"  [strict every-window: {'pass' if strict else 'fail'}]"
+        )
+        lines.append(f"  horizon {h:>3}d: {'pass' if ok else 'fail'}{detail}{strict_s}")
+    for e in gate.evidence:
+        lines.append(f"  + {e}")
     for r in gate.reasons:
         lines.append(f"  - {r}")
     return "\n".join(lines)

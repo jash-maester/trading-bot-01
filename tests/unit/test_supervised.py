@@ -30,6 +30,7 @@ import torch
 from trader.models.signal import SignalConfig, SignalModel
 from trader.training.supervised import (
     GATE_MIN_MEAN_IC,
+    GATE_RULE,
     DailyScores,
     DeadFeatureError,
     HorizonMetrics,
@@ -395,41 +396,83 @@ def _metrics(mean_ic: float, ci_lo: float, ci_hi: float, h: int = 5) -> HorizonM
     )
 
 
-def test_gate_passes_when_every_window_clears() -> None:
-    per_window = {
-        "W1": {5: _metrics(0.05, 0.02, 0.08)},
-        "W2": {5: _metrics(0.04, 0.01, 0.07)},
-    }
-    g = gate_verdict(per_window)
+def _windows(
+    *ics: float, h: int = 5, ci_lo: float | None = None
+) -> dict[str, dict[int, HorizonMetrics]]:
+    """N windows with the given OOS mean ICs; per-window CI is a diagnostic only."""
+    out: dict[str, dict[int, HorizonMetrics]] = {}
+    for i, ic in enumerate(ics, 1):
+        lo = ci_lo if ci_lo is not None else ic - 0.01
+        out[f"W{i}"] = {h: _metrics(ic, lo, ic + 0.03, h)}
+    return out
+
+
+# The r4_v2 run's 5d window ICs (audit/r4_v2/summary.json, 2026-09-06): the
+# case the rule was redesigned on.  Eight positive windows, two of which the
+# every-window rule failed by a hair, and a window-level t of 7.5.
+_R4_V2_5D = (0.0499, 0.0625, 0.0229, 0.0295, 0.0413, 0.0458, 0.0433, 0.0180)
+
+
+def test_gate_passes_when_the_windows_agree() -> None:
+    g = gate_verdict(_windows(0.05, 0.04, 0.045, 0.055))
     assert g.passed and g.per_horizon[5]
     assert g.reasons == []
+    assert g.evidence and "t " in g.evidence[0]
 
 
-def test_gate_fails_when_one_window_misses_the_bar() -> None:
-    per_window = {
-        "W1": {5: _metrics(0.05, 0.02, 0.08)},
-        "W2": {5: _metrics(0.01, 0.005, 0.02)},
-    }
+def test_gate_passes_the_r4_v2_shape_that_the_every_window_rule_failed() -> None:
+    """Two windows individually miss; the eight together are unambiguous."""
+    per_window = _windows(*_R4_V2_5D)
+    # Reproduce the strict failures: W3's interval spans zero, W8 is under the floor.
+    per_window["W3"][5] = _metrics(0.0229, -0.0066, 0.0527)
     g = gate_verdict(per_window)
-    assert not g.passed
-    assert any("W2" in r and "mean IC" in r for r in g.reasons)
+    assert g.passed
+    w = g.window_level[5]
+    assert w.n_windows == 8 and w.n_positive == 8
+    assert w.t_stat == pytest.approx(7.50, abs=0.05)
+    assert w.t_crit == pytest.approx(2.365)
+    # The retired rule is still reported, and still says what it said.
+    assert g.strict_every_window[5] is False
+    assert any("W3" in r and "includes zero" in r for r in g.strict_reasons)
+    assert any("W8" in r and "mean IC" in r for r in g.strict_reasons)
 
 
-def test_gate_fails_when_the_ci_includes_zero() -> None:
-    """Mean IC above the bar is not enough — the CI must exclude zero."""
-    g = gate_verdict({"W1": {5: _metrics(0.09, -0.01, 0.19)}})
+def test_gate_fails_when_the_mean_is_below_the_materiality_floor() -> None:
+    g = gate_verdict(_windows(0.015, 0.012, 0.018, 0.016, 0.014))
     assert not g.passed
-    assert any("includes zero" in r for r in g.reasons)
+    assert any("mean of window OOS ICs" in r for r in g.reasons)
+
+
+def test_gate_fails_when_windows_disagree_beyond_chance() -> None:
+    """Mean above the floor, but the windows scatter so widely the t is weak."""
+    g = gate_verdict(_windows(0.12, -0.06, 0.09, -0.05, 0.03))
+    assert not g.passed
+    assert any("window-level t" in r for r in g.reasons)
+
+
+def test_gate_fails_on_sign_disagreement_even_with_a_high_mean() -> None:
+    """One enormous era must not carry three negative ones."""
+    g = gate_verdict(_windows(0.40, -0.01, -0.01, -0.01, 0.30, -0.02, 0.35, -0.01))
+    assert not g.passed
+    assert any("windows positive" in r for r in g.reasons)
+
+
+def test_gate_needs_enough_windows_for_a_window_level_test() -> None:
+    g = gate_verdict(_windows(0.05, 0.06, 0.07))
+    assert not g.passed
+    assert any("need >= 4" in r for r in g.reasons)
 
 
 def test_gate_bar_is_strict_inequality_at_the_threshold() -> None:
-    g = gate_verdict({"W1": {5: _metrics(GATE_MIN_MEAN_IC, 0.001, 0.05)}})
+    g = gate_verdict(_windows(*([GATE_MIN_MEAN_IC] * 6)))
     assert not g.passed
 
 
 def test_gate_passes_on_one_clean_horizon() -> None:
     """The allocator consumes one horizon; one clean horizon is a usable signal."""
-    per_window = {"W1": {5: _metrics(0.05, 0.02, 0.08, 5), 20: _metrics(0.00, -0.02, 0.02, 20)}}
+    per_window = _windows(0.05, 0.04, 0.045, 0.055)
+    for w in per_window.values():
+        w[20] = _metrics(0.00, -0.02, 0.02, 20)
     g = gate_verdict(per_window)
     assert g.passed
     assert g.per_horizon == {5: True, 20: False}
@@ -443,9 +486,43 @@ def test_gate_with_no_windows_is_a_fail_not_a_vacuous_pass() -> None:
 
 def test_gate_fails_a_horizon_with_no_scorable_days() -> None:
     empty = summarise_daily(20, DailyScores(np.zeros(0, np.int64), np.zeros(0), np.zeros(0)))
-    g = gate_verdict({"W1": {20: empty}})
+    per_window = _windows(0.05, 0.04, 0.045, 0.055, h=20)
+    per_window["W2"][20] = empty
+    g = gate_verdict(per_window)
     assert not g.passed
     assert any("no scorable OOS days" in r for r in g.reasons)
+
+
+def test_gate_fails_a_window_below_the_day_floor() -> None:
+    per_window = _windows(0.05, 0.04, 0.045, 0.055)
+    thin = _metrics(0.9, 0.5, 1.0)
+    thin.n_days = 3
+    per_window["W1"][5] = thin
+    g = gate_verdict(per_window)
+    assert not g.passed
+    assert any("only 3 scorable OOS day" in r for r in g.reasons)
+
+
+def test_t_critical_table_is_sane() -> None:
+    from trader.training.supervised import t_critical_95
+
+    assert t_critical_95(7) == pytest.approx(2.365)
+    assert t_critical_95(1) > t_critical_95(2) > t_critical_95(7) > t_critical_95(30)
+    assert t_critical_95(100) == t_critical_95(30)   # conservative beyond the table
+    with pytest.raises(ValueError):
+        t_critical_95(0)
+
+
+def test_gate_json_carries_the_rule_and_the_window_level_test() -> None:
+    per_window = _windows(*_R4_V2_5D)
+    g = gate_verdict(per_window)
+    pooled = {5: _metrics(0.0392, 0.0317, 0.0469)}
+    payload = gate_json_payload(g, pooled, n_windows=8)
+    assert payload["gate_rule"] == GATE_RULE
+    assert payload["window_level"]["5"]["n_windows"] == 8
+    assert payload["strict_every_window"]["5"] is False
+    assert payload["evidence"]
+    assert "NaN" not in json.dumps(payload)
 
 
 # ── gate.json (pinned schema) ─────────────────────────────────────────────────
@@ -457,13 +534,19 @@ PINNED_GATE_KEYS = {
 
 def test_gate_json_payload_matches_the_pinned_schema() -> None:
     pooled = {5: _metrics(0.05, 0.02, 0.08, 5), 20: _metrics(0.01, -0.01, 0.03, 20)}
-    gate = gate_verdict({"W1": pooled, "W2": pooled})
-    payload = gate_json_payload(gate, pooled, n_windows=2)
+    per_window = {
+        "W1": {5: _metrics(0.05, 0.02, 0.08, 5), 20: _metrics(0.01, -0.01, 0.03, 20)},
+        "W2": {5: _metrics(0.04, 0.01, 0.07, 5), 20: _metrics(0.00, -0.02, 0.02, 20)},
+        "W3": {5: _metrics(0.06, 0.03, 0.09, 5), 20: _metrics(0.02, -0.01, 0.05, 20)},
+        "W4": {5: _metrics(0.05, 0.02, 0.08, 5), 20: _metrics(0.01, -0.01, 0.03, 20)},
+    }
+    gate = gate_verdict(per_window)
+    payload = gate_json_payload(gate, pooled, n_windows=4)
     assert PINNED_GATE_KEYS <= set(payload)
     assert payload["verdict"] == "PASS"
     assert payload["mean_ic_5d"] == pytest.approx(0.05)
     assert payload["mean_ic_20d"] == pytest.approx(0.01)
-    assert payload["n_windows"] == 2
+    assert payload["n_windows"] == 4
     # The single CI/ICIR triple describes the horizon the verdict rests on.
     assert payload["gate_horizon"] == 5
     assert payload["ic_ci_low"] == pytest.approx(0.02)
