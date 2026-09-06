@@ -281,6 +281,7 @@ def main(cfg: DictConfig) -> None:
     from trader.allocator import AllocatorParams, RebalanceSchedule
     from trader.data.features import FEATURE_COLS, resolve_panels_root
     from trader.data.universe import active_tickers
+    from trader.env.costs import DEFAULT_MIN_TRADE_VALUE
     from trader.env.panel_env import PanelTradingEnv
     from trader.training.eval_metrics import compute_episode_metrics
     from trader.training.quantstats_report import compute_quantstats_metrics
@@ -365,6 +366,10 @@ def main(cfg: DictConfig) -> None:
         lookback=lookback,
         episode_length=episode_length,
         initial_cash=float(cfg.env.initial_cash),
+        # Reads the `min_trade_value: 500` key that CLAUDE.md lists as declared
+        # and never read. The env now gates execution on it, matching the paper
+        # broker; leaving it unread is what produced the 11% NAV divergence.
+        min_trade_value=float(cfg.env.get("min_trade_value", DEFAULT_MIN_TRADE_VALUE)),
         seed=seed,
     )
 

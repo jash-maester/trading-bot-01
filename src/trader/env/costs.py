@@ -54,6 +54,20 @@ _GST_RATE: Final = 0.18
 # ₹3.50 CDSL + ₹9.50 Zerodha + ₹2.34 GST.
 _DP_CHARGE: Final = 15.34
 
+# Minimum rupee value for a trade to be worth executing.
+#
+# `_DP_CHARGE` is flat — ₹15.34 per distinct scrip per selling day, regardless of
+# size — so the fee as a fraction of a trade grows without bound as the trade
+# shrinks. Measured over the R4 OOS slice at daily cadence, the median sell was
+# ₹102 and paid ₹15.34 to settle: a 15% charge, on 94.5% of sell trades. See
+# `11_cost_defect_and_fix_plan.md`.
+#
+# It lives here, not in the broker or the env, because BOTH must gate on it and
+# they silently disagreed for months — the env used a 0.5-*share* guard while the
+# broker used this value, which is the `min_trade_value: 500` dead-key trap in
+# CLAUDE.md and the 11% backtest/paper NAV divergence recorded beside it.
+DEFAULT_MIN_TRADE_VALUE: Final = 500.0
+
 # Demat AMC — BSDA slabs, charged annually on the value of the holdings.
 _BSDA_TIER1_LIMIT: Final = 400_000.0
 _BSDA_TIER2_LIMIT: Final = 1_000_000.0

@@ -1,5 +1,8 @@
 """Confirm the panels and services on the training box before a run."""
-import polars as pl, urllib.request
+import urllib.request
+
+import polars as pl
+
 from trader.data.features import FEATURE_COLS
 from trader.data.universe import active_tickers
 

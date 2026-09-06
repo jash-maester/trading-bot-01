@@ -802,12 +802,24 @@ def test_monthly_cadence_cuts_a_persistent_baselines_turnover_far_less_than_21x(
     Its target barely moves, so what it trades is accumulated drift — and drift
     on a random walk grows like √t, not t.  Twenty-one days of drift is ≈ √21
     ≈ 4.6 times one day's, so twelve monthly rebalances cost ≈ 12·√21 / 252 ≈
-    1/4.6 of the daily bill, not 1/21.  Measured here: `equal_weight`
-    3.96 → 1.63 annual turnover, 2.4x.
+    1/4.6 of the daily bill, not 1/21.
+
+    Measured, after `min_trade_value` began gating execution:
+
+        equal_weight          3.276 → 1.608   2.04x   monthly is 49% of daily
+        equal_weight_frozen   3.276 → 1.608   2.04x
+        sixty_forty           1.772 → 0.949   1.87x
+
+    These bounds were `2.0 < ratio < 3.5` and `monthly < 0.45 · daily` against a
+    pre-fix `equal_weight` of 3.96 → 1.63.  The daily leg fell and the ratio
+    narrowed for a reason that is the point of the fix, not a regression: dust
+    trades are disproportionately a daily-cadence phenomenon, so suppressing
+    them takes more off the daily bill than the monthly one.  See
+    `11_cost_defect_and_fix_plan.md` and `tests/unit/test_min_trade_value.py`.
 
     Recorded because the 21x figure is a real property of the *schedule* (see
     the day-count test above) and of a churning agent, and it would be wrong to
-    quote it as equal-weight's saving.  Monthly still removes 59% of
+    quote it as equal-weight's saving.  Monthly still removes about half of
     equal-weight's turnover — a large number honestly stated.
     """
     from trader.allocator import RebalanceSchedule
@@ -818,8 +830,8 @@ def test_monthly_cadence_cuts_a_persistent_baselines_turnover_far_less_than_21x(
             schedule_panel_file, _baselines()[name], RebalanceSchedule("monthly")
         )[0]
         ratio = daily / monthly
-        assert 2.0 < ratio < 3.5, f"{name}: {daily:.2f} -> {monthly:.2f} = {ratio:.1f}x"
-        assert monthly < 0.45 * daily, name
+        assert 1.7 < ratio < 3.5, f"{name}: {daily:.2f} -> {monthly:.2f} = {ratio:.1f}x"
+        assert monthly < 0.60 * daily, f"{name}: monthly {monthly:.3f} vs daily {daily:.3f}"
 
 # ── R5: the allocator driving the env ─────────────────────────────────────────
 #

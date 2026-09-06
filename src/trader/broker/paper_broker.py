@@ -84,7 +84,11 @@ from trader.broker.base import (
     Position,
     Side,
 )
-from trader.env.costs import CostModel, ZerodhaEquityDeliveryCostModel
+from trader.env.costs import (
+    DEFAULT_MIN_TRADE_VALUE,
+    CostModel,
+    ZerodhaEquityDeliveryCostModel,
+)
 from trader.env.tax import (
     FifoLotBook,
     Lot,
@@ -106,7 +110,8 @@ MARKET_CLOSE = time(15, 30)
 # overrides it; the default is what a bare PaperBroker() starts with.
 DEFAULT_INITIAL_CASH = 100_000.0
 DEFAULT_MAX_WEIGHT = 0.10
-DEFAULT_MIN_TRADE_VALUE = 500.0
+# DEFAULT_MIN_TRADE_VALUE is imported from trader.env.costs above so the broker
+# and the environment gate on one constant. They disagreed for months.
 DEFAULT_SETTLEMENT_DAYS = 1
 
 # Impact coefficient for the ``atr_impact`` slippage model.  This MUST stay

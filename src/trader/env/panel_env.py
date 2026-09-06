@@ -13,7 +13,11 @@ from gymnasium import Env, spaces
 
 from trader.allocator.rebalance import RebalanceSchedule
 from trader.data.regime_features import REGIME_DIM, compute_regime_features
-from trader.env.costs import CostModel, ZerodhaEquityDeliveryCostModel
+from trader.env.costs import (
+    DEFAULT_MIN_TRADE_VALUE,
+    CostModel,
+    ZerodhaEquityDeliveryCostModel,
+)
 from trader.env.reward import LogReturn, RewardFn
 
 _SLIPPAGE_K = 0.1
@@ -64,10 +68,14 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         use_excess_returns: bool = False,
         seed: int | None = None,
         rebalance_schedule: RebalanceSchedule | None = None,
+        min_trade_value: float = DEFAULT_MIN_TRADE_VALUE,
     ) -> None:
         super().__init__()
 
         self._cost_model: CostModel = cost_model or ZerodhaEquityDeliveryCostModel()
+        if min_trade_value < 0.0:
+            raise ValueError(f"min_trade_value must be >= 0, got {min_trade_value}")
+        self._min_trade_value = float(min_trade_value)
         self._schedule = rebalance_schedule
         self._reward_fn: RewardFn = reward_fn or LogReturn()
         self._use_excess_returns = bool(use_excess_returns)
@@ -389,7 +397,18 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         # Vectorised cost / cash accounting.  The previous loop was the
         # single biggest CPU hot-spot in step() — N=163 Python iterations
         # every day across 16 envs × 252 steps × ~2000 updates.
-        traded = np.abs(delta_shares) >= 0.5
+        # Two independent gates, and they are not the same test.
+        #   * the 0.5-share guard is an INTEGRALITY check — target_shares is
+        #     floored, so a sub-share delta is rounding noise, not an order;
+        #   * the value guard is an ECONOMIC one. The demat debit fee is flat
+        #     (see costs.DEFAULT_MIN_TRADE_VALUE), so a small enough trade pays
+        #     more in fees than it moves in exposure.
+        # `PaperBroker._emit_target_orders` drops on `abs(delta) * open_px`, so
+        # this must too — on `opens`, NOT on `fill_prices`, or the two disagree
+        # by the slippage term for trades sitting on the boundary.
+        traded = (np.abs(delta_shares) >= 0.5) & (
+            np.abs(delta_shares) * opens >= self._min_trade_value
+        )
         trade_val = np.where(traded, np.abs(delta_shares) * fill_prices, 0.0)
         is_buy = delta_shares > 0
         n_sold = np.where(
