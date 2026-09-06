@@ -41,6 +41,48 @@ periods_per_episode: 24        # §5 specifies 12-36; 24 monthly steps = 2 years
 max_days_per_period: 45        # safety stop if a schedule yields no next rebalance day
 max_name_weight: 0.10          # matches the env's own per-name cap
 max_sector_weight: 0.25
+
+# ── per-name no-trade band (P3) ──────────────────────────────────────────────
+# `AllocatorParams.no_trade_band` (src/trader/allocator/deterministic.py): a
+# name is only traded when |target - current| exceeds it, so the long tail of
+# tiny rebalances produces no order at all.  `turnover_budget` constrains gross
+# RUPEES; the demat debit is a flat ₹15.34 per distinct scrip per selling day
+# (costs.py:55) and is 83-98% of all cost measured, so the number of names sold
+# is the quantity that has to be constrained.
+#
+# Measured on synthetic books (N=504, K=30, budget 0.30, AR(1) rho=0.90; run
+# `uv run pytest -s -q tests/unit/test_allocator.py -k band_cuts_name_count`).
+# QUOTE THE `billed` COLUMNS.  The count that costs money is the sells the env
+# actually executes, i.e. those clearing `min_trade_value` (Rs 500, costs.py);
+# about two thirds of the band-0 weight-space sell tail is below it and was
+# never going to be billed.  Against that baseline a 0.005 band leaves:
+#
+#   band    billed sells/rebalance   % of band-0   gross turnover %
+#   0.000   50.78 (10L) 83.29 (1Cr)     100 / 100        100.0
+#   0.002   24.66       24.66            48.6 / 29.6      92.4
+#   0.005   10.16       10.16            20.0 / 12.2      69.6
+#   0.010    4.83        4.83             9.5 /  5.8      56.7
+#
+# The earlier version of this comment said "6.5% of the unbanded count" at
+# 0.005; that was against the weight-space `sold` column and overstated the
+# band by ~3x.  Flat-fee drag at band 0 is 0.93% of NAV/yr on a Rs 10 lakh book,
+# not 2.86%.
+#
+# TWO LIMITS, both measured, before this is set on a real run:
+#  * the counts above are weight-space suppressions.  A pinned name can still
+#    produce an order in the env when an overnight gap moves its weight by more
+#    than half a share (`tests/unit/test_weight_to_share_orders.py`), so
+#    n_suppressed is an upper bound and a loose one at large capital.
+#  * nothing here is measured on the real panel: the R5 grid is serialised
+#    behind the other streams and has not been re-run, so per CLAUDE.md rules 2
+#    and 3 no value here is a recommendation yet.
+#
+# The key IS live: `scripts/train_allocator_rl.py` reads it,
+# `AllocatorEnvConfig.no_trade_band` holds it and `ActionRanges.decode` passes
+# it into `AllocatorParams`.  0.0 keeps the pre-band code path exactly.
+# For the deterministic grid use `+allocator.no_trade_band=` or
+# `+allocator.band_grid=[...]` on `scripts/run_allocator.py`.
+no_trade_band: 0.0
 # Load-bearing: names the panel vol column as realized_vol_{vol_lookback}d
 # (allocator_env.vol_column_for). There is deliberately no separate
 # `vol_column` key -- two keys for one thing silently disagree.

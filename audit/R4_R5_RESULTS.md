@@ -1,5 +1,21 @@
 # R4 signal + R5 allocator — first results on the rebuilt panel
 
+> **SUPERSEDED 2026-09-06 — every R5 number below must be regenerated before it
+> is quoted again.** Not because it was wrong when measured, but because the
+> environment's execution rule changed underneath it in the P3/P4/P5 integration
+> pass: `PanelTradingEnv._step_target` no longer lets `floor(target_value/open)`
+> decide *whether* a trade happens, only how large it is, because that turned a
+> float32 weight round-trip into whole-share orders nobody asked for. Measured
+> effect on one cell (monthly K=30/20d, 500 steps of `oos` + `r4_v1`, ₹10 lakh):
+> final NAV +0.36%, scrip-sell-days -15, DP fees -₹230
+> (`scripts/probe_share_rounding.py`). Small, but the R4/R5 numbers here are not
+> reproducible from this tree, and `audit/P4_survivorship.md`'s pre-registered
+> threshold is a *ratio* against the +0.192 gap below, so both sides of it have
+> to come from the same code. See `audit/P3_P4_P5_INTEGRATION.md` §1.
+>
+> The **R4** section (IC, gate) is untouched by this: it involves no env and no
+> cost model.
+
 Run 2026-09-05 on the RTX 4060 box. Logs in `audit/r4_v1/`. MLflow experiments
 `signal` (8 runs) and `allocator` (21 runs) on the box, port 5555.
 
@@ -105,10 +121,15 @@ signal's coverage in view whenever this table is read.
    allocator-minus-control gap — is far more trustworthy than any CAGR here.
    Deferred as P4 and now the single largest threat to the result.
 2. **Daily turnover of 72x a year is not investable** even where it wins on
-   paper. Nothing constrains the count of names traded, which is what the flat
-   demat fee bills for. Deferred as P3.
-3. **Capital scaling is unaddressed.** ₹10 lakh here; ₹1 lakh intended.
-   Deferred as P5.
+   paper. Nothing in this grid constrained the count of names traded, which is
+   what the flat demat fee bills for. P3 now exists — a per-name
+   `no_trade_band`, swept with `+allocator.band_grid=[...]` — and every arm now
+   reports `scrip_sell_days` and `dp_charges_paid`, the count and the bill. Not
+   yet measured on the real panel: that is the re-run this banner asks for.
+3. **Capital scaling is unaddressed.** ₹10 lakh here; ₹1 lakh intended. P5 now
+   derives the bound (`src/trader/allocator/sizing.py`) and `run_allocator.py`
+   warns when K exceeds it, but the choice of capital is still open and every
+   number in this table is about a ₹10 lakh account.
 4. **The gate passing is a screen, not validation.** CLAUDE.md rule 2: the
    downstream economic result *is* this table, and it now exists with run IDs
    under a PASS. R6 may be attempted.

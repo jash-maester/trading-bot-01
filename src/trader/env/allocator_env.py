@@ -182,6 +182,7 @@ class ActionRanges:
         max_name_weight: float,
         max_sector_weight: float,
         vol_lookback: int,
+        no_trade_band: float = 0.0,
     ) -> tuple[AllocatorParams, np.ndarray]:
         """``a ∈ [0, 1]^A`` → ``(AllocatorParams, tilt[n_sectors])``.
 
@@ -189,6 +190,13 @@ class ActionRanges:
         leave the box, but a hand-written or replayed action might, and an
         out-of-range K would raise from ``AllocatorParams.__post_init__``
         mid-rollout.
+
+        ``no_trade_band`` is a **fixed** parameter of the env here, not a fourth
+        action dimension: it arrives from ``AllocatorEnvConfig`` and is passed
+        straight through.  Making it learnable would change ``action_dim`` from
+        ``3 + n_sectors`` to ``4 + n_sectors`` and invalidate every checkpoint
+        and the ``ranges:`` block of `configs/env/allocator.yaml`, so it is a
+        decision of its own rather than a side effect of wiring the band in.
         """
         a = np.clip(np.asarray(action, dtype=np.float64).reshape(-1), 0.0, 1.0)
         if a.shape[0] != self.action_dim:
@@ -202,6 +210,7 @@ class ActionRanges:
             max_name_weight=max_name_weight,
             max_sector_weight=max_sector_weight,
             turnover_budget=float(budget),
+            no_trade_band=no_trade_band,
             cash_floor=float(cash_floor),
             vol_lookback=vol_lookback,
         )
@@ -376,6 +385,13 @@ class AllocatorEnvConfig:
     max_days_per_period: int = 45
     max_name_weight: float = 0.10
     max_sector_weight: float = 0.25
+    # Per-name no-trade band (P3), in NAV fraction: a name is traded only when
+    # |target - current| exceeds it.  0.0 switches the mechanism off and the
+    # allocator takes its pre-band code path unchanged.  Read from
+    # `configs/env/allocator.yaml` by `scripts/train_allocator_rl.py` and
+    # threaded into `AllocatorParams` by `ActionRanges.decode` -- all three
+    # sites exist, so this is not the `min_trade_value: 500` dead key.
+    no_trade_band: float = 0.0
     vol_lookback: int = 20   # load-bearing: names the panel column, see vol_column_for
     turnover_penalty: float = 0.02
     drawdown_penalty: float = 1.0
@@ -498,6 +514,7 @@ class AllocatorEnv(Env):  # type: ignore[type-arg]
             max_name_weight=self.cfg.max_name_weight,
             max_sector_weight=self.cfg.max_sector_weight,
             vol_lookback=self.cfg.vol_lookback,
+            no_trade_band=self.cfg.no_trade_band,
         )
         day = self.inner.day_index
         current_w = np.asarray(self._inner_obs["portfolio"], dtype=np.float64)

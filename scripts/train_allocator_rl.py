@@ -178,6 +178,11 @@ def build_envs(
         max_days_per_period=int(env_cfg.get("max_days_per_period", 45)),
         max_name_weight=float(env_cfg.get("max_name_weight", 0.10)),
         max_sector_weight=float(env_cfg.get("max_sector_weight", 0.25)),
+        # P3's per-name no-trade band. Read here, held on AllocatorEnvConfig and
+        # passed into AllocatorParams by ActionRanges.decode -- the three sites
+        # that make `no_trade_band:` in configs/env/allocator.yaml a live key
+        # rather than the `min_trade_value: 500` trap.
+        no_trade_band=float(env_cfg.get("no_trade_band", 0.0)),
         vol_lookback=int(env_cfg.get("vol_lookback", 20)),
         turnover_penalty=float(env_cfg.get("turnover_penalty", 0.02)),
         drawdown_penalty=float(env_cfg.get("drawdown_penalty", 1.0)),

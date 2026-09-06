@@ -20,6 +20,13 @@ Nothing here is a gate and nothing here is a winner.  It prints a table and
 writes MLflow runs under the experiment ``allocator``; a run ID is what makes a
 number quotable (CLAUDE.md rule 2).
 
+Every arm also reports the number the flat demat debit is actually billed on —
+distinct scrips sold per rebalance, and the rupees that costs — because turnover
+is the wrong instrument for a flat per-scrip fee and reading only the turnover
+column is how the daily arm's 17%/yr fee bill went unnoticed
+(`11_cost_defect_and_fix_plan.md`).  `+allocator.band_grid=` sweeps P3's
+per-name no-trade band, which is the only control in the system on that count.
+
 Usage
 -----
     uv run python scripts/run_allocator.py                        # val split
@@ -27,6 +34,9 @@ Usage
     uv run python scripts/run_allocator.py +signal_tag=r4_v2
     uv run python scripts/run_allocator.py \
         +allocator.k_grid=[30] +allocator.freq_grid=[monthly]
+    uv run python scripts/run_allocator.py \
+        +allocator.band_grid=[0.0,0.002,0.005,0.010]   # P3 band sweep
+    uv run python scripts/run_allocator.py +allocator.no_trade_band=0.005
 
 Note the leading ``+`` on every override above.  ``configs/config.yaml`` is a
 struct, and ``split``, ``signal_tag`` and ``allocator`` are not keys in it, so
@@ -154,8 +164,10 @@ def _run_allocator(
     vol: np.ndarray,
     params: AllocatorParams,
     seed: int,
-) -> tuple[list[float], list[float]]:
-    """Drive one full pass of the env from the allocator.  Returns (navs, turnovers).
+) -> tuple[list[float], list[float], dict[str, float]]:
+    """Drive one full pass of the env from the allocator.
+
+    Returns ``(navs, turnovers, diagnostics)``.
 
     Information set
     ---------------
@@ -165,26 +177,54 @@ def _run_allocator(
     dated ``d-1``.  Indexing ``r_hat[day_idx]`` instead would trade on a
     prediction made from data that includes the day being traded — a one-day
     lookahead worth more than the entire strategy.
+
+    Diagnostics
+    -----------
+    Turnover is the wrong instrument for this system's dominant cost.  The demat
+    debit is **flat** — ₹15.34 per distinct scrip per selling day, 83-98% of all
+    cost measured (`11_cost_defect_and_fix_plan.md`) — so the quantity that sets
+    the bill is the *count of names sold*, which no turnover figure reveals.
+    ``scrip_sell_days`` is that count, taken from ``info["n_scrips_sold"]``,
+    i.e. from the orders the env actually executed rather than from a
+    weight-space estimate of them.
+
+    ``names_suppressed`` is the band's counterfactual: how many orders
+    ``no_trade_band`` kept out of the list, from
+    :func:`trader.allocator.band_suppression`, which re-runs ``allocate`` with
+    the band forced to zero.  It costs two extra allocator calls per rebalance
+    day and is therefore computed **only when the band is on**.  It is an upper
+    bound on orders removed — the env can still emit a one-share order on a
+    pinned name when an overnight gap moves its weight by more than half a share
+    (`tests/unit/test_weight_to_share_orders.py`) — so ``scrip_sell_days``, not
+    this, is what a fee argument must be made on.
     """
     import numpy as np
 
-    from trader.allocator import allocate
+    from trader.allocator import allocate, band_suppression
+    from trader.env.costs import _DP_CHARGE
 
+    track_band = params.no_trade_band > 0.0
     obs, _ = env.reset(seed=seed)
     navs = [float(obs["nav"])]
     turnovers: list[float] = []
+    rebalances = 0
+    scrip_sell_days = 0
+    legs = 0
+    suppressed = 0
+    traded_unbanded = 0
     done = False
     while not done:
         if env.is_rebalance_step():
             sig = env.day_index - 1
-            target = allocate(
-                r_hat[sig],
-                vol[sig],
-                obs["mask"].astype(bool),
-                obs["sector_ids"].astype(np.int64),
-                obs["portfolio"].astype(np.float64),
-                params,
-            )
+            mask = obs["mask"].astype(bool)
+            sids = obs["sector_ids"].astype(np.int64)
+            cur = obs["portfolio"].astype(np.float64)
+            target = allocate(r_hat[sig], vol[sig], mask, sids, cur, params)
+            if track_band:
+                rep = band_suppression(r_hat[sig], vol[sig], mask, sids, cur, params)
+                suppressed += rep.n_suppressed
+                traded_unbanded += rep.n_traded_unbanded
+            rebalances += 1
             obs, _, terminated, truncated, info = env.step_weights(target)
         else:
             # Hold day: the env ignores the action, so its content is
@@ -194,8 +234,22 @@ def _run_allocator(
             )
         navs.append(float(info["nav"]))
         turnovers.append(float(info["turnover"]))
+        scrip_sell_days += int(info["n_scrips_sold"])
+        legs += int(info["n_legs"])
         done = terminated or truncated
-    return navs, turnovers
+
+    per = max(rebalances, 1)
+    diag = {
+        "rebalances": float(rebalances),
+        "scrip_sell_days": float(scrip_sell_days),
+        "scrip_sell_days_per_rebalance": scrip_sell_days / per,
+        "legs": float(legs),
+        "dp_charges_paid": scrip_sell_days * _DP_CHARGE,
+    }
+    if track_band:
+        diag["names_suppressed_per_rebalance"] = suppressed / per
+        diag["names_traded_unbanded_per_rebalance"] = traded_unbanded / per
+    return navs, turnovers, diag
 
 
 def _read_gate(signal_dir: Path) -> tuple[str, str]:
@@ -252,22 +306,44 @@ def _null_signal(
     return out
 
 
-def _run_baseline(env: PanelTradingEnv, seed: int) -> tuple[list[float], list[float]]:
-    """`EqualWeightRebalanced` through the same env, so the cadence is identical."""
+def _run_baseline(
+    env: PanelTradingEnv, seed: int
+) -> tuple[list[float], list[float], dict[str, float]]:
+    """`EqualWeightRebalanced` through the same env, so the cadence is identical.
+
+    Same diagnostics as :func:`_run_allocator`: the baseline's scrip-sell-day
+    count is the number the allocator's has to be compared against, and it is
+    the one `11_cost_defect_and_fix_plan.md` shows is 97.7% of the daily arm's
+    entire cost.  It has no band, so no suppression counterfactual.
+    """
     from trader.env.baselines import EqualWeightRebalanced
+    from trader.env.costs import _DP_CHARGE
 
     agent = EqualWeightRebalanced()
     obs, _ = env.reset(seed=seed)
     agent.reset()
     navs = [float(obs["nav"])]
     turnovers: list[float] = []
+    scrip_sell_days = 0
+    legs = 0
+    steps = 0
     done = False
     while not done:
         obs, _, terminated, truncated, info = env.step(agent.act(obs))
         navs.append(float(info["nav"]))
         turnovers.append(float(info["turnover"]))
+        scrip_sell_days += int(info["n_scrips_sold"])
+        legs += int(info["n_legs"])
+        steps += 1
         done = terminated or truncated
-    return navs, turnovers
+    diag = {
+        "rebalances": float(steps),
+        "scrip_sell_days": float(scrip_sell_days),
+        "scrip_sell_days_per_rebalance": scrip_sell_days / max(steps, 1),
+        "legs": float(legs),
+        "dp_charges_paid": scrip_sell_days * _DP_CHARGE,
+    }
+    return navs, turnovers, diag
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
@@ -278,7 +354,13 @@ def main(cfg: DictConfig) -> None:
     import mlflow
     import polars as pl
 
-    from trader.allocator import AllocatorParams, RebalanceSchedule
+    from trader.allocator import (
+        AllocatorParams,
+        RebalanceSchedule,
+        fee_drag_estimate,
+        max_supportable_k,
+    )
+    from trader.allocator.sizing import REBALANCES_PER_YEAR
     from trader.data.features import FEATURE_COLS, resolve_panels_root
     from trader.data.universe import active_tickers
     from trader.env.costs import DEFAULT_MIN_TRADE_VALUE
@@ -335,6 +417,17 @@ def main(cfg: DictConfig) -> None:
     k_grid = [int(k) for k in alloc_cfg.get("k_grid", _K_GRID)]
     freq_grid = [str(f) for f in alloc_cfg.get("freq_grid", _FREQ_GRID)]
     horizon_grid = [str(h) for h in alloc_cfg.get("horizon_grid", _HORIZON_GRID)]
+    # P3's per-name no-trade band.  `band_grid` sweeps it; `no_trade_band` sets
+    # a single value and is the default for the grid, so the two cannot
+    # disagree about what is being run (the `vol_column` / `vol_lookback` trap).
+    #     +allocator.no_trade_band=0.005
+    #     +allocator.band_grid=[0.0,0.002,0.005,0.010]
+    band_grid = [
+        float(b)
+        for b in alloc_cfg.get(
+            "band_grid", [float(alloc_cfg.get("no_trade_band", 0.0))]
+        )
+    ]
 
     # Env span: one deterministic full-length pass over the split.  With
     # `episode_length == n_dates - lookback - 1`, `reset` samples `start_idx`
@@ -345,6 +438,21 @@ def main(cfg: DictConfig) -> None:
     episode_length = len(dates) - lookback - 1
     if episode_length < 2:
         _fail(f"{panel_path} has {len(dates)} dates; too short for lookback={lookback}.")
+
+    # How many of the env's universe this split can actually trade.  `universe`
+    # is always `active_tickers()` (504) regardless of split, so logging only
+    # `universe_size` tagged a restricted P4 arm identically to an unrestricted
+    # run — a run ID that does not say what it ran (CLAUDE.md rule 2).  A
+    # universe ticker with no rows here is an all-zero column, mask False on
+    # every date, so this is the width both arms really see.
+    panel_tickers = set(
+        pl.read_parquet(panel_path, columns=["ticker"])["ticker"].unique().to_list()
+    )
+    n_effective = len(panel_tickers & set(universe))
+    logger.info(
+        f"universe {len(universe)} from active_tickers(); {n_effective} of them have "
+        f"rows in {panel_path} — the rest are all-zero columns, mask False."
+    )
 
     r_hat_all = _dense_signal(pred_path, dates, universe, tuple(horizon_grid))
     from trader.env.allocator_env import vol_column_for
@@ -359,26 +467,54 @@ def main(cfg: DictConfig) -> None:
             "feature liveness)."
         )
 
+    # Read ONCE and reused by the env, by P5's capacity check and by the MLflow
+    # params, so the three cannot disagree about what the run was configured
+    # with.  `min_trade_value: 500` is the key CLAUDE.md lists as declared and
+    # never read; the env now gates execution on it, matching the paper broker.
+    capital = float(cfg.env.initial_cash)
+    min_trade_value = float(cfg.env.get("min_trade_value", DEFAULT_MIN_TRADE_VALUE))
+    cash_floor = float(alloc_cfg.get("cash_floor", 0.0))
+
     env_base: dict[str, Any] = dict(
         panel_path=panel_path,
         universe=universe,
         feature_columns=FEATURE_COLS,
         lookback=lookback,
         episode_length=episode_length,
-        initial_cash=float(cfg.env.initial_cash),
-        # Reads the `min_trade_value: 500` key that CLAUDE.md lists as declared
-        # and never read. The env now gates execution on it, matching the paper
-        # broker; leaving it unread is what produced the 11% NAV divergence.
-        min_trade_value=float(cfg.env.get("min_trade_value", DEFAULT_MIN_TRADE_VALUE)),
+        initial_cash=capital,
+        min_trade_value=min_trade_value,
         seed=seed,
     )
+
+    # ── P5: does this capital support the K being measured? ───────────────────
+    # A WARNING, never a refusal.  Measuring an unsupportable K is a legitimate
+    # thing to want — it is how you show what the constraint costs — and a
+    # script that refused would make that measurement impossible.  What is not
+    # legitimate is measuring one without knowing, so the warning is emitted
+    # once per K here and the bound is stamped into every MLflow run below.
+    supported_k = max_supportable_k(
+        capital,
+        min_trade_value=min_trade_value,
+        smallest_position_share=1.0 - cash_floor,
+    )
+    for k in k_grid:
+        if k > supported_k:
+            logger.warning(
+                f"k={k} exceeds max_supportable_k={supported_k} at "
+                f"initial_cash={capital:,.0f} (min_trade_value={min_trade_value:,.0f}, "
+                f"cash_floor={cash_floor}): a 20% trim of one position would not "
+                f"clear min_trade_value, so those names can only be held or fully "
+                f"exited and the allocator's targets stop being reachable. "
+                f"Measuring it anyway — see P5, src/trader/allocator/sizing.py."
+            )
 
     mlflow.set_tracking_uri(f"http://localhost:{cfg.get('mlflow_port', 5555)}")
     mlflow.set_experiment("allocator")
 
     header = (
-        f"{'strategy':<26}{'K':>4}{'freq':>9}{'hor':>5}"
-        f"{'Sharpe':>9}{'CAGR':>9}{'MDD':>9}{'Turn':>9}{'vs EW Δ CAGR':>14}"
+        f"{'strategy':<26}{'K':>4}{'band':>7}{'freq':>9}{'hor':>5}"
+        f"{'Sharpe':>9}{'CAGR':>9}{'MDD':>9}{'Turn':>9}"
+        f"{'sold/reb':>10}{'DP ₹':>11}{'vs EW Δ CAGR':>14}"
     )
     rule = "-" * len(header)
     # The verdict rides on the printed table, so a number lifted out of this
@@ -395,32 +531,39 @@ def main(cfg: DictConfig) -> None:
         # allocator that only beats *daily* equal-weight has beaten the cadence,
         # not the universe.
         bl_env = PanelTradingEnv(rebalance_schedule=schedule, **env_base)
-        bl_navs, bl_turns = _run_baseline(bl_env, seed)
+        bl_navs, bl_turns, bl_diag = _run_baseline(bl_env, seed)
         bl = compute_episode_metrics(bl_navs, bl_turns)
         lines.append(
-            f"{'equal_weight':<26}{'-':>4}{freq:>9}{'-':>5}"
+            f"{'equal_weight':<26}{'-':>4}{'-':>7}{freq:>9}{'-':>5}"
             f"{bl.sharpe:>9.3f}{bl.cagr:>9.3f}{bl.max_drawdown:>9.3f}"
-            f"{bl.turnover_ann:>9.3f}{'—':>14}"
+            f"{bl.turnover_ann:>9.3f}"
+            f"{bl_diag['scrip_sell_days_per_rebalance']:>10.1f}"
+            f"{bl_diag['dp_charges_paid']:>11,.0f}{'—':>14}"
         )
         with mlflow.start_run(run_name=f"equal_weight_{freq}_{split}"):
             mlflow.log_params(
                 {"strategy": "equal_weight", "freq": freq, "split": split,
-                 "signal_tag": tag, "universe_size": len(universe), "seed": seed,
+                 "signal_tag": tag, "universe_size": len(universe),
+                 "universe_effective": n_effective,
+                 "initial_cash": capital, "min_trade_value": min_trade_value,
+                 "max_supportable_k": supported_k, "seed": seed,
                  "signal_gate_verdict": gate_verdict}
             )
             mlflow.log_metrics(
                 {f"{split}/sharpe": bl.sharpe, f"{split}/cagr": bl.cagr,
                  f"{split}/max_drawdown": bl.max_drawdown,
                  f"{split}/turnover_ann": bl.turnover_ann,
-                 f"{split}/total_return": bl.total_return}
+                 f"{split}/total_return": bl.total_return,
+                 **{f"{split}/{n}": v for n, v in bl_diag.items()}}
             )
             for name, value in compute_quantstats_metrics(bl.daily_returns).items():
                 mlflow.log_metric(f"qs/{split}/{name}", value)
 
         if bool(alloc_cfg.get("null_control", False)):
             nk = k_grid[len(k_grid) // 2]
+            nband = band_grid[0]
             env = PanelTradingEnv(rebalance_schedule=schedule, **env_base)
-            nm = compute_episode_metrics(*_run_allocator(
+            n_navs, n_turns, n_diag = _run_allocator(
                 env,
                 # Masked to the real signal's support so the control arm and
                 # the arm it controls face the same candidate set each day.
@@ -429,78 +572,116 @@ def main(cfg: DictConfig) -> None:
                     support=r_hat_all[horizon_grid[0]],
                 ),
                 vol_all,
-                AllocatorParams(k=nk, vol_lookback=vol_lookback),
+                # The control gets the FIRST band of the grid, not band 0: it
+                # controls for the machinery, so it must run the same machinery.
+                AllocatorParams(k=nk, no_trade_band=nband, vol_lookback=vol_lookback),
                 seed,
-            ))
-            lines.append(
-                f"{'null_signal (control)':<26}{nk:>4}{freq:>9}{'-':>5}"
-                f"{nm.sharpe:>9.3f}{nm.cagr:>9.3f}{nm.max_drawdown:>9.3f}"
-                f"{nm.turnover_ann:>9.3f}{nm.cagr - bl.cagr:>+14.4f}"
             )
-            with mlflow.start_run(run_name=f"null_signal_k{nk}_{freq}_{split}"):
+            nm = compute_episode_metrics(n_navs, n_turns)
+            lines.append(
+                f"{'null_signal (control)':<26}{nk:>4}{nband:>7.3f}{freq:>9}{'-':>5}"
+                f"{nm.sharpe:>9.3f}{nm.cagr:>9.3f}{nm.max_drawdown:>9.3f}"
+                f"{nm.turnover_ann:>9.3f}"
+                f"{n_diag['scrip_sell_days_per_rebalance']:>10.1f}"
+                f"{n_diag['dp_charges_paid']:>11,.0f}{nm.cagr - bl.cagr:>+14.4f}"
+            )
+            with mlflow.start_run(run_name=f"null_signal_k{nk}_b{nband}_{freq}_{split}"):
                 mlflow.log_params(
                     {"strategy": "null_signal", "k": nk, "freq": freq,
+                     "no_trade_band": nband,
                      "split": split, "signal_tag": tag, "seed": seed,
+                     "universe_size": len(universe),
+                     "universe_effective": n_effective,
+                     "initial_cash": capital, "min_trade_value": min_trade_value,
+                     "max_supportable_k": supported_k,
                      "signal_gate_verdict": gate_verdict}
                 )
                 mlflow.log_metrics(
                     {f"{split}/sharpe": nm.sharpe, f"{split}/cagr": nm.cagr,
                      f"{split}/max_drawdown": nm.max_drawdown,
                      f"{split}/turnover_ann": nm.turnover_ann,
-                     f"{split}/cagr_minus_equal_weight": nm.cagr - bl.cagr}
+                     f"{split}/cagr_minus_equal_weight": nm.cagr - bl.cagr,
+                     **{f"{split}/{n}": v for n, v in n_diag.items()}}
                 )
 
         for horizon in horizon_grid:
             for k in k_grid:
-                params = AllocatorParams(
-                    k=k,
-                    max_name_weight=float(alloc_cfg.get("max_name_weight", 0.10)),
-                    max_sector_weight=float(alloc_cfg.get("max_sector_weight", 0.25)),
-                    turnover_budget=float(alloc_cfg.get("turnover_budget", 0.30)),
-                    cash_floor=float(alloc_cfg.get("cash_floor", 0.0)),
-                    vol_lookback=vol_lookback,
-                )
-                env = PanelTradingEnv(rebalance_schedule=schedule, **env_base)
-                navs, turns = _run_allocator(
-                    env, r_hat_all[horizon], vol_all, params, seed
-                )
-                m = compute_episode_metrics(navs, turns)
-                lines.append(
-                    f"{'allocator':<26}{k:>4}{freq:>9}{horizon:>5}"
-                    f"{m.sharpe:>9.3f}{m.cagr:>9.3f}{m.max_drawdown:>9.3f}"
-                    f"{m.turnover_ann:>9.3f}{m.cagr - bl.cagr:>+14.4f}"
-                )
-                with mlflow.start_run(
-                    run_name=f"allocator_k{k}_{freq}_{horizon}_{split}"
-                ):
-                    mlflow.log_params(
-                        {"strategy": "allocator", "k": k, "freq": freq,
-                         "horizon": horizon, "split": split, "signal_tag": tag,
-                         "max_name_weight": params.max_name_weight,
-                         "max_sector_weight": params.max_sector_weight,
-                         "turnover_budget": params.turnover_budget,
-                         "cash_floor": params.cash_floor,
-                         "universe_size": len(universe), "seed": seed,
-                         "signal_gate_verdict": gate_verdict}
+                for band in band_grid:
+                    params = AllocatorParams(
+                        k=k,
+                        max_name_weight=float(alloc_cfg.get("max_name_weight", 0.10)),
+                        max_sector_weight=float(
+                            alloc_cfg.get("max_sector_weight", 0.25)
+                        ),
+                        turnover_budget=float(alloc_cfg.get("turnover_budget", 0.30)),
+                        no_trade_band=band,
+                        cash_floor=cash_floor,
+                        vol_lookback=vol_lookback,
                     )
-                    mlflow.log_metrics(
-                        {f"{split}/sharpe": m.sharpe, f"{split}/cagr": m.cagr,
-                         f"{split}/max_drawdown": m.max_drawdown,
-                         f"{split}/turnover_ann": m.turnover_ann,
-                         f"{split}/total_return": m.total_return,
-                         f"{split}/cagr_minus_equal_weight": m.cagr - bl.cagr,
-                         f"{split}/sharpe_minus_equal_weight": m.sharpe - bl.sharpe}
+                    env = PanelTradingEnv(rebalance_schedule=schedule, **env_base)
+                    navs, turns, diag = _run_allocator(
+                        env, r_hat_all[horizon], vol_all, params, seed
                     )
-                    for name, value in compute_quantstats_metrics(
-                        m.daily_returns
-                    ).items():
-                        mlflow.log_metric(f"qs/{split}/{name}", value)
+                    m = compute_episode_metrics(navs, turns)
+                    # P5's closed form against this run's OWN measured turnover,
+                    # so the estimate and the bill are comparable rather than
+                    # two unrelated numbers.  It models sells as full exits, so
+                    # it is a FLOOR on the flat-fee drag; `dp_charges_paid` is
+                    # what the ledger actually paid.
+                    drag = fee_drag_estimate(
+                        capital, k, REBALANCES_PER_YEAR[freq], m.turnover_ann
+                    )
+                    lines.append(
+                        f"{'allocator':<26}{k:>4}{band:>7.3f}{freq:>9}{horizon:>5}"
+                        f"{m.sharpe:>9.3f}{m.cagr:>9.3f}{m.max_drawdown:>9.3f}"
+                        f"{m.turnover_ann:>9.3f}"
+                        f"{diag['scrip_sell_days_per_rebalance']:>10.1f}"
+                        f"{diag['dp_charges_paid']:>11,.0f}"
+                        f"{m.cagr - bl.cagr:>+14.4f}"
+                    )
+                    with mlflow.start_run(
+                        run_name=f"allocator_k{k}_b{band}_{freq}_{horizon}_{split}"
+                    ):
+                        mlflow.log_params(
+                            {"strategy": "allocator", "k": k, "freq": freq,
+                             "horizon": horizon, "split": split, "signal_tag": tag,
+                             "max_name_weight": params.max_name_weight,
+                             "max_sector_weight": params.max_sector_weight,
+                             "turnover_budget": params.turnover_budget,
+                             "no_trade_band": params.no_trade_band,
+                             "cash_floor": params.cash_floor,
+                             "universe_size": len(universe),
+                             "universe_effective": n_effective,
+                             "initial_cash": capital,
+                             "min_trade_value": min_trade_value,
+                             "max_supportable_k": supported_k,
+                             "k_is_supported": k <= supported_k,
+                             "seed": seed,
+                             "signal_gate_verdict": gate_verdict}
+                        )
+                        mlflow.log_metrics(
+                            {f"{split}/sharpe": m.sharpe, f"{split}/cagr": m.cagr,
+                             f"{split}/max_drawdown": m.max_drawdown,
+                             f"{split}/turnover_ann": m.turnover_ann,
+                             f"{split}/total_return": m.total_return,
+                             f"{split}/cagr_minus_equal_weight": m.cagr - bl.cagr,
+                             f"{split}/sharpe_minus_equal_weight": m.sharpe - bl.sharpe,
+                             f"{split}/fee_drag_estimate": drag,
+                             f"{split}/dp_charges_minus_equal_weight":
+                                 diag["dp_charges_paid"] - bl_diag["dp_charges_paid"],
+                             **{f"{split}/{n}": v for n, v in diag.items()}}
+                        )
+                        for name, value in compute_quantstats_metrics(
+                            m.daily_returns
+                        ).items():
+                            mlflow.log_metric(f"qs/{split}/{name}", value)
 
         lines.append(rule)
 
     logger.info("\n" + "\n".join(lines))
     logger.info(
-        f"{len(freq_grid) * (1 + len(horizon_grid) * len(k_grid))} runs logged to "
+        f"{len(freq_grid) * (1 + len(horizon_grid) * len(k_grid) * len(band_grid))} "
+        "runs logged to "
         f"MLflow experiment 'allocator' (split={split}, signal_tag={tag}). "
         "A row here is a measurement, not a verdict: nothing is a winner without "
         "a walk-forward and a run ID (CLAUDE.md rule 2)."

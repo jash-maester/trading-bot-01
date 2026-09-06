@@ -370,10 +370,36 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         # Target integer shares
         if rebalance and eq_target_frac is not None:
             target_equity_value = current_nav * np.where(mask, eq_target_frac, 0.0)
+            requested = np.where(
+                opens > 0, target_equity_value / np.maximum(opens, 1e-8), 0.0
+            )
+            target_shares = np.floor(requested)
+            # A request that ROUNDS to the position we already hold is not an
+            # order.  `floor` is kept for the *size* of a trade that does happen
+            # — it is what stops a buy from spending more than the target value
+            # — but it must not decide *whether* one happens, because it turns
+            # an arbitrarily small request into a whole share:
+            #
+            #   * `obs["portfolio"]` is float32 (`_build_obs` below), so an
+            #     allocator pinning a name to "its current weight" (P3's
+            #     `no_trade_band`) hands back a weight good to ~6e-8 relative.
+            #     floor(400 x (1 - 6e-8)) = 399 — a one-share SELL nobody asked
+            #     for, which clears the 0.5-share integrality guard (it is a
+            #     whole share) and clears `min_trade_value` on any name above
+            #     ₹500, and pays the flat ₹15.34 demat debit.  Measured: 25.6%
+            #     of pinned names still traded with open == prev_close exactly.
+            #   * weights are marked at the previous close and filled at the
+            #     open, so holding a weight across an overnight gap asks for a
+            #     move of gap x position.  Under half a share that is not
+            #     executable and rounding it up costs more than it corrects.
+            #
+            # Only ever REMOVES orders (|requested - held| < 0.5 could not have
+            # produced a delta above one share anyway), never adds or enlarges
+            # one, and never blocks a liquidation: a full exit requests 0.0
+            # against a position of at least one share.
+            # Regression: tests/unit/test_weight_to_share_orders.py.
             target_shares = np.where(
-                opens > 0,
-                np.floor(target_equity_value / np.maximum(opens, 1e-8)),
-                0.0,
+                np.abs(requested - self._shares) < 0.5, self._shares, target_shares
             )
         else:
             # Hold day: carry the book.  delta_shares is identically zero, so
@@ -506,6 +532,14 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
             ).astype(np.float32),
             "date": self._dates[day_idx],
             "costs_paid": costs_paid,
+            # The quantity the flat ₹15.34 demat debit is billed on: distinct
+            # scrips sold today (`costs.py`, per scrip per selling day).  It is
+            # 83-98% of all cost measured, and until this was exposed the only
+            # way to count it was to subclass the cost model.  Weight-space
+            # estimates of it — including `allocator.band_suppression` — are
+            # upper bounds; this is the number the ledger pays.
+            "n_scrips_sold": int(n_sold.sum()),
+            "n_legs": int(np.count_nonzero(trade_val)),
             "log_return": log_return,
             "rebalanced": rebalance,
         }

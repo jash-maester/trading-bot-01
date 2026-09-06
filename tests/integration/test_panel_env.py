@@ -804,18 +804,30 @@ def test_monthly_cadence_cuts_a_persistent_baselines_turnover_far_less_than_21x(
     ≈ 4.6 times one day's, so twelve monthly rebalances cost ≈ 12·√21 / 252 ≈
     1/4.6 of the daily bill, not 1/21.
 
-    Measured, after `min_trade_value` began gating execution:
+    Measured, after `min_trade_value` began gating execution AND after the env
+    stopped letting `floor` decide whether a trade happens (the half-share snap,
+    `_step_target`; `tests/unit/test_weight_to_share_orders.py`):
 
-        equal_weight          3.276 → 1.608   2.04x   monthly is 49% of daily
-        equal_weight_frozen   3.276 → 1.608   2.04x
-        sixty_forty           1.772 → 0.949   1.87x
+        equal_weight          2.930 → 1.600   1.83x   monthly is 55% of daily
+        equal_weight_frozen   2.930 → 1.600   1.83x
+        sixty_forty           1.457 → 0.942   1.55x
 
-    These bounds were `2.0 < ratio < 3.5` and `monthly < 0.45 · daily` against a
-    pre-fix `equal_weight` of 3.96 → 1.63.  The daily leg fell and the ratio
-    narrowed for a reason that is the point of the fix, not a regression: dust
-    trades are disproportionately a daily-cadence phenomenon, so suppressing
-    them takes more off the daily bill than the monthly one.  See
-    `11_cost_defect_and_fix_plan.md` and `tests/unit/test_min_trade_value.py`.
+    The bounds have now been widened downwards twice, both times for the same
+    reason and both times because a real cost defect was removed rather than
+    because a result drifted:
+
+        pre-min_trade_value    equal_weight 3.96 → 1.63,  bounds 2.0 < r < 3.5
+        post-min_trade_value   equal_weight 3.28 → 1.61,  bounds 1.7 < r < 3.5
+        post-half-share snap   equal_weight 2.93 → 1.60,  bounds 1.4 < r < 3.5
+
+    Each fix takes far more off the DAILY leg than the monthly one (-10.6% and
+    -17.8% here against -0.5% and -0.7%), which narrows the ratio.  That is the
+    mechanism, not a coincidence: a trade too small to carry a flat ₹15.34 fee —
+    whether "too small" means under ₹500 or under half a share — is
+    overwhelmingly a daily-cadence phenomenon, because one day of drift is
+    ≈ √21 times smaller than twenty-one days of it.  See
+    `11_cost_defect_and_fix_plan.md`, `tests/unit/test_min_trade_value.py` and
+    `scripts/probe_share_rounding.py`.
 
     Recorded because the 21x figure is a real property of the *schedule* (see
     the day-count test above) and of a churning agent, and it would be wrong to
@@ -830,8 +842,8 @@ def test_monthly_cadence_cuts_a_persistent_baselines_turnover_far_less_than_21x(
             schedule_panel_file, _baselines()[name], RebalanceSchedule("monthly")
         )[0]
         ratio = daily / monthly
-        assert 1.7 < ratio < 3.5, f"{name}: {daily:.2f} -> {monthly:.2f} = {ratio:.1f}x"
-        assert monthly < 0.60 * daily, f"{name}: monthly {monthly:.3f} vs daily {daily:.3f}"
+        assert 1.4 < ratio < 3.5, f"{name}: {daily:.2f} -> {monthly:.2f} = {ratio:.1f}x"
+        assert monthly < 0.70 * daily, f"{name}: monthly {monthly:.3f} vs daily {daily:.3f}"
 
 # ── R5: the allocator driving the env ─────────────────────────────────────────
 #

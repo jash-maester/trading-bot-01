@@ -1021,12 +1021,22 @@ class PaperBroker(Broker):
     def _materialise_targets(self, opens: Mapping[str, float]) -> None:
         """Turn target weights into integer share deltas at today's open.
 
-        Deliberately identical to ``PanelTradingEnv.step``: NAV is the previous
-        close's mark, the target rupee value is ``nav * weight``, and the share
-        count is floored so no fractional share is ever created.  Deltas worth
-        less than ``min_trade_value`` are dropped rather than rejected — they
-        are dust the strategy did not really ask for, and filling the ledger
-        with a hundred rejected orders a day would bury the real ones.
+        Deliberately identical to ``PanelTradingEnv._step_target``: NAV is the
+        previous close's mark, the target rupee value is ``nav * weight``, and
+        the share count is floored so no fractional share is ever created.
+        Deltas worth less than ``min_trade_value`` are dropped rather than
+        rejected — they are dust the strategy did not really ask for, and
+        filling the ledger with a hundred rejected orders a day would bury the
+        real ones.
+
+        A request that ROUNDS to the position already held is not an order, and
+        that decision is made on ``requested`` rather than on the floored count,
+        for the reason set out at length in ``PanelTradingEnv._step_target``: a
+        weight vector reproduces a share book only approximately, and ``floor``
+        turns an arbitrarily small error into a whole share.  The rule lives in
+        both files because the two must agree by construction — they disagreed
+        about ``min_trade_value`` for months and cost an 11% NAV divergence
+        (CLAUDE.md, "Dead config").
         """
         assert self._targets is not None
         nav = self._nav
@@ -1036,8 +1046,12 @@ class PaperBroker(Broker):
             if open_px <= 0.0:
                 continue
             weight = self._targets.get(symbol, 0.0)
-            target_shares = int(floor(nav * weight / open_px))
-            delta = target_shares - self._shares.get(symbol, 0)
+            held = self._shares.get(symbol, 0)
+            requested = nav * weight / open_px
+            if abs(requested - held) < 0.5:
+                continue
+            target_shares = int(floor(requested))
+            delta = target_shares - held
             if delta == 0:
                 continue
             if abs(delta) * open_px < self._cfg.min_trade_value:

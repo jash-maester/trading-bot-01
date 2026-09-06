@@ -34,6 +34,7 @@ import pytest
 import torch
 
 from tests.fixtures.synthetic_panel import make_signal_panel
+from trader.allocator.rebalance import RebalanceSchedule
 from trader.data.features import FEATURE_COLS
 from trader.models.signal import SignalConfig
 from trader.training.supervised import (
@@ -634,4 +635,183 @@ def test_vol_lookback_names_the_column_and_cannot_silently_disagree(
     assert "\nvol_column:" not in cfg_text, (
         "configs/env/allocator.yaml declares vol_column again; two keys for one "
         "thing is the dead-config trap this test exists to prevent"
+    )
+
+
+# ── seam (f): P3 x P4 x P5 compose — band 0, restricted universe, supported K ─
+
+
+def _allocator_pass(
+    panel_path: Path,
+    universe: list[str],
+    r_hat: np.ndarray,
+    vol_path: Path,
+    dates: list[Any],
+    params: Any,
+    *,
+    capital: float,
+) -> tuple[list[np.ndarray], list[float], list[int]]:
+    """Drive `PanelTradingEnv` from `allocate` and record what came out.
+
+    Returns the target weight vector of every rebalance day, the NAV path, and
+    the per-day count of distinct scrips sold — the quantity the flat demat fee
+    is billed on, read from the env rather than estimated from weights.
+    """
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    try:
+        from run_allocator import _dense_column
+    finally:
+        sys.path.pop(0)
+    from trader.allocator import allocate
+    from trader.env.panel_env import PanelTradingEnv
+
+    vol = _dense_column(vol_path, "realized_vol_20d", dates, universe)
+    env = PanelTradingEnv(
+        panel_path=panel_path,
+        universe=universe,
+        feature_columns=["log_return_1d"],
+        lookback=_LOOKBACK,
+        episode_length=40,
+        initial_cash=capital,
+        rebalance_schedule=RebalanceSchedule(freq="monthly"),  # type: ignore[arg-type]
+        seed=0,
+    )
+    obs, _ = env.reset(seed=0)
+    targets: list[np.ndarray] = []
+    navs = [float(obs["nav"])]
+    sold: list[int] = []
+    done = False
+    while not done:
+        if env.is_rebalance_step():
+            sig = env.day_index - 1
+            target = allocate(
+                r_hat[sig],
+                vol[sig],
+                obs["mask"].astype(bool),
+                obs["sector_ids"].astype(np.int64),
+                obs["portfolio"].astype(np.float64),
+                params,
+            )
+            targets.append(target.copy())
+            obs, _, term, trunc, info = env.step_weights(target)
+        else:
+            obs, _, term, trunc, info = env.step(
+                np.zeros(len(universe) + 1, dtype=np.float32)
+            )
+        navs.append(float(info["nav"]))
+        sold.append(int(info["n_scrips_sold"]))
+        done = bool(term or trunc)
+    return targets, navs, sold
+
+
+def test_seam_f_band_zero_supported_k_and_a_restricted_universe_compose(
+    r4_artefacts: dict[str, Any], tmp_path: Path
+) -> None:
+    """P3, P4 and P5 in one run, and each of the three is load-bearing here.
+
+    * **P4** restricts the universe by dropping a ticker's rows from the split —
+      there is no enforcement code path, the name simply becomes an all-zero
+      column with ``mask == False`` (`scripts/survivorship_arm.py`).  If that is
+      all it does, a restriction that keeps every name the allocator would have
+      picked must reproduce the unrestricted run **exactly**: same weights, same
+      NAV, same scrip-sell-day count.  A restriction that also perturbed
+      normalisation, ordering or the cash leg would show up here as a diff.
+    * **P3** contributes ``no_trade_band=0.0``, which must take the pre-band code
+      path and change nothing.  The band is shown to be live by flipping it on
+      at the end: the same run then produces a *different* weight path, so the
+      equality above is not "the band never does anything".
+    * **P5** contributes the bound: ``k`` is asserted inside
+      ``max_supportable_k`` at this capital, so the run being compared is one
+      the account can actually hold — a K above it makes the allocator's targets
+      unreachable and the comparison meaningless.
+
+    Negative control at the end: dropping a name the allocator DID pick changes
+    the weights.  Without it this test would pass with the restriction doing
+    nothing at all.
+    """
+    from trader.allocator import AllocatorParams, max_supportable_k
+    from trader.env.costs import DEFAULT_MIN_TRADE_VALUE
+
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    try:
+        from run_allocator import _dense_signal
+    finally:
+        sys.path.pop(0)
+
+    tickers = r4_artefacts["tickers"]
+    full_path = r4_artefacts["oos_panel_path"]
+    full = pl.read_parquet(full_path)
+    dates = sorted(full["date"].unique().to_list())
+    r_hat = _dense_signal(
+        r4_artefacts["dir"] / "predictions.parquet", dates, tickers, ("20d",)
+    )["20d"]
+
+    capital = 1_000_000.0
+    k = 5
+    supported = max_supportable_k(
+        capital, min_trade_value=DEFAULT_MIN_TRADE_VALUE, smallest_position_share=1.0
+    )
+    assert k <= supported, (
+        f"k={k} is above max_supportable_k={supported} at ₹{capital:,.0f}: this "
+        "test would be comparing two runs whose targets are unreachable"
+    )
+    params = AllocatorParams(
+        k=k, max_name_weight=0.30, max_sector_weight=1.0, turnover_budget=0.30
+    )
+    assert params.no_trade_band == 0.0
+
+    w_full, nav_full, sold_full = _allocator_pass(
+        full_path, tickers, r_hat, full_path, dates, params, capital=capital
+    )
+    assert w_full, "the unrestricted arm never reached a rebalance day"
+    picked = sorted(
+        {tickers[i] for w in w_full for i in np.flatnonzero(w[1:] > 0.0)}
+    )
+    assert picked, "the unrestricted arm never bought anything"
+    assert len(picked) < len(tickers), (
+        "every ticker was picked, so no restriction can be a superset — the "
+        "fixture is too small for this test to mean anything"
+    )
+
+    # Restriction that keeps every picked name: must reproduce exactly.
+    kept_path = tmp_path / "oos_restricted_superset.parquet"
+    full.filter(pl.col("ticker").is_in(picked)).write_parquet(kept_path)
+    assert (
+        sorted(pl.read_parquet(kept_path)["date"].unique().to_list()) == dates
+    ), "the restriction changed the calendar, not just the cross-section"
+
+    w_kept, nav_kept, sold_kept = _allocator_pass(
+        kept_path, tickers, r_hat, kept_path, dates, params, capital=capital
+    )
+    assert len(w_kept) == len(w_full)
+    for i, (a, b) in enumerate(zip(w_full, w_kept, strict=True)):
+        np.testing.assert_array_equal(a, b, err_msg=f"rebalance {i} diverged")
+    assert nav_kept == nav_full
+    assert sold_kept == sold_full
+
+    # Negative control 1: drop a name that WAS picked and the path must move.
+    dropped_path = tmp_path / "oos_restricted_strict.parquet"
+    full.filter(pl.col("ticker").is_in(picked[1:])).write_parquet(dropped_path)
+    w_drop, nav_drop, _ = _allocator_pass(
+        dropped_path, tickers, r_hat, dropped_path, dates, params, capital=capital
+    )
+    assert any(
+        not np.array_equal(a, b) for a, b in zip(w_full, w_drop, strict=True)
+    ), "dropping a selected name changed nothing — the restriction is not binding"
+
+    # Negative control 2: the band is live, so `no_trade_band=0.0` above is a
+    # real statement about the code path and not about an inert parameter.
+    banded = AllocatorParams(
+        k=k, max_name_weight=0.30, max_sector_weight=1.0, turnover_budget=0.30,
+        no_trade_band=0.05,
+    )
+    w_band, _, sold_band = _allocator_pass(
+        full_path, tickers, r_hat, full_path, dates, banded, capital=capital
+    )
+    assert any(
+        not np.array_equal(a, b) for a, b in zip(w_full, w_band, strict=True)
+    ), "no_trade_band=0.05 produced the same weights as 0.0 — the band is inert"
+    assert sum(sold_band) <= sum(sold_full), (
+        "the band increased the number of scrip-sell-days, which is the one "
+        "quantity it exists to reduce"
     )
