@@ -248,20 +248,79 @@ def materialise_window(
     full_panel: pl.DataFrame,
     window: WindowConfig,
     out_dir: Path,
+    warmup_days: int = 0,
 ) -> dict[str, Path]:
     """Slice `full_panel` for the given window and write three parquet files.
 
     Returns a dict ``{'train': path, 'val': path, 'test': path}``.
+
+    ``warmup_days`` prepends that many trading days of **feature context** to the
+    test segment, taken from the purge gap that precedes it. Without it the first
+    ``lookback - 1`` days of every OOS segment have no full input window and are
+    never predicted — 59 days per window at lookback 60, which was 472 of 1980
+    OOS days (24%) on the shipped 8-window configuration. That is lost power, not
+    contamination.
+
+    The rows are marked ``is_warmup`` and carry no labels and no score; they exist
+    only so the encoder has history at the first real test date. This is what a
+    live system has on that morning.
+
+    The 3-month purge is sized for exactly this — 62 trading days against a
+    59-day need — and the warm-up is asserted to stay inside it, so no test input
+    window ever reaches back into validation.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     paths: dict[str, Path] = {}
+
+    warmup_start: date | None = None
+    if warmup_days > 0:
+        prior = sorted(
+            full_panel.filter(pl.col("date") < window.test_start)["date"].unique().to_list()
+        )
+        if len(prior) < warmup_days:
+            logger.warning(
+                f"  {window.name}/test: only {len(prior)} trading day(s) precede "
+                f"{window.test_start} in the panel; wanted {warmup_days} of warm-up. "
+                "The first OOS days will still be unpredicted."
+            )
+            warmup_start = prior[0] if prior else None
+        else:
+            warmup_start = prior[-warmup_days]
+        # Never let the context cross into validation. Clamp rather than raise:
+        # a short purge costs predictable days, which is the very thing the
+        # warm-up exists to recover, and losing some of them is not a reason to
+        # fail the run. What must never happen is reaching back past val_end, so
+        # that is enforced here and asserted in tests.
+        if warmup_start is not None and warmup_start <= window.val_end:
+            usable = [d for d in prior if d > window.val_end]
+            logger.warning(
+                f"  {window.name}/test: a {warmup_days}-day warm-up would start "
+                f"{warmup_start}, at or before val_end {window.val_end}. Clamping "
+                f"to the {len(usable)} day(s) inside the purge gap; the first "
+                f"{warmup_days - len(usable)} OOS day(s) stay unpredicted. Widen "
+                "walk.purge_months to recover them."
+            )
+            warmup_start = usable[0] if usable else None
+
     segments = (
         ("train", window.train_start, window.train_end),
         ("val", window.val_start, window.val_end),
-        ("test", window.test_start, window.test_end),
+        ("test", warmup_start or window.test_start, window.test_end),
     )
     for name, start, end in segments:
         sub = slice_panel(full_panel, start, end)
+        if name == "test" and warmup_start is not None:
+            sub = sub.with_columns(
+                (pl.col("date") < window.test_start).alias("is_warmup")
+            )
+            n_warm = sub.filter(pl.col("is_warmup"))["date"].n_unique()
+            logger.info(
+                f"  {window.name}/test: {n_warm} warm-up day(s) "
+                f"{warmup_start}..{window.test_start} prepended as feature context "
+                "(unlabelled, unscored)"
+            )
+        else:
+            sub = sub.with_columns(pl.lit(False).alias("is_warmup"))
         if sub.is_empty():
             raise ValueError(
                 f"Window {window.name} {name} segment is empty for "

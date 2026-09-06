@@ -147,6 +147,10 @@ class PanelTensors:
     mask: np.ndarray                # [T, N]    bool
     targets: dict[int, np.ndarray]  # h -> [T, N] float32, NaN = unlabelled
     fwd_raw: dict[int, np.ndarray]  # h -> [T, N] float32, NaN = unlabelled
+    #: Leading dates that are feature CONTEXT ONLY — never labelled, never
+    #: predicted, never scored. Set from the `is_warmup` column written by
+    #: `materialise_window`. See its docstring for why they exist.
+    n_warmup: int = 0
 
     @property
     def n_days(self) -> int:
@@ -327,12 +331,35 @@ def build_panel_tensors(
     # fill has hidden them.  (Masked rows may be null; nothing reads them.)
     _assert_finite_on_tradeable(panel, [*feature_cols, "log_return_1d"])
 
+    # Leading feature-context days, if `materialise_window` prepended any. They
+    # must be contiguous at the front: anything else means the column was built
+    # by something other than the warm-up path and is not safe to trust.
+    n_warmup = 0
+    if "is_warmup" in panel.columns:
+        warm_dates = set(
+            panel.filter(pl.col("is_warmup"))["date"].unique().to_list()
+        )
+        if warm_dates:
+            n_warmup = len(warm_dates)
+            if set(dates[:n_warmup]) != warm_dates:
+                raise ValueError(
+                    "is_warmup rows are not a contiguous prefix of the split's "
+                    "dates; refusing to guess which days are context."
+                )
+
     targets: dict[int, np.ndarray] = {}
     fwd_raw: dict[int, np.ndarray] = {}
     for h in horizons:
         raw = forward_returns(lr, mask, h)
         fwd_raw[h] = raw
-        targets[h] = cross_sectional_zscore(raw, min_cross_section)
+        tgt = cross_sectional_zscore(raw, min_cross_section)
+        # Blank the warm-up rows outright. `_scorable_days` already skips them,
+        # but a label that cannot be read is safer than one that must not be:
+        # this path is the one where a mistake IS contamination.
+        if n_warmup:
+            raw[:n_warmup, :] = np.nan
+            tgt[:n_warmup, :] = np.nan
+        targets[h] = tgt
     return PanelTensors(
         dates=dates,
         tickers=list(tickers),
@@ -341,6 +368,7 @@ def build_panel_tensors(
         mask=mask,
         targets=targets,
         fwd_raw=fwd_raw,
+        n_warmup=n_warmup,
     )
 
 
@@ -877,13 +905,20 @@ def _scorable_days(tensors: PanelTensors, lookback: int) -> np.ndarray:
     labelled = np.zeros(T, dtype=bool)
     for tgt in tensors.targets.values():
         labelled |= np.isfinite(tgt).any(axis=1)
-    idx = np.arange(lookback - 1, T)
+    idx = np.arange(max(lookback - 1, tensors.n_warmup), T)
     return idx[labelled[idx]]
 
 
 def _predictable_days(tensors: PanelTensors, lookback: int) -> np.ndarray:
+    """Day indices with a full input window AND past any feature-context prefix.
+
+    With a warm-up of exactly ``lookback - 1`` the two bounds coincide and the
+    first prediction lands on the first real OOS date, which is the point.
+    """
     T = tensors.n_days
-    return np.arange(lookback - 1, T) if T >= lookback else np.zeros(0, dtype=np.int64)
+    if T < lookback:
+        return np.zeros(0, dtype=np.int64)
+    return np.arange(max(lookback - 1, tensors.n_warmup), T)
 
 
 def predict_panel(
@@ -1362,7 +1397,14 @@ def run_signal_walk_forward(
                     f"val {window.val_start}..{window.val_end}  "
                     f"test {window.test_start}..{window.test_end}")
         wdir = out_dir / "windows" / window.name
-        paths = materialise_window(full_panel, window, wdir)
+        # The test segment gets `lookback - 1` days of feature context from the
+        # purge gap, so the first prediction lands on the first real OOS date
+        # instead of 59 days into it. Train and val get none: they are scored
+        # over their whole span and losing their opening days costs nothing that
+        # a longer segment does not already supply.
+        paths = materialise_window(
+            full_panel, window, wdir, warmup_days=train_cfg.lookback - 1
+        )
         train_df = pl.read_parquet(paths["train"])
         val_df = pl.read_parquet(paths["val"])
         test_df = pl.read_parquet(paths["test"])
@@ -1388,10 +1430,16 @@ def run_signal_walk_forward(
         )
         for name, t in (("train", train_t), ("val", val_t), ("test", test_t)):
             lab = {h: int(np.isfinite(t.targets[h]).sum()) for h in horizons}
+            skipped = max(train_cfg.lookback - 1, t.n_warmup)
+            note = (
+                f"{t.n_warmup} warm-up day(s) as feature context, unlabelled"
+                if t.n_warmup
+                else f"first {min(skipped, t.n_days)} days have no full lookback"
+            )
             logger.info(
                 f"  {name}: {t.n_days} days, {int(t.mask.sum()):,} tradeable rows, "
-                f"labelled rows {lab}; first {min(train_cfg.lookback - 1, t.n_days)} days "
-                "have no full lookback and are not predicted"
+                f"labelled rows {lab}; {note}; "
+                f"{max(t.n_days - skipped, 0)} predictable day(s)"
             )
 
         seed_everything(train_cfg.seed)
