@@ -31,39 +31,56 @@ Two standing caveats apply to the CI column and are not fixed:
   gap: 59 days per window at lookback 60, plus forward-window truncation. This
   is lost power, not contamination.
 
-## R5 — the allocator beats equal-weight for the first time
+## R5 — the allocator beats equal-weight, on every cadence
+
+**Regenerated 2026-09-06** after two execution defects were fixed (P1 in
+`11_cost_defect_and_fix_plan.md`, plus the free-shares bug it exposed). The grid
+first published here is superseded and must not be compared against this one:
+they are different execution models. Logs: `audit/r4_v1/r4_v1_p2_allocator.log`.
 
 `+require_gate_pass=false`, so every MLflow run carries
 `signal_gate_verdict=FAIL`. **These numbers do not constitute a passed gate.**
-Backtest span is the R4 OOS slice (`oos.parquet`, 1921 dates, signal populates
-56.8% of the grid).
+Backtest span is the R4 OOS slice (1921 dates, signal populates 56.8% of grid),
+₹10 lakh initial capital.
 
-Monthly cadence, the one `10_architecture_revamp.md` §4 recommends:
+| Cadence | Strategy | K | Hor | Sharpe | CAGR | MaxDD | Turn | vs EW |
+|---|---|---|---|---|---|---|---|---|
+| monthly | equal_weight | - | - | 1.437 | 0.285 | -0.509 | 0.94 | — |
+| monthly | null_signal | 30 | - | 1.325 | 0.184 | -0.461 | 3.73 | -0.102 |
+| monthly | **allocator** | 30 | 20d | **2.027** | 0.359 | -0.464 | 3.71 | **+0.074** |
+| monthly | allocator | 20 | 20d | 2.020 | 0.382 | -0.490 | 3.73 | +0.097 |
+| weekly | equal_weight | - | - | 1.374 | 0.274 | -0.522 | 1.43 | — |
+| weekly | allocator | 20 | 20d | 1.726 | 0.386 | -0.546 | 13.34 | +0.112 |
+| daily | equal_weight | - | - | 1.337 | 0.266 | -0.524 | 2.41 | — |
+| daily | allocator | 20 | 5d | 1.729 | 0.429 | -0.578 | 58.12 | +0.163 |
 
-| Strategy | K | Horizon | Sharpe | CAGR | MaxDD | Turnover | vs EW |
-|---|---|---|---|---|---|---|---|
-| equal_weight | - | - | 1.369 | 0.272 | -0.532 | 1.13 | — |
-| null_signal (control) | 30 | - | 1.271 | 0.152 | -0.428 | 3.90 | -0.121 |
-| allocator | 30 | 20d | **2.019** | 0.338 | -0.463 | 3.78 | **+0.066** |
-| allocator | 20 | 20d | 2.005 | 0.361 | -0.495 | 3.80 | +0.089 |
+Three properties hold across the whole grid and each is a check that could have
+failed:
 
-The **null-signal control lands below equal-weight** (-0.121 CAGR) while the real
-signal lands above it. The gain therefore does not come from concentration or
-from the allocator machinery; a random signal pushed through the identical path
-underperforms. That control is what makes this result worth taking seriously.
+1. **Every allocator configuration beats equal-weight** on CAGR, at all three
+   cadences, all three K, both horizons — 18 of 18.
+2. **The null-signal control lands below equal-weight** at every cadence
+   (-0.102 monthly, -0.217 weekly, -0.414 daily). A random signal pushed through
+   the identical allocator and the same candidate set underperforms, so the gain
+   is not concentration and not the allocator machinery.
+3. **Monthly dominates on risk-adjusted return** (Sharpe 2.027 against 1.726
+   weekly and 1.729 daily) while trading a fifteenth as much, which is the
+   cadence argument in `10_architecture_revamp.md` §4 holding up under cost.
 
-Cadence matters roughly as predicted: monthly Sharpe 2.02 against weekly 1.64
-and daily 1.51 at K=30/20d, with turnover 3.8 / 13.4 / 57.7 per year.
+The best configuration is monthly, K=30, 20-day horizon: Sharpe 2.027 against
+equal-weight's 1.437, CAGR +7.4 points, on a shallower drawdown.
 
 ## Open, and load-bearing
 
-1. **The daily arm is not believed.** Equal-weight at daily cadence returns
-   CAGR -0.003 / Sharpe -0.019 against monthly +0.272 / 1.369, on turnover of
-   only 4.74x per year. At ~0.3% round-trip that is ~1.4%/yr of cost and cannot
-   explain a 27-point gap. Something in the daily path is wrong. It does not
-   change the monthly ranking but it is not yet ruled out as also affecting it.
-2. **Survivorship inflates every absolute number here.** The universe is today's
-   504 active names, not point-in-time; `market.universe_snapshots` is still
-   empty. All arms share the bias, so the *comparison* is far more trustworthy
-   than any CAGR in this file.
-3. R6 is unlaunched. `train_allocator_rl.py` refuses a non-PASS gate by design.
+1. **This rests on a FAILED signal gate.** R4 did not clear, and the interval
+   behind it is not a 5% test. Nothing here changes that.
+2. **Survivorship inflates every absolute number.** The universe is today's 504
+   active names, not point-in-time; `market.universe_snapshots` is still empty.
+   All arms share the bias, so the *comparison* is far more trustworthy than any
+   CAGR in this file. Deferred as P4.
+3. **Daily turnover of 58x a year is not investable** even where it wins on
+   paper, and no control in the system constrains the count of names traded,
+   which is what the flat demat fee bills for. Deferred as P3.
+4. **Capital scaling is unaddressed.** These use ₹10 lakh; intended live capital
+   is ₹1 lakh, where a 504-name book is uninvestable. Deferred as P5.
+5. R6 is unlaunched. `train_allocator_rl.py` refuses a non-PASS gate by design.

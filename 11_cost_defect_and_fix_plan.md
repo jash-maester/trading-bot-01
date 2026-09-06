@@ -49,23 +49,21 @@ names sold per day*, which no control in the system constrains.
 
 ## What the fix reveals underneath
 
-Applying the broker's ₹500 rule to the environment (measured, then reverted —
-not committed):
+> **CORRECTED 2026-09-06.** The exploratory measurement first recorded here —
+> daily equal-weight jumping to +62.7%/yr once the ₹500 rule was applied — was
+> an artefact of a SECOND bug that the rule activated, not a real result, and
+> the survivorship reading built on it was wrong. `panel_env.py` assigned
+> `self._shares = target_shares` unconditionally while the cash leg was masked
+> by `traded`, so every suppressed order moved the position **for free**. It was
+> dormant while the only guard was `>= 0.5` shares. With both fixed, daily
+> equal-weight is 1.337 Sharpe / +26.6% CAGR — unremarkable, and in line with
+> monthly. Survivorship (P4) remains a real concern; the +62.7% was simply never
+> evidence for it. Final numbers: `audit/R4_R5_RESULTS.md`.
 
-| Cadence | CAGR before | CAGR after |
-|---|---|---|
-| daily | -0.4% | +62.7% |
-| monthly | +27.2% | +34.2% |
-
-**Every number in `audit/R4_R5_RESULTS.md` is void**, monthly included: half its
-sell trades were sub-₹500 too.
-
-+62.7%/yr for daily equal-weight is not a strategy result, it is the next
-confound surfacing. The universe is 504 names that are *known to have survived to
-2026*, and daily rebalancing is the maximum-exposure way to trade that knowledge
-— buying every dip in names selected for having recovered. The cost defect was
-masking a survivorship artefact. Both are wrong, and the monthly arm is merely
-the least contaminated.
+Applying the broker's ₹500 rule to the environment showed the monthly arm
+improving and the daily arm changing sign, and **every number in the first
+`audit/R4_R5_RESULTS.md` is void**, monthly included: half its sell trades were
+sub-₹500 too.
 
 ## Plan
 
