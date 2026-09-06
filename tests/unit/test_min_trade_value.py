@@ -156,3 +156,45 @@ def test_negative_threshold_is_rejected(panel_file: Path) -> None:
             episode_length=10,
             min_trade_value=-1.0,
         )
+
+
+def test_suppressed_trade_leaves_the_position_and_the_cash_untouched(
+    panel_file: Path,
+) -> None:
+    """A dropped order must move neither shares nor cash.
+
+    `self._shares = target_shares` ran unconditionally while the cash leg was
+    masked by `traded`, so a suppressed trade moved the position for free. The
+    bug was dormant while the only guard was `>= 0.5` shares — true for every
+    nonzero integer delta — and went live with the value guard, inverting the
+    whole R5 allocator grid before it was caught.
+
+    With the threshold above any reachable trade value, NOTHING may execute: the
+    book stays empty, cash stays exactly at its opening balance, and NAV cannot
+    drift, because an empty book has nothing to mark.
+    """
+    probe = _TradeProbe()
+    env = PanelTradingEnv(
+        panel_path=panel_file,
+        universe=_TICKERS,
+        feature_columns=list(FEATURE_COLS),
+        lookback=60,
+        episode_length=40,
+        initial_cash=1_000_000.0,
+        cost_model=probe,
+        min_trade_value=1e12,
+        seed=0,
+    )
+    env.reset(seed=0)
+    w = np.full(_N + 1, 1.0 / _N, dtype=np.float64)
+    w[0] = 0.0
+    w = w / w.sum()
+    done = False
+    while not done:
+        _, _, term, trunc, info = env.step(w.copy())
+        done = bool(term or trunc)
+        assert not probe.values, "a trade executed above an unreachable threshold"
+        assert np.all(env._shares == 0.0), "shares moved with no trade"
+        assert env._cash == pytest.approx(1_000_000.0), "cash moved with no trade"
+        assert info["nav"] == pytest.approx(1_000_000.0), "NAV drifted on an empty book"
+        assert info["turnover"] == pytest.approx(0.0)

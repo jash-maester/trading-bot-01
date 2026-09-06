@@ -445,7 +445,20 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         # rotation reported 0.0 and a flat book through a -5% day reported 0.05.
         turnover = float(trade_val.sum()) / current_nav
 
-        self._shares = target_shares
+        # Only positions that actually TRADED move. A delta suppressed by the
+        # value guard (or the integrality guard) is an order that was never
+        # sent, so the position stays exactly where it was — matching
+        # `PaperBroker._emit_target_orders`, which drops the order and leaves
+        # the holding untouched.
+        #
+        # Assigning `target_shares` unconditionally here moved the position
+        # without the matching cash leg above (`signed_cash` is masked by
+        # `traded`), i.e. it created shares for free. The bug was dormant while
+        # the only guard was `>= 0.5` shares, which is true for every nonzero
+        # integer delta; adding the value guard made it live and it inverted the
+        # whole R5 grid before it was caught. Tested by
+        # `test_suppressed_trade_leaves_the_position_and_the_cash_untouched`.
+        self._shares = np.where(traded, target_shares, self._shares)
 
         # Mark-to-close
         new_nav = max(self._cash + float(np.sum(self._shares * closes)), 1e-8)
