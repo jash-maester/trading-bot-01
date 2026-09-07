@@ -323,10 +323,26 @@ def test_a_filing_with_neither_date_is_still_dropped() -> None:
 
 
 def test_a_dash_xbrl_link_is_null_not_a_url() -> None:
-    """NSE writes "-" where there is no document; left as a string it becomes
-    a URL of ".../xbrl/-" and 404s once per affected row."""
     df = parse_results(json.dumps([_filing(xbrl="-")]), symbol="INFY")
     assert df.row(0, named=True)["xbrl_url"] is None
+
+
+def test_a_placeholder_url_ending_in_a_dash_is_rejected() -> None:
+    """The real shape of the placeholder, and 54% of the index carries it.
+
+    NSE does not write a bare "-": it writes a well-formed URL whose last path
+    segment is "-". A startswith("http") check passes every one, which would
+    have sent a six-hour fetch to collect 11,781 404s.
+    """
+    url = "https://nsearchives.nseindia.com/corporate/xbrl/-"
+    df = parse_results(json.dumps([_filing(xbrl=url)]), symbol="INFY")
+    assert df.row(0, named=True)["xbrl_url"] is None
+
+
+def test_a_real_xbrl_url_survives() -> None:
+    url = "https://nsearchives.nseindia.com/corporate/xbrl/INDAS_1_2_3.xml"
+    df = parse_results(json.dumps([_filing(xbrl=url)]), symbol="INFY")
+    assert df.row(0, named=True)["xbrl_url"] == url
 
 
 def test_a_non_http_xbrl_value_is_rejected() -> None:

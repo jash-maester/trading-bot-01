@@ -162,10 +162,16 @@ def parse_results(payload: str, *, symbol: str) -> pl.DataFrame:
         out["broadcast_ts"].append(bcast)
         out["filing_ts"].append(_parse_ts(r.get("filingDate")))
         out["visible_from"].append(visible_from(bcast))
-        # NSE writes a literal "-" where a filing has no XBRL document. Left as
-        # a string it becomes a URL of ".../xbrl/-", which 404s once per row.
+        # NSE writes a PLACEHOLDER where a filing has no XBRL document, and it
+        # is not a bare "-": it is a full, well-formed URL whose last path
+        # segment is "-", e.g. ".../corporate/xbrl/-". Measured 2026-09-07:
+        # 11,781 of 21,817 rows (54%) are that placeholder. A `startswith
+        # ("http")` check passes every one of them, which would have sent a
+        # six-hour fetch to collect 11,781 404s at a second each.
         xbrl = str(r.get("xbrl") or "").strip()
-        out["xbrl_url"].append(xbrl if xbrl.startswith("http") else None)
+        leaf = xbrl.rsplit("/", 1)[-1] if xbrl else ""
+        usable = xbrl.startswith("http") and leaf not in {"", "-", "NA"} and "." in leaf
+        out["xbrl_url"].append(xbrl if usable else None)
         out["source"].append("nse_results")
 
     if dropped_no_date:
