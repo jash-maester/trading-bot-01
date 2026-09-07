@@ -14,6 +14,7 @@ saying so is most of the value of this document.
 | Use **Monid.ai** equities API | Its equities catalogue says *"No endpoints here yet."* Monid is an API **router**, not a data source. | Not usable today (§5) |
 | Add **news**, twice daily | Feasible forward, but **no history means no backtest and no gate** | Do it, but as a *veto*, not a ranking signal (§4) |
 | Add **fundamentals** | Genuinely available for NSE and genuinely backtestable | The best of the three, with one severe trap (§3) |
+| Concatenate a per-stock **score** into the model | Right in outline; wrong in three details | Signal model yes, RL agent no; split level from change (§3b) |
 
 **Recommended order: Kronos encoder → fundamentals → news veto.** That is
 deliberately the reverse of the order the request implies, and §1 is why.
@@ -156,6 +157,86 @@ low tens of dollars.
 
 ---
 
+## 3b. How a fundamental score should enter the model
+
+The obvious design — compute one score per stock and concatenate it to the
+model's input — is right in outline and wrong in three details, each of which
+decides whether it helps or quietly hurts.
+
+### 3b.1 Where it attaches: the signal model, never the RL agent
+
+Into `SignalModel`: **yes**. That is the natural home. The score is
+cross-sectional, per stock and per date, it slots in beside the existing 15
+feature columns, and R4's rank-IC gate measures it directly with no new
+machinery.
+
+Into `AllocatorEnv`'s observation: **no, and this one is structural.** That
+observation is deliberately 42 dimensions of *portfolio state* with no per-stock
+tensor (`ARCHITECTURE.md` §1). That was the fix for the retired critic, which
+mean-pooled 504 stock embeddings and therefore could not see the state it was
+valuing (`10_architecture_revamp.md` §1.2). Concatenating a per-stock score
+there means adding 504 dimensions and reintroducing precisely the defect that
+was removed. Fundamentals belong in the thing that **ranks stocks**, not in the
+thing that **sizes the book**.
+
+### 3b.2 One composite score is probably the wrong shape
+
+Collapsing earnings yield, ROE, debt-to-equity and growth into a single number
+makes a modelling decision by hand before the model sees anything: it fixes the
+weights, discards the components, and makes it impossible to know afterwards
+which part did the work. The model is capable of learning that combination.
+
+The counter-argument is real and it is §1: six raw features is six more things
+to fit against roughly four independent periods. So measure **both**:
+
+* the raw components as separate columns; and
+* one **unfitted** composite — an equal-weight average of cross-sectional
+  z-scores. Unfitted is load-bearing. A composite whose weights were optimised
+  on the same data is an overfitted model with fewer visible parameters, which
+  is worse than the honest version because the overfitting is hidden.
+
+### 3b.3 The timescale mismatch, and the memorisation risk it creates
+
+We predict 5–20 day returns. Fundamentals change quarterly and their documented
+predictive power is over one to five years. Within any 20-day window a
+fundamental *level* is essentially constant.
+
+A near-constant per-stock feature behaves like a **stock fixed effect**. That is
+the specific danger: instead of learning "profitable companies outperform", the
+model can learn "these particular 40 tickers did well between 2016 and 2024".
+That memorises names rather than a relationship, it will not transfer, and — the
+reason to take it seriously — it would look excellent in sample.
+
+**Split level from change.** The *level* is the slow factor carrying the
+mismatch problem. The *change* — earnings surprise, margin inflection, estimate
+revision — is an event, is higher frequency, and is far more plausible at a
+20-day horizon. Feed both; expect the change to carry whatever signal exists.
+
+### 3b.4 Cheaper uses that add no parameters at all
+
+Given §1, two uses are worth testing **before** the ranking feature, because
+neither fits a single new parameter:
+
+* **a quality floor on the candidate set** — weak balance sheets never enter the
+  top K. This is closer to how fundamentals are actually used, and it is
+  immune to the fixed-effect problem because it never enters the ranking;
+* **the stop-loss veto** (§4) — a strong company falling is noise, a weak one
+  falling may not be. This is the IndiGo case stated precisely.
+
+### 3b.5 Two checks before believing any of it
+
+1. **Standalone IC first.** Measure the score's own rank IC before adding it to
+   anything, so its contribution is known independently rather than inferred
+   from a lift.
+2. **Stability across windows.** A genuine factor shows up broadly across the 8
+   walk-forward windows. A memorised set of names shows up in the windows
+   containing those names and nowhere else. Concentration is the tell, and
+   `summary.json` already carries per-window ICs to check it against.
+
+**Prediction, recorded in advance so it can be wrong:** the change component
+gives a small lift, the level component gives none and mildly overfits, and the
+quality filter is worth more than either as a ranking feature.
+
 ## 4. News — real information, but it cannot be validated
 
 News is the highest-frequency of the three and the most likely to matter at our
@@ -247,7 +328,11 @@ Each stage ends the line cheaply if it fails.
 | K2 | Kronos forecast as a 16th feature | Cheaper alternative to K1 | 1 day | No IC lift → drop |
 | F0 | Fundamentals provider audit | Does anyone supply **announcement dates**? | 1 day | Nobody does → use a 45-day fixed lag or **stop** |
 | F1 | Historical fetch, 504 × 32 quarters | — | 2 days | Coverage below ~80% of the universe → stop |
-| F2 | Extended-feature IC gate | Does it lift rank IC? | 1 day | No lift → keep the pipeline, drop the features |
+| F2 | Standalone IC of the score | What does it carry on its own? | 0.5 day | IC indistinguishable from zero → stop before integrating |
+| F3 | Level vs change, as separate arms | Which component carries it? | 1 day | Neither lifts → keep pipeline, drop features |
+| F4 | Unfitted composite vs raw components | Is the sample big enough for components? | 0.5 day | — (chooses the shape, does not kill) |
+| F5 | Per-window stability of the lift | Factor or memorised names? | 0.5 day | Lift concentrated in 1–2 windows → **discard, it is names not a factor** |
+| F6 | Quality floor on the candidate set | Zero-parameter alternative | 1 day | No improvement → drop the filter, keep the features |
 | N0 | Stop-event census | How many stop events a year is a veto worth? | 0.5 day | Under ~20/yr → not worth any integration |
 | N1 | News veto, forward paper only | Does it separate story from noise? | 2 days + 6 months | No separation after 50 events → drop |
 
@@ -265,6 +350,13 @@ days to a yes or no.
 **Second: F0.** One day, and it determines whether fundamentals are usable at
 all. If no provider carries announcement dates, that is worth knowing before any
 fetching.
+
+**Third, and only after F0 clears: F2 before F3.** Measure what the score
+carries on its own before measuring what it adds. A lift is easy to misread; a
+standalone IC is not. And run F5 — per-window stability — on any lift that does
+appear, because §3b.3's failure mode produces a strong average and a
+concentrated distribution, which is indistinguishable from a real factor if you
+only look at the mean.
 
 **Not now: Monid.** Its equities catalogue is empty; there is nothing to
 integrate.
