@@ -1,0 +1,33 @@
+2026-09-07 06:31:00.877 | INFO     | trader.data.features:resolve_panels_root:115 - Panels root: /mnt/d/trading-bot-01/data/panels_kite  (data.panels_root)
+2026-09-07 06:31:01.012 | INFO     | trader.data.features:resolve_panels_root:142 -   train.parquet: 645 tickers, 3,038,595 rows, 2005-01-03..2023-12-29
+2026-09-07 06:31:01.021 | INFO     | trader.data.features:resolve_panels_root:142 -   val.parquet: 645 tickers, 120,615 rows, 2024-04-01..2024-12-31
+2026-09-07 06:31:01.032 | INFO     | trader.data.features:resolve_panels_root:142 -   test.parquet: 645 tickers, 228,975 rows, 2025-04-01..2026-09-04
+2026-09-07 06:31:01.122 | INFO     | trader.data.features:resolve_panels_root:142 -   full.parquet: 645 tickers, 3,468,165 rows, 2005-01-03..2026-09-04
+2026-09-07 06:31:01.167 | INFO     | __main__:main:506 - universe 504 from active_tickers(); 504 of them have rows in /mnt/d/trading-bot-01/data/panels_kite/oos_r4_v2.parquet — the rest are all-zero columns, mask False.
+2026-09-07 06:31:01.405 | INFO     | __main__:_dense_signal:137 - Signal /mnt/d/trading-bot-01/data/signal/r4_v2/predictions.parquet: 718340 rows, 718340 on-grid, 72.0% of the [T=1980, N=504] grid populated.
+2026-09-07 06:32:01.619 | INFO     | __main__:main:751 - 
+--------------------------------------------------------------------------------------------------------------------------
+R4 signal gate [r4_v2]: PASS — mean_ic_5d=0.03922295969298621 mean_ic_20d=0.043875958025581877 ic_ci_low=0.030818834372034008 n_windows=8
+--------------------------------------------------------------------------------------------------------------------------
+strategy                     K   band     freq  hor   Sharpe     CAGR      MDD     Turn  sold/reb       DP ₹  vs EW Δ CAGR
+--------------------------------------------------------------------------------------------------------------------------
+equal_weight                 -      -  monthly    -    1.280    0.257   -0.522    0.810       2.3     69,122             —
+null_signal (control)       30  0.000  monthly    -    1.120    0.225   -0.561    3.548     145.3    209,560       -0.0312
+allocator/none              20  0.000  monthly  20d    1.660    0.416   -0.589    3.633      99.6    143,567       +0.1590
+allocator/none              20  0.020  monthly  20d    1.755    0.386   -0.534    1.957      14.3     20,556       +0.1296
+allocator/none              30  0.000  monthly  20d    1.680    0.397   -0.556    3.568     113.7    163,939       +0.1406
+allocator/none              30  0.020  monthly  20d    1.763    0.369   -0.515    2.102      13.0     18,730       +0.1120
+--------------------------------------------------------------------------------------------------------------------------
+2026-09-07 06:32:01.622 | INFO     | __main__:main:752 - 5 runs logged to MLflow experiment 'allocator' (split=oos_r4_v2, signal_tag=r4_v2). A row here is a measurement, not a verdict: nothing is a winner without a walk-forward and a run ID (CLAUDE.md rule 2).
+🏃 View run equal_weight_monthly_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/b33b83acf3874c93a332f2c1b4e354a5
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run null_signal_k30_b0.0_monthly_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/fd72601679c549eb8cf80351b6080fae
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k20_b0.0_rnone_monthly_20d_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/8ae43298f723490096685879e887abf0
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k20_b0.02_rnone_monthly_20d_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/5b7b165104c24cd99d399018fe01a04c
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_b0.0_rnone_monthly_20d_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/3ae75b95cfdf4f0f854845284159056b
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_b0.02_rnone_monthly_20d_oos_r4_v2 at: http://localhost:5555/#/experiments/2/runs/6b898151f1fc4786a1bd4ef012800a6b
+🧪 View experiment at: http://localhost:5555/#/experiments/2
