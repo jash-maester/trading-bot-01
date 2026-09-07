@@ -105,6 +105,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         self._max_weight = max_weight_per_name
         self._turnover_penalty = turnover_penalty
         self._universe = list(universe)
+        self._last_fills = np.zeros(len(self._universe), dtype=np.float64)
         N = len(universe)
 
         # ── Load and prepare panel ────────────────────────────────────────────
@@ -259,6 +260,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         self._start_idx = int(self._np_rng.integers(min_idx, max_idx + 1))
         self._t = 0
         self._cash = float(self._initial_cash)
+        self._last_fills = np.zeros(len(self._universe), dtype=np.float64)
         if self._apply_tax:
             from trader.env.tax import FifoLotBook, TaxModel
 
@@ -410,6 +412,10 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         if not self._apply_tax or self._fy_current is None:
             return 0.0
         return float(self._tax.liability(self._fy_current).total)
+
+    def last_fill_prices(self) -> np.ndarray:
+        """Fill price per name on the last step, ``[N]``, 0.0 where untraded."""
+        return np.asarray(self._last_fills, dtype=np.float64).copy()
 
     def closes_at(self, day_idx: int) -> np.ndarray:
         """Close price per universe name on ``day_idx``, ``[N]``.
@@ -595,6 +601,12 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         # integer delta; adding the value guard made it live and it inverted the
         # whole R5 grid before it was caught. Tested by
         # `test_suppressed_trade_leaves_the_position_and_the_cash_untouched`.
+        # Actual fill price per name for this step, 0.0 where nothing traded.
+        # A risk overlay measuring a position's loss from entry needs the price
+        # it was BOUGHT at; the close of the entry day is a different number and
+        # using it made the stop trigger early or late by one intraday move.
+        self._last_fills = np.where(traded, fill_prices, 0.0)
+
         if self._apply_tax and rebalance:
             self._record_tax_lots(delta_shares, traded, fill_prices, day_idx)
 

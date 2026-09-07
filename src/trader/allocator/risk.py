@@ -127,8 +127,22 @@ class RiskOverlay:
 
     # ── state ────────────────────────────────────────────────────────────────
 
-    def update(self, nav: float, closes: np.ndarray, weights: np.ndarray) -> None:
-        """Absorb one env step. ``weights`` is the post-trade ``[N]`` equity block."""
+    def update(
+        self,
+        nav: float,
+        closes: np.ndarray,
+        weights: np.ndarray,
+        fill_prices: np.ndarray | None = None,
+    ) -> None:
+        """Absorb one env step. ``weights`` is the post-trade ``[N]`` equity block.
+
+        ``fill_prices`` is the price each name actually traded at this step, 0.0
+        where it did not. A newly held name records THAT as its entry, because a
+        stop measures loss from what the position cost. Falling back to the
+        day's close is wrong by one intraday move — it made the stop fire early
+        on a name that rose after the open and late on one that fell — and is
+        kept only for callers that cannot supply fills.
+        """
         nav = float(nav)
         self._navs.append(nav)
         self._peak = max(self._peak, nav)
@@ -139,7 +153,11 @@ class RiskOverlay:
         # re-entry later is measured from the new price and not the old one.
         entered = held & ~self._held
         exited = ~held & self._held
-        self._entry[entered] = px[entered]
+        entry_px = px
+        if fill_prices is not None:
+            fp = np.asarray(fill_prices, dtype=np.float64)
+            entry_px = np.where(fp > 0.0, fp, px)
+        self._entry[entered] = entry_px[entered]
         self._entry[exited] = np.nan
         self._held = held
 

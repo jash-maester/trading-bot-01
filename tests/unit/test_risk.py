@@ -214,3 +214,34 @@ def test_apply_rejects_a_wrongly_shaped_target() -> None:
     o = RiskOverlay(RiskParams(), 4)
     with pytest.raises(ValueError, match="shape"):
         o.apply(np.zeros(4))
+
+
+def test_entry_is_the_fill_price_not_the_close() -> None:
+    """A stop measures loss from what the position COST.
+
+    Recording the entry-day close instead is wrong by one intraday move: it
+    fires the stop early on a name that rose after the open and late on one
+    that fell. Here the fill is 100 and the entry-day close is 120, so a stop
+    at 15% must trigger at 85, not at 102.
+    """
+    o = RiskOverlay(RiskParams(stop_loss=0.15), 2)
+    closes = np.array([120.0, 100.0])
+    fills = np.array([100.0, 100.0])
+    o.update(1e6, closes, np.array([0.5, 0.5]), fill_prices=fills)
+
+    # 90 is 25% below the close but only 10% below the fill: must NOT stop.
+    o.update(1e6, np.array([90.0, 100.0]), np.array([0.5, 0.5]))
+    assert o.stops_to_execute().tolist() == [False, False]
+
+    # 84 is 16% below the fill: must stop.
+    o.update(1e6, np.array([84.0, 100.0]), np.array([0.5, 0.5]))
+    assert o.stops_to_execute().tolist() == [True, False]
+
+
+def test_a_zero_fill_falls_back_to_the_close() -> None:
+    """Callers that cannot supply fills must still get a usable entry."""
+    o = RiskOverlay(RiskParams(stop_loss=0.10), 2)
+    o.update(1e6, np.array([100.0, 100.0]), np.array([0.5, 0.5]),
+             fill_prices=np.array([0.0, 0.0]))
+    o.update(1e6, np.array([85.0, 100.0]), np.array([0.5, 0.5]))
+    assert o.stops_to_execute().tolist() == [True, False]

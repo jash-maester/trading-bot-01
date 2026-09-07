@@ -118,3 +118,28 @@ ranges:
 # <signal_dir>/gate.json exists and says PASS (CLAUDE.md rule 1, in code).
 signal_dir: null               # e.g. data/signal/r4_baseline
 signal_horizon: r_hat_20d      # monthly rebalancing reads the 20d head
+
+# ── risk overlays (risk.py) ──────────────────────────────────────────────────
+# The standing comparison set. Every allocator run reports all three arms so a
+# result is never quoted without its risk-controlled counterparts beside it.
+#
+# Measured twice, in sample 2016-24 and on the unseen 2025-26 holdout, and the
+# ORDERING held both times: a tighter stop buys Sharpe and drawdown with return,
+# monotonically. Holdout at Rs 1 lakh after tax and all charges:
+#   none      Sharpe 1.720  CAGR 0.304  MDD -0.133
+#   stop 15%  Sharpe 2.013  CAGR 0.251  MDD -0.087
+#   stop 10%  Sharpe 2.093  CAGR 0.222  MDD -0.080
+# 10% is the chosen default: shallowest drawdown, best Sharpe, and the
+# conservative end of a monotone tradeoff.
+#
+# The stop measures loss from the FILL price, not from the entry day's close,
+# and not from any dip below the purchase price -- a 0% threshold would sell
+# roughly half the book on noise and pay a flat Rs 15.34 each time.
+risk_grid:
+  - name: none
+  - name: stop10
+    stop_loss: 0.10
+    stop_cooldown_steps: 21
+  - name: stop15
+    stop_loss: 0.15
+    stop_cooldown_steps: 21

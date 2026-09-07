@@ -263,7 +263,10 @@ def _run_allocator(
             )
         if risk is not None:
             risk.update(
-                float(info["nav"]), env.closes_today(), obs["portfolio"].astype(np.float64)[1:]
+                float(info["nav"]),
+                env.closes_today(),
+                obs["portfolio"].astype(np.float64)[1:],
+                fill_prices=env.last_fill_prices(),
             )
         navs.append(float(info["nav"]))
         turnovers.append(float(info["turnover"]))
