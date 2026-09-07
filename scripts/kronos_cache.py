@@ -62,6 +62,8 @@ def main() -> None:
                     help="stocks per forward pass; K0 measured 504 at ~1.5 GiB")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--limit-dates", type=int, default=0, help="debug: cap dates")
+    ap.add_argument("--restart", action="store_true",
+                    help="ignore any checkpoint and rebuild from scratch")
     ap.add_argument(
         "--amount-mode", choices=("close_volume", "zero"), default="close_volume",
         help=(
@@ -106,7 +108,31 @@ def main() -> None:
     stack = np.stack([cols[c] for c in (*_CHANNELS, "amount")], axis=2)  # [T, N, 6]
 
     d_model = int(mdl.d_model) if hasattr(mdl, "d_model") else 512
-    out = np.full((T, N, d_model), np.nan, dtype=np.float16)
+
+    # CHECKPOINTED AND RESUMABLE. This used to build the whole array in RAM and
+    # write once at the end, so a 23-minute run that died lost everything. The
+    # array is now a memmap on disk from the first date, and `progress.json`
+    # records the last date index completed, so a re-run picks up where it
+    # stopped instead of starting over.
+    args.out.mkdir(parents=True, exist_ok=True)
+    emb_path = args.out / "embeddings.npy"
+    prog_path = args.out / "progress.json"
+    resume_from = L - 1
+    shape = (T, N, d_model)
+    if emb_path.exists() and prog_path.exists() and not args.restart:
+        prev = json.loads(prog_path.read_text())
+        if tuple(prev.get("shape", ())) == shape and prev.get("model") == args.model:
+            resume_from = int(prev["next_index"])
+            logger.info(
+                f"resuming at date index {resume_from}/{T} "
+                f"({prev.get('completed', 0)} dates already done)"
+            )
+        else:
+            logger.warning("existing cache has a different shape or model; restarting")
+    mode = "r+" if (emb_path.exists() and resume_from > L - 1) else "w+"
+    out = np.lib.format.open_memmap(emb_path, mode=mode, dtype=np.float16, shape=shape)
+    if mode == "w+":
+        out[:] = np.nan
 
     logger.info(
         f"{args.panel.name}: {T} dates x {N} tickers, lookback {L}, "
@@ -114,7 +140,7 @@ def main() -> None:
     )
     t_start = time.time()
     done = 0
-    for t in range(L - 1, T):
+    for t in range(resume_from, T):
         window = stack[t - L + 1 : t + 1]            # [L, N, 6]
         x = torch.tensor(window, dtype=torch.float32, device=dev).permute(1, 0, 2)
         # A stock with any gap in its window cannot be embedded; leave it NaN
@@ -136,6 +162,17 @@ def main() -> None:
             out[t, sel.cpu().numpy()] = ctx[:, -1, :].to(torch.float16).cpu().numpy()
         done += 1
         if done % 100 == 0:
+            # Flush the memmap and advance the marker together, so the marker
+            # never claims more than is actually on disk.
+            out.flush()
+            prog_path.write_text(
+                json.dumps(
+                    {"next_index": t + 1, "completed": done, "shape": list(shape),
+                     "model": args.model, "amount_mode": args.amount_mode},
+                    indent=2,
+                )
+                + "\n"
+            )
             el = time.time() - t_start
             rate = done / el
             logger.info(
@@ -143,8 +180,15 @@ def main() -> None:
                 f"eta {(T - L + 1 - done) / max(rate, 1e-9) / 60:.1f} min"
             )
 
-    args.out.mkdir(parents=True, exist_ok=True)
-    np.save(args.out / "embeddings.npy", out)
+    out.flush()
+    prog_path.write_text(
+        json.dumps(
+            {"next_index": T, "completed": done, "shape": list(shape),
+             "model": args.model, "amount_mode": args.amount_mode, "finished": True},
+            indent=2,
+        )
+        + "\n"
+    )
     covered = float(np.isfinite(out[:, :, 0]).mean())
     (args.out / "index.json").write_text(
         json.dumps(
