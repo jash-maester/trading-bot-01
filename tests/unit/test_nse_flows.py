@@ -190,6 +190,9 @@ def test_delivery_source_reads_the_cache_with_no_network(tmp_path: Path) -> None
         "traded_qty",
         "deliverable_qty",
         "delivery_pct",
+        "turnover",
+        "avg_price",
+        "n_trades",
         "source",
     }
     assert frame["source"].unique().to_list() == ["mto"]
@@ -621,3 +624,69 @@ def test_cached_source_writes_then_reuses_the_file(tmp_path: Path) -> None:
     second = source.fetch_day(date(2026, 9, 4))
     assert second is not None and second.height == 8
     assert len(session.urls) == 1  # re-run is free
+
+
+# ── turnover columns (added 2026-09-07) ──────────────────────────────────────
+
+
+def test_bhavdata_parses_turnover_vwap_and_trade_count() -> None:
+    """`sec_bhavdata_full` carried these all along and the parser discarded them.
+
+    They matter because Kite's historical bars are OHLCV with no turnover, so
+    nothing else in this repo knows the rupee value traded, and `avg_price` is
+    NSE's own VWAP — genuinely absent from OHLC.
+    """
+    from trader.data.sources.nse_flows import parse_sec_bhavdata
+
+    text = (
+        "SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, "
+        "LAST_PRICE, CLOSE_PRICE, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, "
+        "NO_OF_TRADES, DELIV_QTY, DELIV_PER\n"
+        "20MICRONS, EQ, 04-Sep-2026, 217.82, 218.91, 224.90, 216.50, 222.95, "
+        "222.95, 221.03, 174812, 386.39, 4145, 82174, 47.01\n"
+    )
+    df = parse_sec_bhavdata(text, name="sec_bhavdata_full_04092026.csv")
+    row = df.row(0, named=True)
+    assert row["avg_price"] == pytest.approx(221.03)
+    assert row["n_trades"] == 4145
+    # Stored in RUPEES, not the lakhs NSE reports, so no consumer has to
+    # remember the unit.
+    assert row["turnover"] == pytest.approx(386.39 * 1e5)
+    # turnover / qty reproduces NSE's own VWAP to within rounding, which is the
+    # check that the unit conversion is right rather than merely consistent.
+    assert row["turnover"] / row["traded_qty"] == pytest.approx(row["avg_price"], rel=0.01)
+
+
+def test_a_dash_in_a_turnover_field_is_null_not_zero() -> None:
+    """Zero turnover means "traded nothing"; a dash means "NSE published none"."""
+    from trader.data.sources.nse_flows import parse_sec_bhavdata
+
+    text = (
+        "SYMBOL, SERIES, DATE1, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, "
+        "NO_OF_TRADES, DELIV_QTY\n"
+        "FOO, BE, 04-Sep-2026, -, 100, -, -, -\n"
+    )
+    row = parse_sec_bhavdata(text, name="x.csv").row(0, named=True)
+    assert row["turnover"] is None
+    assert row["avg_price"] is None
+    assert row["n_trades"] is None
+
+
+def test_an_older_layout_without_turnover_columns_still_parses() -> None:
+    """A file predating these columns must yield delivery data, not raise."""
+    from trader.data.sources.nse_flows import parse_sec_bhavdata
+
+    text = (
+        "SYMBOL, SERIES, DATE1, TTL_TRD_QNTY, DELIV_QTY\n"
+        "FOO, EQ, 04-Sep-2026, 100, 40\n"
+    )
+    row = parse_sec_bhavdata(text, name="old.csv").row(0, named=True)
+    assert row["delivery_pct"] == pytest.approx(0.4)
+    assert row["turnover"] is None
+
+
+def test_the_mto_backend_reports_null_turnover_not_zero() -> None:
+    """MTO carries quantities only. `source` is how a consumer tells which."""
+    from trader.data.sources.nse_flows import DELIVERY_SCHEMA
+
+    assert {"turnover", "avg_price", "n_trades"} <= set(DELIVERY_SCHEMA)

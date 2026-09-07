@@ -451,8 +451,28 @@ DELIVERY_SCHEMA: Final[dict[str, pl.DataType]] = {
     "traded_qty": pl.Int64(),
     "deliverable_qty": pl.Int64(),
     "delivery_pct": pl.Float64(),
+    # Turnover fields, kept from 2026-09-07. `sec_bhavdata_full` has carried
+    # them all along and this parser was discarding them.
+    #
+    # They matter because Kite's historical bars are OHLCV with no turnover, so
+    # nothing else in this repo knows the rupee VALUE traded. `avg_price` is
+    # NSE's own VWAP, and turnover/qty reproduces it — which is genuinely
+    # absent from OHLC: a stock that closed at its high after trading near its
+    # low all day is a different animal from one that traded near its high
+    # throughout, and only these columns separate them.
+    #
+    # Null, never zero, on rows where NSE publishes a literal "-". The MTO
+    # backend cannot supply them at all and leaves them null, which is why a
+    # consumer must check `source` before assuming coverage.
+    "turnover": pl.Float64(),        # rupees, converted from TURNOVER_LACS
+    "avg_price": pl.Float64(),       # NSE's AVG_PRICE, i.e. VWAP
+    "n_trades": pl.Int64(),
     "source": pl.Utf8(),
 }
+
+#: NSE reports turnover in lakhs (10^5 rupees). Stored in rupees so a consumer
+#: never has to remember the unit.
+_LACS_TO_RUPEES: Final[float] = 1e5
 
 
 def _normalise_header(line: str) -> str:
@@ -563,6 +583,13 @@ def parse_mto(text: str, *, name: str = "<mto>") -> pl.DataFrame:
             "traded_qty": traded,
             "deliverable_qty": delivered,
             "delivery_pct": pct,
+            # The MTO file carries quantities only — no turnover, no VWAP, no
+            # trade count. Null rather than 0, so a consumer can tell "this
+            # backend cannot know" from "there was no trading"; `source` says
+            # which backend produced the row.
+            "turnover": [None] * len(dates),
+            "avg_price": [None] * len(dates),
+            "n_trades": [None] * len(dates),
             "source": ["mto"] * len(dates),
         },
         schema=DELIVERY_SCHEMA,
@@ -585,6 +612,9 @@ def parse_sec_bhavdata(text: str, *, name: str = "<bhavdata>") -> pl.DataFrame:
     traded: list[int | None] = []
     delivered: list[int | None] = []
     pct: list[float | None] = []
+    turnover: list[float | None] = []
+    avg_price: list[float | None] = []
+    n_trades: list[int | None] = []
 
     for row in rows:
         missing = {"SYMBOL", "SERIES", "DATE1", "TTL_TRD_QNTY", "DELIV_QTY"} - set(row)
@@ -598,6 +628,13 @@ def parse_sec_bhavdata(text: str, *, name: str = "<bhavdata>") -> pl.DataFrame:
         traded.append(qty)
         delivered.append(deliv)
         pct.append(deliv / qty if (qty is not None and deliv is not None and qty > 0) else None)
+        # Turnover columns are NOT in the required set above: they are absent
+        # from older layouts, and a file that predates them should still yield
+        # delivery data rather than raising.
+        lacs = _float_or_none(row.get("TURNOVER_LACS", ""))
+        turnover.append(lacs * _LACS_TO_RUPEES if lacs is not None else None)
+        avg_price.append(_float_or_none(row.get("AVG_PRICE", "")))
+        n_trades.append(_int_or_none(row.get("NO_OF_TRADES", "")))
 
     return pl.DataFrame(
         {
@@ -607,6 +644,9 @@ def parse_sec_bhavdata(text: str, *, name: str = "<bhavdata>") -> pl.DataFrame:
             "traded_qty": traded,
             "deliverable_qty": delivered,
             "delivery_pct": pct,
+            "turnover": turnover,
+            "avg_price": avg_price,
+            "n_trades": n_trades,
             "source": ["bhavdata"] * len(dates),
         },
         schema=DELIVERY_SCHEMA,
@@ -752,6 +792,7 @@ def parse_fiidii_json(text: str) -> pl.DataFrame:
 
 
 def _float_or_none(value: str) -> float | None:
+    """NSE writes a literal ``-`` where a figure does not exist. Null, never 0."""
     text = value.strip().replace(",", "")
     if text in {"", "-", "NA", "N/A"}:
         return None
