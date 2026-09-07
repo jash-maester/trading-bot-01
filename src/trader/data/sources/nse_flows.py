@@ -332,6 +332,41 @@ class _FileCache:
     def is_missing(self, name: str) -> bool:
         return self.path(name + ".missing").exists()
 
+    # ── poisoned-body markers ────────────────────────────────────────────────
+    #
+    # A body that arrived but is not what the URL promised (NSE served a
+    # ZIP/XLSX at a .csv URL for 2022-08-08) must NOT be cached as if it were
+    # data. Before this, `write` stored whatever arrived and `read` replayed it
+    # forever without a network call, so a corrupt download was permanent and
+    # re-running never fixed it — the file had to be deleted by hand.
+    #
+    # Marked rather than merely discarded, so a re-run does not spend a request
+    # rediscovering the same bad day. `--refetch-bad` clears the markers,
+    # because NSE may republish a file correctly later.
+
+    def is_bad(self, name: str) -> bool:
+        return self.path(name + ".bad").exists()
+
+    def mark_bad(self, name: str, reason: str) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.path(name + ".bad").write_text(reason, encoding="utf-8")
+        # Remove any body already cached for it, so a later reader cannot pick
+        # up the corrupt file and bypass the marker entirely.
+        body = self.path(name)
+        if body.exists():
+            body.unlink()
+
+    def bad_reason(self, name: str) -> str:
+        p = self.path(name + ".bad")
+        return p.read_text(encoding="utf-8").strip() if p.exists() else ""
+
+    def clear_bad(self) -> int:
+        n = 0
+        for p in self.root.glob("*.bad"):
+            p.unlink()
+            n += 1
+        return n
+
     MANIFEST_NAME: Final[str] = "fetch_manifest.jsonl"
 
     def write(self, name: str, text: str, *, url: str | None = None) -> None:
@@ -409,6 +444,9 @@ class _CachedSource:
 
     def _load(self, name: str, url: str) -> str | None:
         """Return a cached file, else fetch and cache it. None means absent."""
+        if self.cache.is_bad(name):
+            logger.debug(f"{name}: known-bad body, skipped ({self.cache.bad_reason(name)})")
+            return None
         cached = self.cache.read(name)
         if cached is not None:
             return cached
@@ -734,10 +772,12 @@ class DeliverySource(_CachedSource):
             except (NotACSVError, MTOLayoutError) as exc:
                 # One malformed day must not kill a multi-hour backfill. NSE
                 # served a ZIP at the .csv URL for 2022-08-08 and aborted a
-                # 1,613-day run 554 days in. Skip it, name it, keep going --
-                # and report the count at the end so a silent hole in the
-                # history is impossible.
-                logger.warning(f"{day}: skipped, {exc}")
+                # 1,613-day run 554 days in. Skip it, MARK it so the next run
+                # neither re-downloads it nor replays the corrupt body, keep
+                # going, and report the count at the end so a silent hole in
+                # the history is impossible.
+                self.cache.mark_bad(self._name_for(day), str(exc))
+                logger.warning(f"{day}: skipped and marked bad, {exc}")
                 skipped.append(day)
                 continue
             if frame is not None:
@@ -752,14 +792,20 @@ class DeliverySource(_CachedSource):
             return pl.DataFrame(schema=DELIVERY_SCHEMA)
         return self._dedupe(pl.concat(frames)).sort(["date", "ticker"])
 
+    def _name_for(self, day: date) -> str:
+        """Cache filename for a day. One definition, so a `.bad` marker cannot
+        be written against a name `fetch_day` would never look up."""
+        stamp = _ddmmyyyy(day)
+        return f"MTO_{stamp}.DAT" if self.backend == "mto" else f"sec_bhavdata_full_{stamp}.csv"
+
     def fetch_day(self, day: date) -> pl.DataFrame | None:
         """Return one day's delivery rows, or None if NSE published no file."""
         stamp = _ddmmyyyy(day)
+        name = self._name_for(day)
         if self.backend == "mto":
-            name, url = f"MTO_{stamp}.DAT", MTO_URL.format(ddmmyyyy=stamp)
+            url = MTO_URL.format(ddmmyyyy=stamp)
             parse = parse_mto
         else:
-            name = f"sec_bhavdata_full_{stamp}.csv"
             url = BHAVDATA_URL.format(ddmmyyyy=stamp)
             parse = parse_sec_bhavdata
         text = self._load(name, url)

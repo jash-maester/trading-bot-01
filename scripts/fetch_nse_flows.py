@@ -114,6 +114,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-root", type=Path, default=None, help="overrides cache_root")
     parser.add_argument("--out-root", type=Path, default=None, help="overrides out_root")
     parser.add_argument(
+        "--refetch-bad",
+        action="store_true",
+        help=(
+            "clear `.bad` markers before running, so days previously rejected "
+            "for serving the wrong content type are tried again. NSE does "
+            "republish a malformed file sometimes, and without this the marker "
+            "is permanent."
+        ),
+    )
+    parser.add_argument(
         "--offline",
         action="store_true",
         help="parse the on-disk cache only; never open a socket",
@@ -186,6 +196,9 @@ def main(argv: list[str] | None = None) -> int:
             offline=args.offline,
             backend=str(args.backend or cfg.delivery.backend),
         )
+        if args.refetch_bad:
+            n = delivery_source.cache.clear_bad()
+            logger.info(f"cleared {n} `.bad` marker(s); those days will be retried")
         frames["delivery"] = delivery_source.fetch(args.start, args.end)
 
     if "flows" in sources:

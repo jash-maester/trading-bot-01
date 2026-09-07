@@ -711,3 +711,45 @@ def test_a_body_without_a_symbol_header_is_refused() -> None:
 
     with pytest.raises(NotACSVError, match="SYMBOL header"):
         parse_sec_bhavdata("<html>404 not found</html>", name="x.csv")
+
+
+def test_a_bad_body_is_marked_and_never_replayed(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """The layer of this bug that the skip did NOT fix.
+
+    `write` stored whatever arrived and `read` replayed it forever without a
+    network call, so a corrupt download was permanent: re-running never fixed
+    it and the file had to be deleted by hand.
+    """
+    from trader.data.sources.nse_flows import _FileCache
+
+    cache = _FileCache(tmp_path)
+    cache.write("x.csv", "PK\x03\x04 not a csv", url="http://example/x.csv")
+    assert cache.read("x.csv") is not None          # cached, as before
+
+    cache.mark_bad("x.csv", "NSE served a ZIP/XLSX body")
+    assert cache.is_bad("x.csv")
+    assert "ZIP/XLSX" in cache.bad_reason("x.csv")
+    # The corrupt body must be GONE, not merely shadowed by the marker, or a
+    # reader that forgets to check is_bad() picks it up anyway.
+    assert cache.read("x.csv") is None
+
+    assert cache.clear_bad() == 1
+    assert not cache.is_bad("x.csv")
+
+
+def test_marking_bad_is_idempotent_and_safe_with_no_body(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from trader.data.sources.nse_flows import _FileCache
+
+    cache = _FileCache(tmp_path)
+    cache.mark_bad("never_fetched.csv", "reason")   # no body was ever written
+    cache.mark_bad("never_fetched.csv", "reason")
+    assert cache.is_bad("never_fetched.csv")
+
+
+def test_the_marker_name_matches_what_fetch_day_looks_up() -> None:
+    """A marker written against a name fetch_day never checks is useless."""
+    from trader.data.sources.nse_flows import DeliverySource
+
+    for backend, expect in (("mto", "MTO_08082022.DAT"),
+                            ("bhavdata", "sec_bhavdata_full_08082022.csv")):
+        assert DeliverySource(backend=backend)._name_for(date(2022, 8, 8)) == expect
