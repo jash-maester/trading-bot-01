@@ -1,0 +1,281 @@
+# 13 — Kronos, fundamentals and news: what to integrate and in what order
+
+Written 2026-09-07 at the user's request. Plan only; nothing here is
+implemented. Two of the premises behind the request turn out to be wrong, and
+saying so is most of the value of this document.
+
+---
+
+## 0. Verdict
+
+| Proposal | Reality | Verdict |
+|---|---|---|
+| Wire **Kronos** for fundamentals | Kronos is OHLCV-only. It has **no fundamentals and no news**. | Premise wrong — but Kronos is worth doing for a *different* reason (§2) |
+| Use **Monid.ai** equities API | Its equities catalogue says *"No endpoints here yet."* Monid is an API **router**, not a data source. | Not usable today (§5) |
+| Add **news**, twice daily | Feasible forward, but **no history means no backtest and no gate** | Do it, but as a *veto*, not a ranking signal (§4) |
+| Add **fundamentals** | Genuinely available for NSE and genuinely backtestable | The best of the three, with one severe trap (§3) |
+
+**Recommended order: Kronos encoder → fundamentals → news veto.** That is
+deliberately the reverse of the order the request implies, and §1 is why.
+
+---
+
+## 1. The binding constraint is sample size, not features
+
+Before adding any data source, the thing that killed the last attempt has to be
+stated, because it applies to everything below.
+
+R6 failed out of sample for a measured, structural reason
+(`ARCHITECTURE.md` §3.3): its action space was 17 dimensions and the training
+span holds roughly **four non-overlapping two-year windows**. It fitted
+parameters against a sample that could not support them.
+
+The supervised signal has the same exposure. It trains on 8 windows across
+2016–2024, and its whole edge is a rank IC of 0.039. **Every feature group added
+is more parameters against the same fixed, small sample.** A new data source is
+not free even when the data itself is free.
+
+That gives a test any proposal here has to pass:
+
+> Does this add **information** the price series does not already carry, or does
+> it add **parameters**? Sources that mostly restate what price already knows
+> make the model worse, not better.
+
+Fundamentals mostly pass that test — a balance sheet is not in the price series.
+Kronos passes it in an unusual way: it adds no features at all, it adds
+*pretraining*, which moves in the opposite direction and makes the sample
+problem smaller. News passes it too, but cannot be validated (§4).
+
+---
+
+## 2. Kronos — not fundamentals, but the most promising item here
+
+**What it actually is.** The first open-source foundation model for financial
+candlesticks, decoder-only transformer, trained on data from 45+ global
+exchanges. It takes OHLC (volume and amount optional) and forecasts future
+OHLCV. A tokenizer quantises continuous K-line data into hierarchical discrete
+tokens, then an autoregressive transformer models the sequence.
+
+| Model | Params | Context | Licence |
+|---|---|---|---|
+| Kronos-mini | 4.1M | 2048 | MIT |
+| Kronos-small | 24.7M | 512 | MIT |
+| Kronos-base | 102.3M | 512 | MIT |
+| Kronos-large | 499.2M | 512 | closed |
+
+**It contains no fundamentals and no news.** It is exactly the same input class
+we already use. So it cannot answer the question that prompted the request.
+
+**Why it is still the first thing I would do.** Our `TCNEncoder` is 363k
+parameters trained *from scratch* on 8 years of one market. Kronos-base is 102M
+parameters pretrained on 45 exchanges. Swapping a from-scratch encoder for a
+pretrained one is the standard remedy for exactly the small-sample problem in
+§1, and it is the only proposal here that reduces our parameter burden instead
+of increasing it.
+
+**How it would fit.** Not as a forecaster. We would use its **hidden states as
+per-stock embeddings**, replacing `TCNEncoder` inside `SignalModel` and keeping
+everything above it — the cross-sectional layer, the two return heads, the
+walk-forward, the gate. Kronos is per-series and has no cross-sectional view, so
+our cross-stock attention stays exactly where it is.
+
+Three arms worth measuring, cheapest first:
+
+1. **Frozen Kronos embeddings + our heads.** No fine-tuning. This is the
+   cleanest test of whether its pretraining transfers to NSE at all, and it is
+   compatible with the embedding cache already built (`embedding_cache.py`),
+   which is worth ~47x on a frozen encoder.
+2. **Fine-tuned Kronos-small.** More capacity to overfit; run only if (1) shows
+   signal.
+3. **Kronos forecast as a feature.** Feed its predicted forward return as one
+   extra column alongside the 15. Cheapest of all and tests the model's own
+   output rather than its representation.
+
+**Gate:** the existing R4 window-level gate, unchanged, plus a paired comparison
+against the current TCN on the same windows and seeds. If frozen Kronos
+embeddings do not beat a from-scratch TCN on rank IC, stop — the transfer did
+not happen and nothing downstream will rescue it.
+
+**Cost:** one 102M-parameter forward pass per (stock, date) to build the cache.
+On the 4060 that is a few hours once, then free. It is a bigger model than
+anything we run today and the VRAM cliff in `ARCHITECTURE.md` §5 applies, so
+profile the batch size before committing to a long run.
+
+**Risk to name up front:** foundation models for financial time series are a new
+and contested claim. "Trained on 45 exchanges" does not mean it learned anything
+transferable to NSE mid-caps at a 5–20 day horizon. Arm (1) is designed to find
+that out in one run rather than after a month of integration.
+
+---
+
+## 3. Fundamentals — backtestable, and one trap that would invalidate everything
+
+This is the item that actually answers the original question, and the one where
+the data genuinely exists.
+
+**Availability.** Several providers cover NSE/BSE fundamentals: `indianapi.in`,
+FinEdge, Twelve Data, Finnhub, and a RapidAPI Indian Stock Exchange endpoint.
+Coverage claims run to 5,200+ NSE and BSE listed companies with P&L, balance
+sheet, cash flow and shareholding.
+
+**Volume is tractable.** 504 companies × ~32 quarters over 8 years ≈ **16,000
+records**. That is a one-time fetch, not a streaming cost, and it is small
+enough to store in the existing Postgres schema.
+
+**Candidate features**, all cross-sectional and all slow-moving: earnings yield,
+book-to-price, return on equity, debt-to-equity, sales growth, accruals,
+promoter-holding change, earnings surprise versus the prior quarter.
+
+> ### The trap: point-in-time, and it is the same shape as our survivorship bug
+>
+> Fundamentals are **announced with a lag** and **restated afterwards**. A Q3
+> figure is not knowable on the last day of Q3; it becomes knowable on its
+> announcement date, typically 4–8 weeks later. Nearly every cheap API returns
+> *current, restated* values with no announcement date attached.
+>
+> Joining those to a panel by quarter-end gives the model a number no investor
+> could have had — and, worse, a number that was later *corrected to be right*.
+> That is not a small lookahead. It is the single most reliable way to
+> manufacture a spectacular backtest, and this repo has already been burned by
+> its cousin: a universe of 645 names with zero delistings.
+>
+> **Hard requirement: no fundamental datum enters the panel without an
+> announcement date, and it becomes visible only on the day after.** If a
+> provider cannot supply announcement dates, use a conservative fixed lag (45
+> days after quarter end) and say so in the artefact. A provider that offers
+> neither is not usable at any price.
+
+**Gate:** run R4's existing IC gate on the extended feature group, exactly as
+`features_ext.py` was built to do. The comparison is against the same
+walk-forward without the group. Fundamentals are a months-to-years effect and
+our horizon is 5–20 days, so a small or zero IC lift is the *expected* outcome
+and would not be a failure of the plumbing.
+
+**Cost:** one-time historical fetch, then quarterly refresh. Likely free tier or
+low tens of dollars.
+
+---
+
+## 4. News — real information, but it cannot be validated
+
+News is the highest-frequency of the three and the most likely to matter at our
+horizon. It also has a problem that no amount of money quite solves.
+
+**The blocker: we have no history.** Everything in this repo is validated by
+walk-forward over 2016–2024. News gathered from today forward cannot be
+backtested on that span, so it cannot pass the R4 gate, and per `CLAUDE.md` rule
+1 nothing may be built on a gate that never opened. Buying history is possible
+in principle but the archives that carry Indian small-cap headlines with
+timestamps are neither cheap nor complete.
+
+Two honest options: **start collecting now and have a usable panel in 12–24
+months**, or **use news in a role that does not require a backtest**. The second
+is the one worth doing.
+
+### The design: a veto on held names, not a ranking signal over 504
+
+This is where the cost question and the IndiGo question meet.
+
+Fetching news for all 504 names twice daily is 1,008 calls a day. Fetching it
+only for the ~20 names held plus the ~20 candidates for the next rebalance is
+40 calls a day:
+
+| Strategy | Calls/day | $/day | $/yr |
+|---|---|---|---|
+| All 504, twice daily | 1,008 | 1.31 | 478 |
+| All 504, once daily | 504 | 0.66 | 239 |
+| **Held + next candidates (~40), daily** | **40** | **0.05** | **19** |
+| Market-level only, twice daily | 2 | 0.00 | 1 |
+
+At Monid's quoted $0.0013 per call. Backfilling 8 years for all 504 names would
+be ~1,016,000 calls ≈ $1,321 — cheap in absolute terms, but the archive
+completeness, not the price, is what makes it unattractive.
+
+**A veto is not a ranking signal and does not need a rank IC.** It answers one
+question about the ~40 names we care about: *is this fall a story or is it
+noise?* That is precisely the IndiGo case — a strong company falling on
+sentiment, which recovers, versus a company whose fall reflects something
+structural, which does not.
+
+Concretely, it would gate the **stop-loss**, not the allocator:
+
+- name breaches its volatility-scaled stop **and** carries materially negative
+  news → sell, and extend the cooldown;
+- name breaches its stop with **no** adverse news → treat as noise, hold or
+  reduce rather than exit.
+
+That is a small, testable, cheap intervention on top of a mechanism that already
+works, and it does not require news history to justify — it can be validated
+forward, on the ~50 stop events a year the strategy actually generates.
+
+**What must not be done:** using a large language model to produce a per-stock
+sentiment score, feeding it in as a 16th feature, and quoting the IC. That is
+unbacktestable, unstable across model versions, and would fail the §1 test.
+
+---
+
+## 5. Monid.ai — a router, not a data source
+
+**What it actually is:** a registry that lets an agent discover and call across
+1,700+ tools from 55+ providers, billed per call from one balance (their example
+rate: $0.0013), with no subscription. It routes to Exa and Octen for search,
+Apify and Browserbase for scraping, and similar.
+
+**Its equities catalogue is empty:** *"No endpoints here yet — the catalog grows
+weekly."*
+
+So Monid supplies **no equity data today**. Its value here is narrow and
+conditional: it is a reasonable way to reach a *news search* endpoint without
+signing a separate contract, at the 40-calls-a-day budget above. It is not a
+route to fundamentals, and it should not be a dependency — anything built on it
+must work against a direct provider too.
+
+**Recommendation:** do not integrate Monid now. Re-check when the equities
+catalogue is non-empty. If a news veto goes ahead, evaluate Monid against a
+direct search API on price *and* on whether headlines carry usable timestamps.
+
+---
+
+## 6. Staged plan, with kill criteria
+
+Each stage ends the line cheaply if it fails.
+
+| # | Stage | Question | Effort | Kill criterion |
+|---|---|---|---|---|
+| K0 | Kronos smoke | Does it load and embed our panel at all? | 1 day | Cannot run at our shape on 8 GiB → stop |
+| K1 | Frozen Kronos embeddings vs TCN | Does pretraining transfer to NSE? | 2 days | Rank IC not above the from-scratch TCN → **stop the whole Kronos line** |
+| K2 | Kronos forecast as a 16th feature | Cheaper alternative to K1 | 1 day | No IC lift → drop |
+| F0 | Fundamentals provider audit | Does anyone supply **announcement dates**? | 1 day | Nobody does → use a 45-day fixed lag or **stop** |
+| F1 | Historical fetch, 504 × 32 quarters | — | 2 days | Coverage below ~80% of the universe → stop |
+| F2 | Extended-feature IC gate | Does it lift rank IC? | 1 day | No lift → keep the pipeline, drop the features |
+| N0 | Stop-event census | How many stop events a year is a veto worth? | 0.5 day | Under ~20/yr → not worth any integration |
+| N1 | News veto, forward paper only | Does it separate story from noise? | 2 days + 6 months | No separation after 50 events → drop |
+
+**K1 and F0 are the two that decide everything.** Both are one to two days and
+both can kill their entire branch.
+
+---
+
+## 7. What I would do first, and what I would not
+
+**First: K1.** It is the only item that attacks the constraint in §1 rather than
+adding to it, it needs no new provider, no contract and no money, and it is two
+days to a yes or no.
+
+**Second: F0.** One day, and it determines whether fundamentals are usable at
+all. If no provider carries announcement dates, that is worth knowing before any
+fetching.
+
+**Not now: Monid.** Its equities catalogue is empty; there is nothing to
+integrate.
+
+**Not at all: an LLM sentiment score as a model feature.** Unbacktestable,
+version-unstable, and it fails the test in §1.
+
+**A note on the framing that started this.** The instinct — that a strong
+company falling on sentiment should be held, not sold — is right, and the
+volatility-scaled stop already implements a crude version of it by giving a
+name room proportional to its own normal movement. News would sharpen that from
+*"how much does this normally move?"* to *"is there a reason this moved?"* That
+is a genuine improvement and it is the right long-term use of news here. It is
+also the one use that does not require history we do not have.
