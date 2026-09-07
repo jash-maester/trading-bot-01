@@ -82,10 +82,18 @@ def test_the_measured_lag_is_weeks_not_days() -> None:
 # ── refusing to guess ────────────────────────────────────────────────────────
 
 
-def test_a_filing_with_no_broadcast_date_is_dropped_not_lagged() -> None:
-    """A guessed lag is exactly the lookahead this module prevents."""
-    rows = [_filing(), _filing(broadCastDate=None, toDate="30-Sep-2024",
-                              fromDate="01-Jul-2024")]
+def test_a_filing_with_no_knowable_date_is_dropped_not_lagged() -> None:
+    """A guessed lag is exactly the lookahead this module prevents.
+
+    Dropped when NEITHER broadcast nor filing date exists. A filing date IS
+    knowable and is used instead (see the fallback test below); what is refused
+    is inventing a lag from the period end.
+    """
+    rows = [
+        _filing(),
+        _filing(broadCastDate=None, filingDate=None,
+                toDate="30-Sep-2024", fromDate="01-Jul-2024"),
+    ]
     df = parse_results(json.dumps(rows), symbol="INFY")
     assert df.height == 1
     assert df.row(0, named=True)["period_to"] == date(2024, 12, 31)
@@ -291,3 +299,24 @@ def test_malformed_xml_raises_rather_than_returning_empty() -> None:
 
     with pytest.raises(XBRLParseError, match="not well-formed"):
         parse_results_xbrl("<xbrl><unclosed>")
+
+
+def test_filing_date_is_a_legitimate_fallback_for_a_missing_broadcast_date() -> None:
+    """Pre-2008 filings often carry filingDate but no broadCastDate.
+
+    filingDate is KNOWABLE -- the exchange timestamped it -- so falling back to
+    it is not the same as guessing a fixed lag from the period end, which is
+    what this module refuses to do.
+    """
+    rows = [_filing(broadCastDate=None, filingDate="24-May-2007 17:27",
+                    fromDate="01-Jan-2007", toDate="31-Mar-2007")]
+    df = parse_results(json.dumps(rows), symbol="BPCL")
+    assert df.height == 1
+    r = df.row(0, named=True)
+    assert r["visible_from"] == date(2007, 5, 25)
+    assert r["visible_from"] > r["period_to"]
+
+
+def test_a_filing_with_neither_date_is_still_dropped() -> None:
+    rows = [_filing(broadCastDate=None, filingDate="-")]
+    assert parse_results(json.dumps(rows), symbol="BPCL").height == 0

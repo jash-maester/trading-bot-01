@@ -24,6 +24,14 @@ returns, per filing:
 Verified 2026-09-07 against INFY: Q3 FY25 covers 01-Oct-2024..31-Dec-2024 and
 was broadcast 16-Jan-2025 19:42 IST — a 16-day lag, and after the 15:30 close.
 
+**COVERAGE LIMIT, measured 2026-09-07.** This endpoint returns nothing broadcast
+after roughly January 2025, for every symbol tried (INFY, RELIANCE, TCS, BPCL all
+return 0 filings for 01-Feb-2025..07-09-2026). History runs deep — back to 2007
+— but stops about twenty months short of today. Consequence: fundamentals cover
+the 2016-2024 walk-forward in full and DO NOT cover the 2025+ holdout at all, so
+any feature built here can be evaluated on the windows but not carried into the
+holdout without another source.
+
 That last detail is not a footnote. A result broadcast after the close cannot be
 traded until the **next** session, so `visible_from` is derived from the
 broadcast timestamp and the market clock rather than from its date alone.
@@ -128,7 +136,11 @@ def parse_results(payload: str, *, symbol: str) -> pl.DataFrame:
     out: dict[str, list[Any]] = {k: [] for k in RESULTS_SCHEMA}
     dropped_no_date = 0
     for r in rows:
-        bcast = _parse_ts(r.get("broadCastDate"))
+        # Filings before ~2008 often carry a filingDate but no broadCastDate.
+        # filingDate is still a KNOWABLE date -- the company filed it, the
+        # exchange timestamped it -- so it is a legitimate fallback, unlike a
+        # fixed lag guessed from the period end.
+        bcast = _parse_ts(r.get("broadCastDate")) or _parse_ts(r.get("filingDate"))
         p_from, p_to = _parse_day(r.get("fromDate")), _parse_day(r.get("toDate"))
         if bcast is None or p_from is None or p_to is None:
             # No broadcast date means no knowable visibility. Dropped, never
