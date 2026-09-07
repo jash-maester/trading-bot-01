@@ -65,7 +65,7 @@ def main() -> None:
     ap.add_argument("--restart", action="store_true",
                     help="ignore any checkpoint and rebuild from scratch")
     ap.add_argument(
-        "--amount-mode", choices=("close_volume", "zero"), default="close_volume",
+        "--amount-mode", choices=("close_volume", "zero", "turnover"), default="close_volume",
         help=(
             "How to fill Kronos's optional 6th channel. `close_volume` is "
             "close*volume, which is REDUNDANT -- a deterministic function of two "
@@ -74,8 +74,14 @@ def main() -> None:
             "TURNOVER_LACS and AVG_PRICE and R8 already parses that file but "
             "discards both. This flag exists to measure whether the channel "
             "moves rank IC at all, before paying for the fetch that would supply "
-            "the real thing."
+            "the real thing. `turnover` is that real thing, joined from "
+            "--turnover-parquet; it is NSE's own TURNOVER_LACS and carries the "
+            "intraday price location that OHLC does not."
         ),
+    )
+    ap.add_argument(
+        "--turnover-parquet", type=Path, default=Path("data/ext/delivery.parquet"),
+        help="source for --amount-mode turnover",
     )
     args = ap.parse_args()
 
@@ -103,6 +109,23 @@ def main() -> None:
     # strictly better than handing the model a dead channel.
     if args.amount_mode == "zero":
         cols["amount"] = np.zeros_like(cols["close"])
+    elif args.amount_mode == "turnover":
+        # Real turnover, from NSE's bhavcopy. It exists only from 2020-07-01,
+        # so earlier dates get 0.0 — Kronos's own convention for a missing
+        # amount. That is a REAL limitation of the experiment, not a modelling
+        # choice: no walk-forward window has turnover across both its train and
+        # test spans, because training is five years and the data is six years
+        # old. A comparison must therefore be read on the windows whose TEST
+        # period is covered (W5-W8), and even there the training is only
+        # partly covered.
+        tv = pl.read_parquet(args.turnover_parquet, columns=["date", "ticker", "turnover"])
+        amt = _dense(tv, "turnover", dates, tickers)
+        n_known = int(np.isfinite(amt).sum())
+        logger.info(
+            f"turnover joined: {n_known:,}/{amt.size:,} cells "
+            f"({n_known / amt.size:.1%}); the rest are 0.0 (pre-2020-07 or untraded)"
+        )
+        cols["amount"] = np.nan_to_num(amt, nan=0.0)
     else:
         cols["amount"] = cols["close"] * cols["volume"]
     stack = np.stack([cols[c] for c in (*_CHANNELS, "amount")], axis=2)  # [T, N, 6]
