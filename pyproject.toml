@@ -35,6 +35,18 @@ dependencies = [
 #   uv sync --extra zerodha
 zerodha = ["kiteconnect>=4.2"]
 
+# Kronos, the open-source K-line foundation model (13_fundamentals_and_news.md
+# section 2), evaluated as a pretrained replacement for our from-scratch
+# TCNEncoder. Optional because it is a spike: nothing in the shipped pipeline
+# imports it, and K1 may kill the whole line.
+#
+# Deliberately UNPINNED where the upstream repo pins `==`: it wants pandas
+# 2.2.2 and we run 2.3.3, and downgrading a core dependency to satisfy an
+# experiment is how a spike breaks the thing it was meant to improve. These
+# three are the only packages it needs that we do not already have.
+#   uv sync --extra kronos
+kronos = ["einops>=0.8", "huggingface_hub>=0.33", "safetensors>=0.6"]
+
 [dependency-groups]
 dev = [
     "pytest>=8",

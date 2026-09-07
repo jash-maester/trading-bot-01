@@ -89,3 +89,7 @@ multirun/
 # Project-local docker config (training box credential-helper workaround)
 .docker/
 backups/
+# Vendored third-party source for the Kronos spike (13_fundamentals_and_news.md
+# section 2). Cloned by scripts/kronos_smoke.py's instructions, not ours to
+# version.
+/vendor/
