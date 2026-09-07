@@ -1,0 +1,39 @@
+2026-09-07 05:14:21.582 | INFO     | trader.data.features:resolve_panels_root:115 - Panels root: /mnt/d/trading-bot-01/data/panels_kite  (data.panels_root)
+2026-09-07 05:14:21.654 | INFO     | trader.data.features:resolve_panels_root:142 -   train.parquet: 645 tickers, 3,038,595 rows, 2005-01-03..2023-12-29
+2026-09-07 05:14:21.666 | INFO     | trader.data.features:resolve_panels_root:142 -   val.parquet: 645 tickers, 120,615 rows, 2024-04-01..2024-12-31
+2026-09-07 05:14:21.680 | INFO     | trader.data.features:resolve_panels_root:142 -   test.parquet: 645 tickers, 228,975 rows, 2025-04-01..2026-09-04
+2026-09-07 05:14:21.769 | INFO     | trader.data.features:resolve_panels_root:142 -   full.parquet: 645 tickers, 3,468,165 rows, 2005-01-03..2026-09-04
+2026-09-07 05:14:21.775 | WARNING  | __main__:main:414 - R4 gate for signal tag 'r4_v2_holdout' is MISSING: no gate.json at /mnt/d/trading-bot-01/data/signal/r4_v2_holdout/gate.json
+  A backtest of a failed signal is not evidence, and its 'vs EW Δ
+  CAGR' must not be quoted as one.  Re-run with
+  `+require_gate_pass=false` to measure it anyway — the verdict is
+  then stamped into every MLflow run and into the printed header.
+2026-09-07 05:14:21.799 | INFO     | __main__:main:452 - universe 504 from active_tickers(); 504 of them have rows in /mnt/d/trading-bot-01/data/panels_kite/test.parquet — the rest are all-zero columns, mask False.
+2026-09-07 05:14:21.913 | INFO     | __main__:_dense_signal:136 - Signal /mnt/d/trading-bot-01/data/signal/r4_v2_holdout/predictions.parquet: 145205 rows, 145205 on-grid, 81.2% of the [T=355, N=504] grid populated.
+2026-09-07 05:14:54.177 | INFO     | __main__:main:681 - 
+--------------------------------------------------------------------------------------------------------------------------
+R4 signal gate [r4_v2_holdout]: MISSING — no gate.json at /mnt/d/trading-bot-01/data/signal/r4_v2_holdout/gate.json
+*** SIGNAL GATE DID NOT PASS: these numbers are NOT evidence ***
+--------------------------------------------------------------------------------------------------------------------------
+strategy                     K   band     freq  hor   Sharpe     CAGR      MDD     Turn  sold/reb       DP ₹  vs EW Δ CAGR
+--------------------------------------------------------------------------------------------------------------------------
+equal_weight                 -      -  monthly    -    0.685    0.090   -0.120    0.953       0.7      3,160             —
+null_signal (control)       30  0.000  monthly    -    0.587    0.082   -0.135    3.511      77.4     19,006       -0.0082
+allocator                   20  0.000  monthly  20d    1.892    0.320   -0.117    3.921      59.9     14,696       +0.2304
+allocator                   20  0.005  monthly  20d    1.546    0.267   -0.122    4.039      14.8      3,620       +0.1768
+allocator                   30  0.000  monthly  20d    1.495    0.231   -0.117    3.740      67.2     16,490       +0.1411
+allocator                   30  0.005  monthly  20d    1.313    0.215   -0.119    3.878      14.4      3,544       +0.1255
+--------------------------------------------------------------------------------------------------------------------------
+2026-09-07 05:14:54.178 | INFO     | __main__:main:682 - 5 runs logged to MLflow experiment 'allocator' (split=test, signal_tag=r4_v2_holdout). A row here is a measurement, not a verdict: nothing is a winner without a walk-forward and a run ID (CLAUDE.md rule 2).
+🏃 View run equal_weight_monthly_test at: http://localhost:5555/#/experiments/2/runs/ed78ae061ad740d7a357325d8bce8dbe
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run null_signal_k30_b0.0_monthly_test at: http://localhost:5555/#/experiments/2/runs/2e16101640e444799897bc1c67aa3501
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k20_b0.0_monthly_20d_test at: http://localhost:5555/#/experiments/2/runs/6be11cc3f2f34c699aae4382468f4af1
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k20_b0.005_monthly_20d_test at: http://localhost:5555/#/experiments/2/runs/431ade038dd1400891d88f54e2d3bf2b
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_b0.0_monthly_20d_test at: http://localhost:5555/#/experiments/2/runs/cd725b2bd1444d00beece95e2d442086
+🧪 View experiment at: http://localhost:5555/#/experiments/2
+🏃 View run allocator_k30_b0.005_monthly_20d_test at: http://localhost:5555/#/experiments/2/runs/57c3f47fbbe84018803cf1e8063d6045
+🧪 View experiment at: http://localhost:5555/#/experiments/2
