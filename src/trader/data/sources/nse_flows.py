@@ -173,6 +173,14 @@ class NSENotFound(NSEFetchError):
     """NSE returned 404 — usually a non-trading day, not a fault."""
 
 
+class NotACSVError(ValueError):
+    """NSE served something other than the CSV this URL is supposed to return.
+
+    Distinct from a parse failure on a real CSV: this one is safe to SKIP for a
+    day and carry on, because it says nothing about the other 1,612 days.
+    """
+
+
 class MTOLayoutError(ValueError):
     """An MTO file did not match a layout this parser knows.
 
@@ -603,6 +611,22 @@ def parse_sec_bhavdata(text: str, *, name: str = "<bhavdata>") -> pl.DataFrame:
     spaces in NSE's file, and ``DELIV_QTY`` / ``DELIV_PER`` are a literal ``-``
     on series where NSE publishes no delivery — parsed to null, never zero.
     """
+    # Reject a payload that is not the CSV we asked for BEFORE handing it to
+    # the csv module, which otherwise produces a baffling error a long way from
+    # the cause. Measured 2026-09-07: NSE served a ZIP/XLSX body for
+    # 2022-08-08 (magic PK\x03\x04, containing [Content_Types].xml) at the
+    # normal .csv URL. One such day in 551 killed a 1,613-day backfill.
+    head = text.lstrip()[:400]
+    if text.startswith("PK\x03\x04") or "[Content_Types].xml" in head:
+        raise NotACSVError(
+            f"{name}: NSE served a ZIP/XLSX body at the .csv URL, not a CSV"
+        )
+    if "SYMBOL" not in head:
+        raise NotACSVError(
+            f"{name}: body does not carry a SYMBOL header in its first 400 "
+            f"chars; got {head[:80]!r}"
+        )
+
     reader = csv.DictReader(io.StringIO(text))
     rows = [{(k or "").strip(): (v or "").strip() for k, v in row.items()} for row in reader]
 
@@ -703,10 +727,27 @@ class DeliverySource(_CachedSource):
 
     def fetch(self, start: date, end: date) -> pl.DataFrame:
         frames: list[pl.DataFrame] = []
+        skipped: list[date] = []
         for day in _trading_days(start, end):
-            frame = self.fetch_day(day)
+            try:
+                frame = self.fetch_day(day)
+            except (NotACSVError, MTOLayoutError) as exc:
+                # One malformed day must not kill a multi-hour backfill. NSE
+                # served a ZIP at the .csv URL for 2022-08-08 and aborted a
+                # 1,613-day run 554 days in. Skip it, name it, keep going --
+                # and report the count at the end so a silent hole in the
+                # history is impossible.
+                logger.warning(f"{day}: skipped, {exc}")
+                skipped.append(day)
+                continue
             if frame is not None:
                 frames.append(frame)
+        if skipped:
+            logger.warning(
+                f"{len(skipped)} day(s) skipped as unparseable: "
+                + ", ".join(str(d) for d in skipped[:10])
+                + (" ..." if len(skipped) > 10 else "")
+            )
         if not frames:
             return pl.DataFrame(schema=DELIVERY_SCHEMA)
         return self._dedupe(pl.concat(frames)).sort(["date", "ticker"])

@@ -690,3 +690,24 @@ def test_the_mto_backend_reports_null_turnover_not_zero() -> None:
     from trader.data.sources.nse_flows import DELIVERY_SCHEMA
 
     assert {"turnover", "avg_price", "n_trades"} <= set(DELIVERY_SCHEMA)
+
+
+def test_a_zip_body_at_the_csv_url_is_named_not_guessed() -> None:
+    """NSE served a ZIP/XLSX for 2022-08-08 and killed a 1,613-day backfill.
+
+    The csv module's own error for this ("new-line character seen in unquoted
+    field", or an AttributeError deep in a comprehension) points nowhere near
+    the cause, which is why the payload is checked before parsing.
+    """
+    from trader.data.sources.nse_flows import NotACSVError, parse_sec_bhavdata
+
+    zip_body = "PK\x03\x04\x14\x00\x06\x00[Content_Types].xml garbage"
+    with pytest.raises(NotACSVError, match="ZIP/XLSX"):
+        parse_sec_bhavdata(zip_body, name="sec_bhavdata_full_08082022.csv")
+
+
+def test_a_body_without_a_symbol_header_is_refused() -> None:
+    from trader.data.sources.nse_flows import NotACSVError, parse_sec_bhavdata
+
+    with pytest.raises(NotACSVError, match="SYMBOL header"):
+        parse_sec_bhavdata("<html>404 not found</html>", name="x.csv")
