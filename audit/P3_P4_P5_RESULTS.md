@@ -164,3 +164,74 @@ split must never be handed to a graph model.
 
 Nothing here has been walked forward on the 2025+ holdout, which remains
 untouched.
+
+---
+
+## 5. The holdout, and R6
+
+Added 2026-09-07. The 2025+ holdout has now been spent, once.
+
+### 5.1 Getting a signal onto unseen data
+
+`train_signal.py` writes predictions only for the windows it fits, so r4_v2
+stopped at 2024-06-28 and there was nothing to trade after it.
+`scripts/predict_signal.py` runs the frozen encoder forward over any panel.
+It is inference only: the normalisation buffers ride inside the checkpoint, so
+the new panel cannot enter them, and no `gate.json` is written because a gate
+belongs to the fit.
+
+The model's last training window ended **2021-12-31**, so the holdout asks it
+to extrapolate **4.68 years**. That is a real weakness of a frozen-model
+holdout — a deployment would refit first — and it makes the result below a
+lower bound rather than a fair estimate.
+
+### 5.2 Deterministic allocator on 2025-06-27..2026-09-04
+
+| Strategy | K | Band | Sharpe | CAGR | MaxDD | vs EW |
+|---|---|---|---|---|---|---|
+| equal_weight | - | - | 0.685 | 0.090 | -0.120 | — |
+| null_signal (control) | 30 | 0.000 | 0.587 | 0.082 | -0.135 | -0.008 |
+| **allocator** | **20** | 0.000 | **1.892** | **0.320** | -0.117 | **+0.230** |
+| allocator | 20 | 0.005 | 1.546 | 0.267 | -0.122 | +0.177 |
+| allocator | 30 | 0.000 | 1.495 | 0.231 | -0.117 | +0.141 |
+
+**The edge survives on data no part of this pipeline has seen**, with the null
+control sitting just below equal-weight exactly as it does in sample. This is
+the strongest evidence the project has produced.
+
+Caveats that bound it: the span is ~15 months and one regime; the drawdown of
+-12% says nothing about behaviour in a 2018 or 2020; survivorship still applies
+and is arguably worse here, since names that traded in 2025 and delisted before
+the 2026 dump are absent; and the model is 4.68 years stale.
+
+### 5.3 R6 — the RL layer does not earn its place
+
+First full PPO run over the allocator: 104 updates, 20,000 periods, 8 envs,
+obs_dim 42, action_dim 17, on the 2016-2024 span. Training excess log return
+rose steadily (0.231 → 0.258 by update 60), so it did learn something.
+
+Evaluated at the distribution mean against the identical env driven by fixed
+midpoint parameters:
+
+| Span | Arm | Sharpe | CAGR | Turnover |
+|---|---|---|---|---|
+| Training (2016-2024) | fixed params | 2.468 | 0.582 | 6.47 |
+| Training (2016-2024) | **RL policy** | 2.553 | **0.597** | 5.26 |
+| Holdout (2025-26) | fixed params | 1.256 | **0.188** | 6.41 |
+| Holdout (2025-26) | RL policy (update 100) | 1.006 | 0.156 | 5.05 |
+| Holdout (2025-26) | RL policy (update 50) | 1.048 | 0.166 | 5.64 |
+
+**It beats fixed parameters in sample by +1.5 CAGR points and loses out of
+sample by 2.2 to 3.2.** Both checkpoints lose, so this is not a late-training
+artefact. The policy did learn to trade less (turnover 6.4 → 5.1), it just did
+not learn anything that generalised.
+
+Read plainly: **the deterministic allocator is better than the RL layer over
+it**, and R6 does not currently justify its complexity. That is a legitimate
+and useful outcome, and it is the answer `10_architecture_revamp.md` §5 asked
+for when it said "RL, IF IT RETURNS".
+
+What would change the verdict, in rough order of promise: a longer holdout than
+15 months; a refit signal rather than a 4.7-year-stale one; a larger training
+budget than 20,000 periods; and reward shaping that does not already give the
+fixed parameters most of what the policy could add.
