@@ -76,6 +76,16 @@ def main() -> None:
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--label", default="kronos")
+    ap.add_argument(
+        "--with-features", action="store_true",
+        help=(
+            "concatenate the panel's 15 engineered features at date t onto the "
+            "Kronos embedding. K1 showed the two representations win DIFFERENT "
+            "windows -- Kronos took W3/W4/W8 and the TCN took W1/W2/W7 -- which "
+            "says they are not redundant. This tests whether a head seeing both "
+            "beats a head seeing either."
+        ),
+    )
     args = ap.parse_args()
 
     from trader.data.universe import active_tickers
@@ -109,7 +119,10 @@ def main() -> None:
     # list has nothing to stack. Its VALUES are never read here — only the
     # targets, mask, dates and fwd_raw it derives — but it must be a live column
     # or the liveness assertion inside will (correctly) refuse the panel.
-    tens = build_panel_tensors(panel, tickers, ["log_return_1d"], horizons)
+    from trader.data.features import FEATURE_COLS
+
+    feat_cols = list(FEATURE_COLS) if args.with_features else ["log_return_1d"]
+    tens = build_panel_tensors(panel, tickers, feat_cols, horizons)
     if [str(d) for d in tens.dates] != [str(d) for d in dates]:
         # Align the cache onto the panel's calendar rather than assuming.
         pos = {d: i for i, d in enumerate(dates)}
@@ -122,6 +135,15 @@ def main() -> None:
         emb = emb[keep]
     mask = tens.mask
     targets = tens.targets
+    if args.with_features:
+        # [T, N, D] embeddings ++ [T, N, F] features on the last axis. Features
+        # are already the panel's own columns at date t, so no new lookahead is
+        # introduced: the embedding's window also ends at t.
+        emb = np.concatenate(
+            [emb.astype(np.float32), tens.features.astype(np.float32)], axis=2
+        )
+        logger.info(f"combined representation: {emb.shape[2]} dims "
+                    f"({emb.shape[2] - len(feat_cols)} kronos + {len(feat_cols)} features)")
 
     windows = compute_windows(
         data_start=date(2010, 1, 1), data_end=date(2024, 12, 31),
