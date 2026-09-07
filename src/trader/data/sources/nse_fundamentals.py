@@ -162,7 +162,10 @@ def parse_results(payload: str, *, symbol: str) -> pl.DataFrame:
         out["broadcast_ts"].append(bcast)
         out["filing_ts"].append(_parse_ts(r.get("filingDate")))
         out["visible_from"].append(visible_from(bcast))
-        out["xbrl_url"].append(str(r.get("xbrl") or "").strip() or None)
+        # NSE writes a literal "-" where a filing has no XBRL document. Left as
+        # a string it becomes a URL of ".../xbrl/-", which 404s once per row.
+        xbrl = str(r.get("xbrl") or "").strip()
+        out["xbrl_url"].append(xbrl if xbrl.startswith("http") else None)
         out["source"].append("nse_results")
 
     if dropped_no_date:

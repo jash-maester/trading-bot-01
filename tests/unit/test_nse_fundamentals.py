@@ -320,3 +320,15 @@ def test_filing_date_is_a_legitimate_fallback_for_a_missing_broadcast_date() -> 
 def test_a_filing_with_neither_date_is_still_dropped() -> None:
     rows = [_filing(broadCastDate=None, filingDate="-")]
     assert parse_results(json.dumps(rows), symbol="BPCL").height == 0
+
+
+def test_a_dash_xbrl_link_is_null_not_a_url() -> None:
+    """NSE writes "-" where there is no document; left as a string it becomes
+    a URL of ".../xbrl/-" and 404s once per affected row."""
+    df = parse_results(json.dumps([_filing(xbrl="-")]), symbol="INFY")
+    assert df.row(0, named=True)["xbrl_url"] is None
+
+
+def test_a_non_http_xbrl_value_is_rejected() -> None:
+    df = parse_results(json.dumps([_filing(xbrl="NA")]), symbol="INFY")
+    assert df.row(0, named=True)["xbrl_url"] is None
