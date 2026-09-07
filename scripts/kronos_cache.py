@@ -62,6 +62,19 @@ def main() -> None:
                     help="stocks per forward pass; K0 measured 504 at ~1.5 GiB")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--limit-dates", type=int, default=0, help="debug: cap dates")
+    ap.add_argument(
+        "--amount-mode", choices=("close_volume", "zero"), default="close_volume",
+        help=(
+            "How to fill Kronos's optional 6th channel. `close_volume` is "
+            "close*volume, which is REDUNDANT -- a deterministic function of two "
+            "channels the model already sees. `zero` is Kronos's own default for "
+            "a missing column. Neither is real turnover; NSE's bhavcopy carries "
+            "TURNOVER_LACS and AVG_PRICE and R8 already parses that file but "
+            "discards both. This flag exists to measure whether the channel "
+            "moves rank IC at all, before paying for the fetch that would supply "
+            "the real thing."
+        ),
+    )
     args = ap.parse_args()
 
     if not _VENDOR.exists():
@@ -86,7 +99,10 @@ def main() -> None:
     # `amount` is turnover. Kronos accepts it as an optional 6th channel and
     # zero-fills when missing; close*volume is the definition NSE uses and is
     # strictly better than handing the model a dead channel.
-    cols["amount"] = cols["close"] * cols["volume"]
+    if args.amount_mode == "zero":
+        cols["amount"] = np.zeros_like(cols["close"])
+    else:
+        cols["amount"] = cols["close"] * cols["volume"]
     stack = np.stack([cols[c] for c in (*_CHANNELS, "amount")], axis=2)  # [T, N, 6]
 
     d_model = int(mdl.d_model) if hasattr(mdl, "d_model") else 512
@@ -142,6 +158,7 @@ def main() -> None:
                 "source_panel": str(args.panel),
                 "coverage": round(covered, 4),
                 "frozen": True,
+                "amount_mode": args.amount_mode,
             },
             indent=2,
         )
