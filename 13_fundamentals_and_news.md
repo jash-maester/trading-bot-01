@@ -146,6 +146,40 @@ promoter-holding change, earnings surprise versus the prior quarter.
 > days after quarter end) and say so in the artefact. A provider that offers
 > neither is not usable at any price.
 
+### F0 result, run 2026-09-07: dates exist, but not where the money is
+
+Audited before fetching anything, because the announcement date decides whether
+this branch is usable at all.
+
+* **Commercial fundamentals APIs do not document announcement dates.**
+  `indianapi.in`'s page describes income statements, balance sheets and cash
+  flows, and says nothing about a result-declaration date anywhere in its
+  endpoint documentation. The same is true of the other candidates' public
+  material. Absence of documentation is not proof of absence, but a field this
+  load-bearing being undocumented is itself a bad sign.
+* **NSE publishes the dates itself.** Its corporate-filings section carries
+  financial results and board-meeting announcements — SEBI's Listing
+  Obligations regulations *require* a listed company to tell the exchange when
+  its board will consider results — with the broadcast date attached. That is
+  the authoritative record of when a number became public, and it is exactly
+  the field the commercial APIs omit.
+* **We already have the machinery to read it.** R8 built
+  `src/trader/data/sources/nse_flows.py` with the browser-like session warm-up
+  NSE requires. Confirmed the hard way during this audit: a plain unauthenticated
+  fetch of the NSE financial-results page **times out**, which is the same
+  behaviour that warm-up exists to defeat.
+
+**Verdict: F0 PASSES, with a split design.** Take the *figures* from a
+commercial API (cheap, structured, historical) and the *dates* from NSE (free,
+authoritative, already scrapable), then join on (symbol, period) and expose each
+figure only from the day after its broadcast date. If the join fails for a
+company-quarter, that row is dropped rather than lagged by a guess — a fixed
+45-day fallback is the fallback for a *provider* with no dates at all, not for a
+row we simply failed to match.
+
+That split is more work than one API call and it is the difference between a
+usable feature and a lookahead generator.
+
 **Gate:** run R4's existing IC gate on the extended feature group, exactly as
 `features_ext.py` was built to do. The comparison is against the same
 walk-forward without the group. Fundamentals are a months-to-years effect and
