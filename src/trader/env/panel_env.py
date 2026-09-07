@@ -271,7 +271,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         return self._step_target(None, day_idx, rebalance=False)
 
     def step_weights(
-        self, target_w: np.ndarray
+        self, target_w: np.ndarray, *, force: bool = False
     ) -> tuple[dict[str, np.ndarray], SupportsFloat, bool, bool, dict[str, Any]]:
         """Advance one trading day on an explicit **weight** target.
 
@@ -281,6 +281,13 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         own), except that untradeable names are forced to zero as in
         :meth:`step`.  Hold-day semantics are identical to :meth:`step`.
 
+        ``force=True`` trades even on a scheduled hold day. It exists for one
+        caller: a risk rule that must sell *now* rather than wait for the next
+        rebalance — a stop-loss that can only act monthly is not a stop-loss.
+        Everything else must leave it False, or the rebalance schedule, and with
+        it every turnover and fee figure that depends on cadence, stops meaning
+        anything.
+
         Feeding weights through :meth:`step` as ``log(w)`` does not work:
         :func:`masked_softmax` clips logits to ``[-10, 10]``, so every
         zero-weight name would receive ``e^-10`` relative mass — a dust
@@ -288,7 +295,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         the way out.
         """
         day_idx = self._start_idx + self._t
-        if not self.is_rebalance_step():
+        if not self.is_rebalance_step() and not force:
             return self._step_target(None, day_idx, rebalance=False)
         w = np.asarray(target_w, dtype=np.float64)
         N = len(self._universe)
@@ -320,6 +327,27 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
     def day_index(self) -> int:
         """Calendar index (into :attr:`dates`) of the day the next step trades."""
         return self._start_idx + self._t
+
+    def closes_at(self, day_idx: int) -> np.ndarray:
+        """Close price per universe name on ``day_idx``, ``[N]``.
+
+        Exposed for a risk overlay that has to measure a position's loss from
+        its entry price. It is a read of already-materialised state, so it
+        cannot advance the env or leak a future bar: callers pass an index they
+        already hold, and asking for a future one is their bug, not this
+        method's to police.
+        """
+        return np.asarray(self._price_at(day_idx, "close"), dtype=np.float64)
+
+    def closes_today(self) -> np.ndarray:
+        """Close price per universe name on the LAST day stepped, ``[N]``.
+
+        After ``step`` the cursor has advanced, so the day just traded is
+        ``day_index - 1``; using ``day_index`` here would hand the overlay
+        tomorrow's close and let a stop-loss see the bar it is meant to react
+        to before it happens.
+        """
+        return self.closes_at(max(self.day_index - 1, 0))
 
     @property
     def rebalance_schedule(self) -> RebalanceSchedule | None:

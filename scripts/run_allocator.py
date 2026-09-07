@@ -57,12 +57,13 @@ import hydra
 from loguru import logger
 from omegaconf import DictConfig
 
-if TYPE_CHECKING:                                   # pragma: no cover
+if TYPE_CHECKING:
     from pathlib import Path
 
     import numpy as np
 
     from trader.allocator import AllocatorParams
+    from trader.allocator.risk import RiskOverlay  # pragma: no cover
     from trader.env.panel_env import PanelTradingEnv
 
 # Grid defaults.  Overridable from the CLI; see the usage block above.
@@ -164,6 +165,7 @@ def _run_allocator(
     vol: np.ndarray,
     params: AllocatorParams,
     seed: int,
+    risk: RiskOverlay | None = None,
 ) -> tuple[list[float], list[float], dict[str, float]]:
     """Drive one full pass of the env from the allocator.
 
@@ -204,6 +206,8 @@ def _run_allocator(
     from trader.env.costs import _DP_CHARGE
 
     track_band = params.no_trade_band > 0.0
+    stops_fired = 0
+    forced_days = 0
     obs, _ = env.reset(seed=seed)
     navs = [float(obs["nav"])]
     turnovers: list[float] = []
@@ -224,13 +228,42 @@ def _run_allocator(
                 rep = band_suppression(r_hat[sig], vol[sig], mask, sids, cur, params)
                 suppressed += rep.n_suppressed
                 traded_unbanded += rep.n_traded_unbanded
+            if risk is not None:
+                target = risk.apply(target)
+                risk.register_stops()
             rebalances += 1
             obs, _, terminated, truncated, info = env.step_weights(target)
+        elif risk is not None and risk.stops_to_execute().any():
+            # A stop must act NOW. Waiting for the next scheduled rebalance is
+            # not a stop-loss, so this is the one caller allowed to force a
+            # trade on a hold day. Everything else about the cadence is
+            # unchanged: the book is carried, only the stopped names are sold.
+            # `obs["portfolio"]` is float32 and the env's Box(0,1) clip lets it
+            # sum to ~1.0098 when cash has gone negative, so the surviving block
+            # must be renormalised before it can be handed back as a target —
+            # `step_weights` requires an exact sum of 1 and rightly rejects
+            # anything else.
+            cur = obs["portfolio"].astype(np.float64)
+            eq = np.maximum(np.where(risk.stops_to_execute(), 0.0, cur[1:]), 0.0)
+            tot = float(eq.sum())
+            if tot > 1.0:
+                eq = eq / tot
+                tot = 1.0
+            target = np.empty(len(cur), dtype=np.float64)
+            target[1:] = eq
+            target[0] = 1.0 - tot
+            stops_fired += risk.register_stops()
+            forced_days += 1
+            obs, _, terminated, truncated, info = env.step_weights(target, force=True)
         else:
             # Hold day: the env ignores the action, so its content is
             # irrelevant — but `step` is the cheaper call.
             obs, _, terminated, truncated, info = env.step(
                 np.zeros(len(env.universe) + 1, dtype=np.float32)
+            )
+        if risk is not None:
+            risk.update(
+                float(info["nav"]), env.closes_today(), obs["portfolio"].astype(np.float64)[1:]
             )
         navs.append(float(info["nav"]))
         turnovers.append(float(info["turnover"]))
@@ -249,6 +282,11 @@ def _run_allocator(
     if track_band:
         diag["names_suppressed_per_rebalance"] = suppressed / per
         diag["names_traded_unbanded_per_rebalance"] = traded_unbanded / per
+    if risk is not None:
+        diag["stops_fired"] = float(stops_fired)
+        diag["forced_stop_days"] = float(forced_days)
+        diag["final_exposure_scale"] = float(risk.state.exposure_scale)
+        diag["final_realised_vol"] = float(risk.state.realised_vol)
     return navs, turnovers, diag
 
 
@@ -360,6 +398,7 @@ def main(cfg: DictConfig) -> None:
         fee_drag_estimate,
         max_supportable_k,
     )
+    from trader.allocator.risk import RiskOverlay, RiskParams
     from trader.allocator.sizing import REBALANCES_PER_YEAR
     from trader.data.features import FEATURE_COLS, resolve_panels_root
     from trader.data.universe import active_tickers
@@ -422,6 +461,17 @@ def main(cfg: DictConfig) -> None:
     # disagree about what is being run (the `vol_column` / `vol_lookback` trap).
     #     +allocator.no_trade_band=0.005
     #     +allocator.band_grid=[0.0,0.002,0.005,0.010]
+    # Run 1's risk sweep. Each entry is one ARM, given as a name plus the
+    # RiskParams kwargs that define it, so a run's arms are self-describing in
+    # MLflow rather than being three anonymous booleans. The default is the
+    # single "none" arm, which `RiskOverlay.apply` short-circuits to the
+    # identity, so a run that does not ask for risk control is bit-identical to
+    # one built before this existed.
+    #   +allocator.risk_grid='[{name: none}, {name: vol, vol_target: 0.15}]'
+    risk_grid: list[dict[str, Any]] = [
+        dict(r) for r in alloc_cfg.get("risk_grid", [{"name": "none"}])
+    ]
+
     band_grid = [
         float(b)
         for b in alloc_cfg.get(
@@ -606,6 +656,7 @@ def main(cfg: DictConfig) -> None:
 
         for horizon in horizon_grid:
             for k in k_grid:
+              for risk_arm in risk_grid:
                 for band in band_grid:
                     params = AllocatorParams(
                         k=k,
@@ -619,8 +670,15 @@ def main(cfg: DictConfig) -> None:
                         vol_lookback=vol_lookback,
                     )
                     env = PanelTradingEnv(rebalance_schedule=schedule, **env_base)
+                    risk_name = str(risk_arm.get("name", "none"))
+                    risk_kw = {k2: v for k2, v in risk_arm.items() if k2 != "name"}
+                    overlay = (
+                        RiskOverlay(RiskParams(**risk_kw), len(universe))
+                        if risk_kw
+                        else None
+                    )
                     navs, turns, diag = _run_allocator(
-                        env, r_hat_all[horizon], vol_all, params, seed
+                        env, r_hat_all[horizon], vol_all, params, seed, risk=overlay
                     )
                     m = compute_episode_metrics(navs, turns)
                     # P5's closed form against this run's OWN measured turnover,
@@ -632,7 +690,8 @@ def main(cfg: DictConfig) -> None:
                         capital, k, REBALANCES_PER_YEAR[freq], m.turnover_ann
                     )
                     lines.append(
-                        f"{'allocator':<26}{k:>4}{band:>7.3f}{freq:>9}{horizon:>5}"
+                        f"{'allocator/' + risk_name:<26}{k:>4}{band:>7.3f}"
+                        f"{freq:>9}{horizon:>5}"
                         f"{m.sharpe:>9.3f}{m.cagr:>9.3f}{m.max_drawdown:>9.3f}"
                         f"{m.turnover_ann:>9.3f}"
                         f"{diag['scrip_sell_days_per_rebalance']:>10.1f}"
@@ -640,7 +699,10 @@ def main(cfg: DictConfig) -> None:
                         f"{m.cagr - bl.cagr:>+14.4f}"
                     )
                     with mlflow.start_run(
-                        run_name=f"allocator_k{k}_b{band}_{freq}_{horizon}_{split}"
+                        run_name=(
+                            f"allocator_k{k}_b{band}_r{risk_name}_"
+                            f"{freq}_{horizon}_{split}"
+                        )
                     ):
                         mlflow.log_params(
                             {"strategy": "allocator", "k": k, "freq": freq,
@@ -649,6 +711,7 @@ def main(cfg: DictConfig) -> None:
                              "max_sector_weight": params.max_sector_weight,
                              "turnover_budget": params.turnover_budget,
                              "no_trade_band": params.no_trade_band,
+                             "risk_arm": risk_name,
                              "cash_floor": params.cash_floor,
                              "universe_size": len(universe),
                              "universe_effective": n_effective,

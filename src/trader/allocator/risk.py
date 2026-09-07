@@ -226,6 +226,12 @@ class RiskOverlay:
         w = np.asarray(target_w, dtype=np.float64).copy()
         if w.shape != (self.n + 1,):
             raise ValueError(f"target_w must be shape [N+1]={self.n + 1}, got {w.shape}")
+        if not self.p.any_enabled:
+            # Bit-identical, not merely equal to within rounding. The sweep's
+            # control arm runs through this path, and reassembling the vector
+            # from `1 - sum(eq)` moves the cash weight by ~1e-16 — enough to
+            # make a "no overlay" arm differ from no overlay at all.
+            return w
         eq = w[1:]
         if self.p.stop_cooldown_steps:
             eq[self._cooldown > 0] = 0.0

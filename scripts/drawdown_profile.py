@@ -58,6 +58,24 @@ def _episodes(navs: np.ndarray, dates: list[date]) -> None:
         p = np.maximum.accumulate(seg)
         print(f"  {y}: {float(np.max(1.0 - seg / np.maximum(p, 1e-12))):>7.1%}")
 
+    print("\n── monthly return distribution ──────────────────────────────────")
+    # Month-end NAV, so each return is a real calendar month of the backtest.
+    ends: list[int] = []
+    for i in range(1, len(dates)):
+        if (dates[i].year, dates[i].month) != (dates[i - 1].year, dates[i - 1].month):
+            ends.append(i - 1)
+    ends.append(len(dates) - 1)
+    m = np.diff(navs[ends]) / np.maximum(navs[ends][:-1], 1e-12)
+    if m.size:
+        print(f"  months                {m.size}")
+        print(f"  mean                  {m.mean():+7.2%}   median {np.median(m):+7.2%}")
+        print(f"  best / worst          {m.max():+7.2%} / {m.min():+7.2%}")
+        print(f"  positive months       {(m > 0).sum()}/{m.size} ({(m > 0).mean():.0%})")
+        print(f"  stdev of monthly ret  {m.std(ddof=1):7.2%}")
+        cap = navs[0]
+        print(f"  on Rs {cap:,.0f}: mean month {cap * m.mean():+,.0f}, "
+              f"worst month {cap * m.min():+,.0f}")
+
     print("\n── worst drawdown EXCLUDING one year ────────────────────────────")
     for drop in years:
         keep = [i for i, d in enumerate(dates) if d.year != drop]
