@@ -1,0 +1,49 @@
+# @package _global_.allocator
+#
+# Standing configuration for the deterministic allocator and its risk overlays.
+#
+# This group did not exist before 2026-09-07: `run_allocator.py` read
+# `cfg.allocator` and nothing ever populated it, so every knob came from a
+# `+allocator.x=` command-line override and no default was version-controlled.
+# That is the `min_trade_value: 500` trap in a different costume — a key the
+# code reads that no file sets.
+
+k_grid: [20, 30, 40]
+freq_grid: [monthly, weekly, daily]
+horizon_grid: ["5d", "20d"]
+band_grid: [0.0]
+null_control: true
+
+max_name_weight: 0.10
+max_sector_weight: 0.25
+turnover_budget: 0.30
+cash_floor: 0.0
+vol_lookback: 20
+no_trade_band: 0.0
+
+# ── risk overlays (trader/allocator/risk.py) ─────────────────────────────────
+# The standing comparison set: every run reports all of these, so a result is
+# never quoted without its risk-controlled counterparts beside it.
+#
+# Measured twice — in sample 2016-24 and on the unseen 2025-26 holdout — and the
+# ORDERING held both times: a tighter stop buys Sharpe and drawdown with return,
+# monotonically. Holdout at Rs 1 lakh, after tax and every Zerodha charge:
+#     none      Sharpe 1.720  CAGR 0.304  MDD -0.133
+#     stop 15%  Sharpe 2.013  CAGR 0.251  MDD -0.087
+#     stop 10%  Sharpe 2.093  CAGR 0.222  MDD -0.080
+#
+# The stop measures loss from the FILL price, not the entry day's close, and not
+# from any dip below the purchase price: a 0% threshold would sell roughly half
+# the book on ordinary noise and pay a flat Rs 15.34 every time.
+#
+# `vol_mult` arms scale the threshold by each NAME's own volatility instead of
+# applying one number to a utility and a small-cap alike. See
+# `RiskParams.stop_vol_mult`.
+risk_grid:
+  - name: none
+  - name: stop10
+    stop_loss: 0.10
+    stop_cooldown_steps: 21
+  - name: stop15
+    stop_loss: 0.15
+    stop_cooldown_steps: 21

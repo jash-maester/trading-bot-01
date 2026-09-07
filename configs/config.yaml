@@ -10,6 +10,7 @@ defaults:
   # auxiliary-head variant.
   - model: mlp_regime
   - train: ppo_baseline
+  - allocator: default
   - broker: paper
   - walk: default
   - _self_

@@ -267,6 +267,9 @@ def _run_allocator(
                 env.closes_today(),
                 obs["portfolio"].astype(np.float64)[1:],
                 fill_prices=env.last_fill_prices(),
+                # Per-name annualised vol for a volatility-scaled stop. Taken at
+                # the day just stepped, never the day ahead.
+                vol_ann=vol[max(env.day_index - 1, 0)],
             )
         navs.append(float(info["nav"]))
         turnovers.append(float(info["turnover"]))

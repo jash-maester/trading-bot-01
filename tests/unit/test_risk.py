@@ -245,3 +245,55 @@ def test_a_zero_fill_falls_back_to_the_close() -> None:
              fill_prices=np.array([0.0, 0.0]))
     o.update(1e6, np.array([85.0, 100.0]), np.array([0.5, 0.5]))
     assert o.stops_to_execute().tolist() == [True, False]
+
+
+# ── dynamic, volatility-scaled threshold ─────────────────────────────────────
+
+
+def test_vol_scaled_threshold_gives_a_volatile_name_more_room() -> None:
+    """One fixed percentage asks a different question of a utility and a small-cap."""
+    o = RiskOverlay(RiskParams(stop_vol_mult=1.0, stop_vol_horizon_days=20), 2)
+    # 15% annualised vs 60% annualised.
+    o.update(1e6, np.array([100.0, 100.0]), np.array([0.5, 0.5]),
+             vol_ann=np.array([0.15, 0.60]))
+    thr = o.stop_thresholds()
+    assert thr[0] < thr[1], "the calmer name must be stopped sooner"
+    # 0.15/sqrt(252)*sqrt(20) = 0.0423 -> clipped up to the 0.05 floor.
+    assert thr[0] == pytest.approx(0.05)
+    # 0.60/sqrt(252)*sqrt(20) = 0.1690, inside the band.
+    assert thr[1] == pytest.approx(0.169, abs=1e-3)
+
+
+def test_default_mult_is_calibrated_near_the_fixed_ten_percent_arm() -> None:
+    """So the dynamic arm is comparable to the fixed one, not a different animal."""
+    o = RiskOverlay(RiskParams(stop_vol_mult=1.0, stop_vol_horizon_days=20), 1)
+    o.update(1e6, np.array([100.0]), np.array([1.0]), vol_ann=np.array([0.35]))
+    assert o.stop_thresholds()[0] == pytest.approx(0.0986, abs=0.005)
+
+
+def test_vol_scaled_stop_fires_on_the_right_name_only() -> None:
+    o = RiskOverlay(RiskParams(stop_vol_mult=1.0, stop_vol_horizon_days=20), 2)
+    o.update(1e6, np.array([100.0, 100.0]), np.array([0.5, 0.5]),
+             vol_ann=np.array([0.15, 0.60]))
+    # -8%: past the calm name's 5% threshold, inside the volatile name's 16.9%.
+    o.update(1e6, np.array([92.0, 92.0]), np.array([0.5, 0.5]))
+    assert o.stops_to_execute().tolist() == [True, False]
+
+
+def test_a_name_with_no_usable_vol_gets_the_loosest_threshold() -> None:
+    """An unknown is not evidence that a position is in trouble."""
+    o = RiskOverlay(RiskParams(stop_vol_mult=1.0, stop_vol_max=0.30), 2)
+    o.update(1e6, np.array([100.0, 100.0]), np.array([0.5, 0.5]),
+             vol_ann=np.array([np.nan, 0.35]))
+    assert o.stop_thresholds()[0] == pytest.approx(0.30)
+
+
+def test_fixed_and_dynamic_stops_cannot_both_be_set() -> None:
+    with pytest.raises(ValueError, match="not both"):
+        RiskParams(stop_loss=0.10, stop_vol_mult=1.0)
+
+
+def test_a_dynamic_stop_without_vol_raises_rather_than_pretending() -> None:
+    o = RiskOverlay(RiskParams(stop_vol_mult=1.0), 2)
+    with pytest.raises(ValueError, match="volatility-scaled stop with no volatility"):
+        o.update(1e6, np.array([100.0, 100.0]), np.array([0.5, 0.5]))

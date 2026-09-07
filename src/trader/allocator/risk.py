@@ -54,6 +54,20 @@ class RiskParams:
     drawdown_full: float = 0.35
     #: Per-name loss from entry that forces a sale, e.g. 0.15. None = off.
     stop_loss: float | None = None
+    #: DYNAMIC alternative to `stop_loss`: the threshold for name *i* becomes
+    #: ``mult * daily_vol_i * sqrt(stop_vol_horizon_days)``, clipped to
+    #: ``[stop_vol_min, stop_vol_max]``. A single fixed percentage applies the
+    #: same bar to a utility and to a small-cap that routinely moves 4% a day —
+    #: the first is stopped only by real damage, the second by ordinary noise.
+    #: Scaling by the name's own volatility asks the same QUESTION of both:
+    #: has this moved further against me than it normally moves?
+    #: At mult=1.0 and horizon 20 a typical 35%-annualised name lands near
+    #: 0.098, so the default is calibrated to the fixed 10% arm and adapts
+    #: around it rather than replacing it with something incomparable.
+    stop_vol_mult: float | None = None
+    stop_vol_horizon_days: int = 20
+    stop_vol_min: float = 0.05
+    stop_vol_max: float = 0.30
     #: Steps a stopped name is barred from being re-bought.
     stop_cooldown_steps: int = 21
 
@@ -77,19 +91,40 @@ class RiskParams:
             )
         if self.stop_cooldown_steps < 0:
             raise ValueError(f"stop_cooldown_steps must be >= 0, got {self.stop_cooldown_steps}")
+        if self.stop_loss is not None and self.stop_vol_mult is not None:
+            raise ValueError(
+                "set stop_loss OR stop_vol_mult, not both — a fixed and a "
+                "volatility-scaled threshold are two different rules and "
+                "silently taking the tighter of them hides which one acted"
+            )
+        if self.stop_vol_mult is not None and self.stop_vol_mult <= 0.0:
+            raise ValueError(f"stop_vol_mult must be > 0 when set, got {self.stop_vol_mult}")
+        if self.stop_vol_horizon_days < 1:
+            raise ValueError(
+                f"stop_vol_horizon_days must be >= 1, got {self.stop_vol_horizon_days}"
+            )
+        if not 0.0 < self.stop_vol_min < self.stop_vol_max < 1.0:
+            raise ValueError(
+                f"need 0 < stop_vol_min ({self.stop_vol_min}) < stop_vol_max "
+                f"({self.stop_vol_max}) < 1"
+            )
+
+    @property
+    def stop_enabled(self) -> bool:
+        return self.stop_loss is not None or self.stop_vol_mult is not None
 
     @property
     def any_enabled(self) -> bool:
         return (
             self.vol_target is not None
             or self.drawdown_threshold is not None
-            or self.stop_loss is not None
+            or self.stop_enabled
         )
 
     @property
     def needs_intraperiod_trading(self) -> bool:
         """Only the stop can demand a trade on a scheduled hold day."""
-        return self.stop_loss is not None
+        return self.stop_enabled
 
 
 @dataclass
@@ -123,6 +158,7 @@ class RiskOverlay:
         # Steps remaining before a stopped name may be re-bought.
         self._cooldown = np.zeros(self.n, dtype=np.int64)
         self._stopped = np.zeros(self.n, dtype=bool)
+        self._vol_ann: np.ndarray | None = None
         self.state = RiskState()
 
     # ── state ────────────────────────────────────────────────────────────────
@@ -133,6 +169,7 @@ class RiskOverlay:
         closes: np.ndarray,
         weights: np.ndarray,
         fill_prices: np.ndarray | None = None,
+        vol_ann: np.ndarray | None = None,
     ) -> None:
         """Absorb one env step. ``weights`` is the post-trade ``[N]`` equity block.
 
@@ -142,6 +179,11 @@ class RiskOverlay:
         day's close is wrong by one intraday move — it made the stop fire early
         on a name that rose after the open and late on one that fell — and is
         kept only for callers that cannot supply fills.
+
+        ``vol_ann`` is each name's ANNUALISED volatility, required only when
+        ``stop_vol_mult`` is set. Without it a volatility-scaled stop silently
+        falls back to the midpoint of its clip range, which would be a fixed
+        threshold wearing a dynamic label, so that case raises instead.
         """
         nav = float(nav)
         self._navs.append(nav)
@@ -161,6 +203,8 @@ class RiskOverlay:
         self._entry[exited] = np.nan
         self._held = held
 
+        if vol_ann is not None:
+            self._vol_ann = np.asarray(vol_ann, dtype=np.float64)
         self._cooldown = np.maximum(self._cooldown - 1, 0)
         self._stopped = self._stopped_mask(px)
 
@@ -172,8 +216,37 @@ class RiskOverlay:
             n_quarantined=int((self._cooldown > 0).sum()),
         )
 
+    def stop_thresholds(self) -> np.ndarray:
+        """Per-name loss fraction that triggers a sale, ``[N]``, positive.
+
+        Fixed when ``stop_loss`` is set. When ``stop_vol_mult`` is set instead,
+        it is ``mult * daily_vol * sqrt(horizon)`` clipped to the configured
+        band, so a name that normally moves 4% a day is given more room than one
+        that moves 1%.
+        """
+        if self.p.stop_loss is not None:
+            return np.full(self.n, float(self.p.stop_loss), dtype=np.float64)
+        if self.p.stop_vol_mult is None:
+            return np.full(self.n, np.inf, dtype=np.float64)
+        if self._vol_ann is None:
+            raise ValueError(
+                "stop_vol_mult is set but no `vol_ann` was passed to update(); "
+                "a volatility-scaled stop with no volatility is a fixed stop "
+                "with a misleading name"
+            )
+        daily = np.where(
+            np.isfinite(self._vol_ann) & (self._vol_ann > 0.0),
+            self._vol_ann / np.sqrt(_ANNUALISE),
+            np.nan,
+        )
+        raw = self.p.stop_vol_mult * daily * np.sqrt(float(self.p.stop_vol_horizon_days))
+        # A name with no usable vol gets the LOOSEST threshold, never the
+        # tightest: an unknown is not evidence that a position is in trouble.
+        raw = np.where(np.isfinite(raw), raw, self.p.stop_vol_max)
+        return np.clip(raw, self.p.stop_vol_min, self.p.stop_vol_max)
+
     def _stopped_mask(self, closes: np.ndarray) -> np.ndarray:
-        if self.p.stop_loss is None:
+        if not self.p.stop_enabled:
             return np.zeros(self.n, dtype=bool)
         with np.errstate(invalid="ignore", divide="ignore"):
             ret = np.where(
@@ -181,7 +254,7 @@ class RiskOverlay:
                 closes / np.maximum(self._entry, _EPS) - 1.0,
                 0.0,
             )
-        return bool_(self._held & (ret <= -float(self.p.stop_loss)))
+        return bool_(self._held & (ret <= -self.stop_thresholds()))
 
     # ── measurements ─────────────────────────────────────────────────────────
 
