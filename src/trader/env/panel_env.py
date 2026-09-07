@@ -69,6 +69,7 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         seed: int | None = None,
         rebalance_schedule: RebalanceSchedule | None = None,
         min_trade_value: float = DEFAULT_MIN_TRADE_VALUE,
+        apply_tax: bool = False,
     ) -> None:
         super().__init__()
 
@@ -76,6 +77,24 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         if min_trade_value < 0.0:
             raise ValueError(f"min_trade_value must be >= 0, got {min_trade_value}")
         self._min_trade_value = float(min_trade_value)
+        # Capital-gains tax, off by default so every result predating this stays
+        # reproducible. When on, realised gains are matched FIFO (the rule Indian
+        # law applies to listed equity in demat) and the liability for a
+        # financial year is deducted from cash on the first step of the next one
+        # — tax is paid, so it must stop compounding.
+        #
+        # Cost basis is the GROSS fill price. That is not a shortcut: the proviso
+        # to section 48 makes STT explicitly NON-deductible against capital
+        # gains, and STT is 0.1% on both legs, by far the largest charge here.
+        # The charges that ARE deductible — brokerage, exchange, SEBI, GST,
+        # stamp — come to roughly 0.02% of trade value for Zerodha delivery,
+        # because delivery brokerage is zero. So gross prices are within a
+        # rounding error of correct, and err towards slightly overstating tax.
+        self._apply_tax = bool(apply_tax)
+        self._lots: Any = None
+        self._tax: Any = None
+        self._tax_paid_total = 0.0
+        self._fy_current: int | None = None
         self._schedule = rebalance_schedule
         self._reward_fn: RewardFn = reward_fn or LogReturn()
         self._use_excess_returns = bool(use_excess_returns)
@@ -240,6 +259,13 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         self._start_idx = int(self._np_rng.integers(min_idx, max_idx + 1))
         self._t = 0
         self._cash = float(self._initial_cash)
+        if self._apply_tax:
+            from trader.env.tax import FifoLotBook, TaxModel
+
+            self._lots = FifoLotBook()
+            self._tax = TaxModel()
+            self._tax_paid_total = 0.0
+            self._fy_current = None
         self._shares = np.zeros(N, dtype=np.float64)
         self._prev_nav = self._initial_cash
         # Reset rolling NAV history to flat baseline so recent stats start at 0.
@@ -327,6 +353,63 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
     def day_index(self) -> int:
         """Calendar index (into :attr:`dates`) of the day the next step trades."""
         return self._start_idx + self._t
+
+    def _record_tax_lots(
+        self,
+        delta_shares: np.ndarray,
+        traded: np.ndarray,
+        fill_prices: np.ndarray,
+        day_idx: int,
+    ) -> None:
+        """Book today's fills into the FIFO lot book and settle a closed FY.
+
+        Called BEFORE ``self._shares`` is updated, so the sell path can still
+        see the position it is consuming.
+        """
+        from trader.env.tax import Lot, financial_year
+
+        today = self._dates[day_idx]
+        fy = financial_year(today)
+        if self._fy_current is None:
+            self._fy_current = fy
+        elif fy != self._fy_current:
+            # The previous financial year has closed. Pay it, in cash, now.
+            owed = float(self._tax.liability(self._fy_current).total)
+            if owed > 0.0:
+                self._cash -= owed
+                self._tax_paid_total += owed
+            self._fy_current = fy
+
+        for i in np.nonzero(traded)[0]:
+            qty = float(abs(delta_shares[i]))
+            px = float(fill_prices[i])
+            if qty <= 0.0 or px <= 0.0:
+                continue
+            sym = self._universe[i]
+            if delta_shares[i] > 0:
+                self._lots.buy(sym, Lot(buy_date=today, quantity=qty,
+                                        cost_basis_per_share=px))
+            else:
+                # Never sell more than the book knows about: the lot book is
+                # only populated from the first taxed step, so a position that
+                # predates it would otherwise raise.
+                have = float(self._lots.open_quantity(sym))
+                if have <= 0.0:
+                    continue
+                self._tax.record(
+                    self._lots.sell(sym, min(qty, have), today, px)
+                )
+
+    @property
+    def tax_paid(self) -> float:
+        """Cash paid in capital-gains tax so far this episode."""
+        return float(self._tax_paid_total)
+
+    def tax_accrued_unpaid(self) -> float:
+        """Liability for the financial year still in progress, not yet deducted."""
+        if not self._apply_tax or self._fy_current is None:
+            return 0.0
+        return float(self._tax.liability(self._fy_current).total)
 
     def closes_at(self, day_idx: int) -> np.ndarray:
         """Close price per universe name on ``day_idx``, ``[N]``.
@@ -512,6 +595,9 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         # integer delta; adding the value guard made it live and it inverted the
         # whole R5 grid before it was caught. Tested by
         # `test_suppressed_trade_leaves_the_position_and_the_cash_untouched`.
+        if self._apply_tax and rebalance:
+            self._record_tax_lots(delta_shares, traded, fill_prices, day_idx)
+
         self._shares = np.where(traded, target_shares, self._shares)
 
         # Mark-to-close

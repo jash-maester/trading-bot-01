@@ -282,6 +282,10 @@ def _run_allocator(
     if track_band:
         diag["names_suppressed_per_rebalance"] = suppressed / per
         diag["names_traded_unbanded_per_rebalance"] = traded_unbanded / per
+    diag["tax_paid"] = float(getattr(env, "tax_paid", 0.0))
+    diag["tax_accrued_unpaid"] = float(
+        env.tax_accrued_unpaid() if hasattr(env, "tax_accrued_unpaid") else 0.0
+    )
     if risk is not None:
         diag["stops_fired"] = float(stops_fired)
         diag["forced_stop_days"] = float(forced_days)
@@ -533,6 +537,9 @@ def main(cfg: DictConfig) -> None:
         episode_length=episode_length,
         initial_cash=capital,
         min_trade_value=min_trade_value,
+        # Capital-gains tax inside the loop. Off by default so every result
+        # predating 2026-09-07 still reproduces; +apply_tax=true turns it on.
+        apply_tax=bool(cfg.get("apply_tax", False)),
         seed=seed,
     )
 
