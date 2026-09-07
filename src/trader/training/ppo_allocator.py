@@ -85,6 +85,10 @@ class PPOAllocatorConfig:
     checkpoint_dir: Path = field(default_factory=lambda: Path("checkpoints/allocator_rl"))
     log_interval: int = 10
     checkpoint_interval: int = 50
+    #: How many of the most recent checkpoints to keep on disk. A long run at
+    #: interval 50 writes hundreds of files, each carrying a full policy; only
+    #: the newest few are ever loaded. 0 keeps every one.
+    keep_last_checkpoints: int = 3
 
     def __post_init__(self) -> None:
         if self.n_envs < 1 or self.n_steps < 1:
@@ -404,4 +408,23 @@ class PPOAllocatorTrainer:
             },
             path,
         )
+        self._prune_checkpoints()
         return path
+
+    def _prune_checkpoints(self) -> None:
+        """Keep only the ``keep_last_checkpoints`` most recent checkpoint files.
+
+        Sorted by the zero-padded update number in the filename, not by mtime:
+        a resumed run can rewrite an older update after a newer one, and mtime
+        would then delete the wrong file.
+        """
+        keep = int(self.cfg.keep_last_checkpoints)
+        if keep <= 0:
+            return
+        out = Path(self.cfg.checkpoint_dir)
+        existing = sorted(out.glob("allocator_policy_*.pt"))
+        for stale in existing[:-keep]:
+            try:
+                stale.unlink()
+            except OSError as exc:                       # pragma: no cover
+                logger.warning(f"could not remove old checkpoint {stale}: {exc}")

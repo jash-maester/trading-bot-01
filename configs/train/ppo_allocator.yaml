@@ -33,4 +33,7 @@ normalize_rewards: true
 target_kl: 0.02
 normalize_advantage: true
 log_interval: 10
+# Checkpoints kept on disk. A long run at interval 50 writes hundreds of full
+# policies and only the newest are ever loaded. 0 keeps every one.
+keep_last_checkpoints: 3
 checkpoint_interval: 50

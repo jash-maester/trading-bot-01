@@ -272,6 +272,7 @@ def main(argv: list[str] | None = None) -> int:
         checkpoint_dir=args.checkpoint_dir,
         log_interval=int(train_cfg.get("log_interval", 10)),
         checkpoint_interval=int(train_cfg.get("checkpoint_interval", 50)),
+        keep_last_checkpoints=int(train_cfg.get("keep_last_checkpoints", 3)),
     )
 
     envs = build_envs(

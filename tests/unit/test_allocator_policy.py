@@ -517,3 +517,59 @@ def test_trainer_rejects_a_shape_mismatch(tmp_path) -> None:  # type: ignore[no-
     envs = [_StubAllocatorEnv(_obs_dim(ranges), ranges.action_dim)]
     with pytest.raises(ValueError, match="obs_dim"):
         PPOAllocatorTrainer(envs, model, cfg, torch.device("cpu"))  # type: ignore[arg-type]
+
+
+def test_checkpoint_retention_keeps_only_the_latest_three(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """A long run writes hundreds of policies; only the newest few are loadable.
+
+    Sorted by the update number in the filename, not mtime: a resumed run can
+    rewrite an older update after a newer one, and mtime would delete the wrong
+    file.
+    """
+    import torch
+
+    from trader.training.ppo_allocator import PPOAllocatorTrainer
+
+    class _Stub:
+        """Minimal stand-in exercising only the retention path."""
+
+        def __init__(self, d, keep):  # type: ignore[no-untyped-def]
+            from types import SimpleNamespace
+
+            self.cfg = SimpleNamespace(checkpoint_dir=d, keep_last_checkpoints=keep)
+
+        _prune_checkpoints = PPOAllocatorTrainer._prune_checkpoints
+
+    d = tmp_path / "ckpt"
+    d.mkdir()
+    for u in (10, 20, 30, 40, 50):
+        torch.save({"update": u}, d / f"allocator_policy_{u:06d}.pt")
+
+    _Stub(d, 3)._prune_checkpoints()
+    kept = sorted(p.name for p in d.glob("allocator_policy_*.pt"))
+    assert kept == [
+        "allocator_policy_000030.pt",
+        "allocator_policy_000040.pt",
+        "allocator_policy_000050.pt",
+    ]
+
+
+def test_checkpoint_retention_of_zero_keeps_everything(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import torch
+
+    from trader.training.ppo_allocator import PPOAllocatorTrainer
+
+    class _Stub:
+        def __init__(self, d, keep):  # type: ignore[no-untyped-def]
+            from types import SimpleNamespace
+
+            self.cfg = SimpleNamespace(checkpoint_dir=d, keep_last_checkpoints=keep)
+
+        _prune_checkpoints = PPOAllocatorTrainer._prune_checkpoints
+
+    d = tmp_path / "ckpt"
+    d.mkdir()
+    for u in (10, 20, 30, 40):
+        torch.save({"update": u}, d / f"allocator_policy_{u:06d}.pt")
+    _Stub(d, 0)._prune_checkpoints()
+    assert len(list(d.glob("allocator_policy_*.pt"))) == 4
