@@ -192,3 +192,102 @@ def test_symbols_are_mapped_to_the_projects_ticker_convention() -> None:
 def test_schema_is_exactly_the_pinned_contract() -> None:
     df = parse_results(json.dumps([_filing()]), symbol="INFY")
     assert list(df.columns) == list(RESULTS_SCHEMA)
+
+
+# ── XBRL: the figures ────────────────────────────────────────────────────────
+
+_XBRL_FIXTURE = "tests/fixtures/nse/results_xbrl_INFY_Q3FY25.xml"
+
+
+def _xbrl() -> str:
+    from pathlib import Path
+
+    return Path(_XBRL_FIXTURE).read_text()
+
+
+def test_xbrl_period_comes_from_the_facts_not_the_context_header() -> None:
+    """The trap this parser exists to avoid, on the real document.
+
+    Contexts OneD and FourD BOTH declare 2024-10-01..2024-12-31, but FourD's own
+    DateOfStartOfReportingPeriod says 2024-04-01 — it is the nine-month
+    cumulative wearing the quarter's header. Trusting the header trebles revenue
+    and does it silently.
+    """
+    from trader.data.sources.nse_fundamentals import parse_results_xbrl
+
+    df = parse_results_xbrl(_xbrl(), name="INFY Q3FY25")
+    spans = {
+        (r["period_from"], r["period_to"]): r["revenue"] for r in df.iter_rows(named=True)
+    }
+    assert (date(2024, 10, 1), date(2024, 12, 31)) in spans      # the quarter
+    assert (date(2024, 4, 1), date(2024, 12, 31)) in spans       # nine months
+    q = spans[(date(2024, 10, 1), date(2024, 12, 31))]
+    ytd = spans[(date(2024, 4, 1), date(2024, 12, 31))]
+    assert q == pytest.approx(417_640_000_000.0)
+    assert ytd == pytest.approx(1_220_640_000_000.0)
+    assert ytd > 2.5 * q, "the cumulative must not be mistaken for the quarter"
+
+
+def test_quarterly_only_drops_the_cumulative() -> None:
+    from trader.data.sources.nse_fundamentals import parse_results_xbrl, quarterly_only
+
+    q = quarterly_only(parse_results_xbrl(_xbrl()))
+    assert q.height == 1
+    r = q.row(0, named=True)
+    assert r["period_from"] == date(2024, 10, 1)
+    assert r["period_to"] == date(2024, 12, 31)
+
+
+def test_xbrl_headline_figures_are_extracted_and_internally_consistent() -> None:
+    """Cross-checks that catch a mis-mapped tag, which a shape test would not."""
+    from trader.data.sources.nse_fundamentals import parse_results_xbrl, quarterly_only
+
+    r = quarterly_only(parse_results_xbrl(_xbrl())).row(0, named=True)
+    assert r["ticker"] == "INFY.NS"
+    assert r["consolidated"] == "Consolidated"
+    assert r["audited"] == "Audited"
+    assert r["reporting_quarter"] == "Third quarter"
+    assert r["board_meeting_date"] == date(2025, 1, 16)
+    # income = revenue + other income
+    assert r["total_income"] == pytest.approx(r["revenue"] + r["other_income"], rel=1e-6)
+    # pbt = income - expenses
+    assert r["pbt"] == pytest.approx(r["total_income"] - r["total_expenses"], rel=1e-6)
+    # net profit = pbt - tax
+    assert r["net_profit"] == pytest.approx(r["pbt"] - r["tax_expense"], rel=1e-6)
+    assert r["eps_basic"] == pytest.approx(16.43)
+    assert r["eps_diluted"] <= r["eps_basic"]
+
+
+def test_segment_breakdowns_do_not_leak_into_the_headline() -> None:
+    """Dimensioned contexts are segment splits; including them would double-count."""
+    from trader.data.sources.nse_fundamentals import parse_results_xbrl
+
+    df = parse_results_xbrl(_xbrl())
+    assert df.height == 2, "only the quarter and the year-to-date are headline rows"
+
+
+def test_a_non_results_xbrl_raises() -> None:
+    from trader.data.sources.nse_fundamentals import XBRLParseError, parse_results_xbrl
+
+    # No Symbol anywhere: rejected before any period logic runs.
+    with pytest.raises(XBRLParseError, match="no Symbol fact"):
+        parse_results_xbrl('<?xml version="1.0"?><xbrl xmlns="x"><a>1</a></xbrl>')
+
+
+def test_a_document_with_a_symbol_but_no_period_raises() -> None:
+    """A filing that is not a results statement must not yield an empty frame."""
+    from trader.data.sources.nse_fundamentals import XBRLParseError, parse_results_xbrl
+
+    doc = (
+        '<?xml version="1.0"?><xbrl xmlns="x">'
+        '<Symbol contextRef="C1">INFY</Symbol></xbrl>'
+    )
+    with pytest.raises(XBRLParseError, match="not a quarterly results filing"):
+        parse_results_xbrl(doc)
+
+
+def test_malformed_xml_raises_rather_than_returning_empty() -> None:
+    from trader.data.sources.nse_fundamentals import XBRLParseError, parse_results_xbrl
+
+    with pytest.raises(XBRLParseError, match="not well-formed"):
+        parse_results_xbrl("<xbrl><unclosed>")

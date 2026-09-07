@@ -283,6 +283,166 @@ class FinancialResultsSource:
         return pl.concat(frames).sort(["ticker", "period_to"])
 
 
+# ── XBRL: the figures themselves ─────────────────────────────────────────────
+
+_XBRLI: Final[str] = "{http://www.xbrl.org/2003/instance}"
+
+#: Headline figures worth extracting, mapped to the column they become. All are
+#: reported in rupees except the per-share and ratio items.
+XBRL_FIELDS: Final[dict[str, str]] = {
+    "RevenueFromOperations": "revenue",
+    "OtherIncome": "other_income",
+    "Income": "total_income",
+    "Expenses": "total_expenses",
+    "EmployeeBenefitExpense": "employee_cost",
+    "FinanceCosts": "finance_costs",
+    "DepreciationDepletionAndAmortisationExpense": "depreciation",
+    "OtherExpenses": "other_expenses",
+    "ProfitBeforeExceptionalItemsAndTax": "pbt_before_exceptional",
+    "ExceptionalItemsBeforeTax": "exceptional_items",
+    "ProfitBeforeTax": "pbt",
+    "TaxExpense": "tax_expense",
+    "ProfitLossForPeriod": "net_profit",
+    "ProfitOrLossAttributableToOwnersOfParent": "net_profit_owners",
+    "ComprehensiveIncomeForThePeriod": "comprehensive_income",
+    "BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations": "eps_basic",
+    "DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations": "eps_diluted",
+    "PaidUpValueOfEquityShareCapital": "paid_up_equity",
+    "FaceValueOfEquityShareCapital": "face_value",
+}
+
+XBRL_SCHEMA: Final[dict[str, pl.DataType]] = {
+    "symbol": pl.Utf8(),
+    "ticker": pl.Utf8(),
+    "period_from": pl.Date(),
+    "period_to": pl.Date(),
+    "consolidated": pl.Utf8(),
+    "audited": pl.Utf8(),
+    "reporting_quarter": pl.Utf8(),
+    "board_meeting_date": pl.Date(),
+    **{c: pl.Float64() for c in XBRL_FIELDS.values()},
+}
+
+
+class XBRLParseError(ValueError):
+    """The XBRL document could not be read as a quarterly results filing."""
+
+
+def _num(text: str | None) -> float | None:
+    if text is None:
+        return None
+    t = text.strip().replace(",", "")
+    if not t or t in {"-", "NA", "N/A"}:
+        return None
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def parse_results_xbrl(xml_text: str, *, name: str = "<xbrl>") -> pl.DataFrame:
+    """Extract headline figures from one NSE results XBRL document.
+
+    **The period comes from the FACTS, never from the context header.** Verified
+    on INFY Q3 FY25: contexts ``OneD`` and ``FourD`` both DECLARE
+    2024-10-01..2024-12-31, but ``FourD``'s own
+    ``DateOfStartOfReportingPeriod`` fact says 2024-04-01 — it is the nine-month
+    cumulative wearing the quarter's header. Its revenue is Rs 1,220.6bn against
+    the quarter's Rs 417.6bn, so trusting the header would treble the figure and
+    do it silently.
+
+    Only undimensioned contexts are considered; dimensioned ones are segment and
+    other-comprehensive-income breakdowns, not the headline statement.
+
+    Returns one row per (context) reporting period found, so a filing that
+    carries both the quarter and the year-to-date yields both, correctly
+    labelled, and the caller picks.
+    """
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise XBRLParseError(f"{name}: not well-formed XML: {exc}") from exc
+
+    dimensioned: set[str] = set()
+    for el in root:
+        if el.tag.endswith("}context"):
+            cid = el.get("id") or ""
+            if any(m.tag.endswith("explicitMember") or m.tag.endswith("typedMember")
+                   for m in el.iter()):
+                dimensioned.add(cid)
+
+    by_ctx: dict[str, dict[str, str]] = {}
+    for el in root:
+        ctx = el.get("contextRef")
+        if not ctx or ctx in dimensioned or not (el.text and el.text.strip()):
+            continue
+        by_ctx.setdefault(ctx, {})[el.tag.split("}")[-1]] = el.text.strip()
+
+    # Symbol and company name are FILING-level metadata: NSE stamps them on one
+    # context, not on every one. Requiring them per context silently dropped the
+    # year-to-date row here, and would drop the QUARTER on any filing that
+    # happens to carry them on the cumulative context instead.
+    doc_symbol = next(
+        (f["Symbol"] for f in by_ctx.values() if f.get("Symbol")), None
+    )
+    if not doc_symbol:
+        raise XBRLParseError(f"{name}: no Symbol fact anywhere in the document")
+
+    rows: list[dict[str, Any]] = []
+    for _ctx, facts in by_ctx.items():
+        start = _parse_iso(facts.get("DateOfStartOfReportingPeriod"))
+        end = _parse_iso(facts.get("DateOfEndOfReportingPeriod"))
+        sym = facts.get("Symbol") or doc_symbol
+        if start is None or end is None:
+            continue          # not a reporting-period context
+        row: dict[str, Any] = {
+            "symbol": sym,
+            "ticker": nse_symbol_to_ticker(sym),
+            "period_from": start,
+            "period_to": end,
+            "consolidated": facts.get("NatureOfReportStandaloneConsolidated"),
+            "audited": facts.get("WhetherResultsAreAuditedOrUnaudited"),
+            "reporting_quarter": facts.get("ReportingQuarter"),
+            "board_meeting_date": _parse_iso(
+                facts.get("DateOfBoardMeetingWhenFinancialResultsWereApproved")
+            ),
+        }
+        for tag, col in XBRL_FIELDS.items():
+            row[col] = _num(facts.get(tag))
+        rows.append(row)
+
+    if not rows:
+        raise XBRLParseError(
+            f"{name}: no undimensioned context carried a reporting period; "
+            "this is not a quarterly results filing"
+        )
+    return pl.DataFrame(rows, schema=XBRL_SCHEMA).sort(["period_from", "period_to"])
+
+
+def _parse_iso(raw: str | None) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw.strip()[:10])
+    except ValueError:
+        return None
+
+
+def quarterly_only(frame: pl.DataFrame, *, max_days: int = 100) -> pl.DataFrame:
+    """Keep the single-quarter rows, dropping year-to-date cumulatives.
+
+    A quarter spans ~90 days; a nine-month cumulative spans ~275. Filtering on
+    the span computed from the FACT dates is what separates them, because their
+    context headers do not.
+    """
+    if frame.is_empty():
+        return frame
+    span = (pl.col("period_to") - pl.col("period_from")).dt.total_days()
+    return frame.filter(span <= max_days)
+
+
 @dataclass(frozen=True)
 class ResultsFetchPlan:
     """What a fetch would do, so a caller can size it before running it."""
