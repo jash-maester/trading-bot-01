@@ -235,3 +235,61 @@ What would change the verdict, in rough order of promise: a longer holdout than
 15 months; a refit signal rather than a 4.7-year-stale one; a larger training
 budget than 20,000 periods; and reward shaping that does not already give the
 fixed parameters most of what the policy could add.
+
+---
+
+## 6. Against NIFTY 50, decomposed
+
+Added 2026-09-07. Equal-weight is the *internal* control; NIFTY 50 is the
+benchmark an investor actually has. Both are needed, and running them together
+splits the headline alpha into two very different components.
+
+`scripts/benchmark_vs_nifty.py`, K=20 monthly 20d, beta/alpha from an OLS of
+daily log returns on the index's.
+
+### In sample, 2016-07..2024-06 (1919 days)
+
+| Arm | CAGR | Sharpe | Beta | Alpha/yr | Corr | IR | Up cap | Down cap |
+|---|---|---|---|---|---|---|---|---|
+| ^NSEI | 0.139 | 0.776 | — | — | — | — | — | — |
+| equal_weight | 0.265 | 1.336 | 0.833 | 13.7% | 0.796 | 0.949 | 0.938 | 0.801 |
+| **allocator** | 0.470 | 1.906 | 0.857 | **32.0%** | 0.714 | 1.774 | 1.026 | 0.721 |
+
+### Holdout, 2025-06..2026-09 (294 days)
+
+| Arm | CAGR | Sharpe | Beta | Alpha/yr | Corr | IR | Up cap | Down cap |
+|---|---|---|---|---|---|---|---|---|
+| ^NSEI | -0.058 | -0.484 | — | — | — | — | — | — |
+| equal_weight | 0.088 | 0.685 | 0.817 | 14.6% | 0.821 | 1.952 | 0.837 | 0.657 |
+| **allocator** | 0.314 | 1.892 | 0.872 | **39.3%** | 0.749 | 3.435 | 0.950 | — |
+
+### The decomposition, and why it matters
+
+The alpha over NIFTY is **two effects stacked**, and only the second is skill:
+
+| Step | In sample | Holdout |
+|---|---|---|
+| NIFTY → equal-weight (**being in this universe**) | +12.6 pp | +14.6 pp |
+| equal-weight → allocator (**selection within it**) | +20.5 pp | +22.6 pp |
+
+Both components are remarkably stable across two periods that look nothing
+alike — one where the index compounded at 13.9% and one where it lost money.
+
+**The universe premium is where survivorship most likely lives.** Equal-weighting
+504 names beats the large-cap index by ~14%/yr in both spans. Some of that is a
+genuine size premium: this is a mid- and small-cap-skewed book and NIFTY 50 is
+not. But the universe contains **zero delistings across 21 years** (§3), so a
+portion of that 14 points is the arithmetic of holding only companies that
+survived. That portion cannot be measured from this data, and it contaminates
+the *first* row of the decomposition, not the second.
+
+**The selection component is the defensible one.** It is measured against
+equal-weight *on the same survivor-biased universe*, so the bias is present in
+both arms and largely differences out — which is also why `null_signal` sitting
+just below equal-weight matters. +20.5 and +22.6 percentage points is the number
+to quote for what the signal adds.
+
+Beta is 0.86 and 0.87. This is **not** a market-neutral strategy; it is a long
+equity book carrying close to full market risk, and in a 2018 or a 2020 it will
+behave like one. What it does add, in sample, is asymmetry: 103% of the index's
+up moves against 72% of its down moves.
