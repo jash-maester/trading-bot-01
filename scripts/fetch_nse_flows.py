@@ -98,6 +98,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"comma-separated subset of {','.join(ALL_SOURCES)} (default: the config's list)",
     )
+    parser.add_argument(
+        "--backend",
+        choices=("mto", "bhavdata"),
+        default=None,
+        help=(
+            "delivery backend, overriding the config. They are not "
+            "interchangeable: `mto` reaches back to 2005 but carries "
+            "quantities ONLY, while `bhavdata` also carries turnover, VWAP and "
+            "trade count but publishes nothing before 2020-07-01 (verified "
+            "2026-09-07: 100%% turnover coverage from that date, no file at "
+            "all on 2019-01-02). Use bhavdata for turnover, mto for depth."
+        ),
+    )
     parser.add_argument("--cache-root", type=Path, default=None, help="overrides cache_root")
     parser.add_argument("--out-root", type=Path, default=None, help="overrides out_root")
     parser.add_argument(
@@ -171,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
             cache_root=cache_root,
             client=client,
             offline=args.offline,
-            backend=str(cfg.delivery.backend),
+            backend=str(args.backend or cfg.delivery.backend),
         )
         frames["delivery"] = delivery_source.fetch(args.start, args.end)
 
