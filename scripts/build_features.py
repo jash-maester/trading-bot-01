@@ -95,7 +95,11 @@ def main(cfg: DictConfig) -> None:
         from trader.data.nse_industry import UNKNOWN_INDUSTRY_ID, industry_ids
 
         ind = pl.read_parquet(orig_cwd / str(industry_file))
-        tickers = store.tickers()
+        # The store also holds ^NSEI, which `_load_index_rets` reads separately
+        # for beta. It is a benchmark, not something to hold: leaving it in the
+        # universe would add a column to the action space that can never be
+        # traded, and hand it an "unknown industry" id on the way.
+        tickers = [t for t in store.tickers() if not t.startswith("^")]
         sector_ids = industry_ids(ind, tickers)
         n_unknown = sum(1 for v in sector_ids.values() if v == UNKNOWN_INDUSTRY_ID)
         logger.info(

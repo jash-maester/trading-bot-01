@@ -32,3 +32,30 @@ def test_tickers_is_empty_for_a_missing_root(tmp_path) -> None:  # noqa: ANN001
     from trader.data.storage import OhlcvStore
 
     assert OhlcvStore(root=tmp_path / "nope").tickers() == []
+
+
+def test_tickers_includes_the_index_so_callers_must_filter(tmp_path) -> None:  # noqa: ANN001
+    """`tickers()` lists what is stored, benchmark included.
+
+    `^NSEI` lives in the same store because `compute_features` needs it for
+    `beta_nifty_60d`, but it is a benchmark and not something to hold. A caller
+    building a universe from the store has to drop it, or the action space
+    gains a column that can never be traded — and one that would take an
+    "unknown industry" id on the way in.
+    """
+    from datetime import date
+
+    import polars as pl
+
+    from trader.data.storage import OhlcvStore
+
+    store = OhlcvStore(root=tmp_path / "s")
+    store.save(pl.DataFrame({
+        "date": [date(2020, 1, 1), date(2020, 1, 1)],
+        "ticker": ["TCS.NS", "^NSEI"],
+        "open": [1.0, 2.0], "high": [1.0, 2.0],
+        "low": [1.0, 2.0], "close": [1.0, 2.0], "volume": [10, 20],
+    }))
+    assert store.tickers() == ["TCS.NS", "^NSEI"]
+    tradeable = [t for t in store.tickers() if not t.startswith("^")]
+    assert tradeable == ["TCS.NS"]
