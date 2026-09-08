@@ -25,12 +25,19 @@ import numpy as np
 RebalanceFreq = Literal["daily", "weekly", "monthly"]
 RebalanceAnchor = Literal["first", "last"]
 
-_FREQS: tuple[str, ...] = ("daily", "weekly", "monthly")
+_FREQS: tuple[str, ...] = ("daily", "weekly", "monthly", "quarterly")
 _ANCHORS: tuple[str, ...] = ("first", "last")
 
 
 def _period_key(d: date, freq: str) -> tuple[int, int]:
-    """Identify the (week | month) a date belongs to; daily = the date itself."""
+    """Identify the (quarter | month | week) a date belongs to; daily = the date."""
+    if freq == "quarterly":
+        # Calendar quarters, so the boundary is stable and the same every year.
+        # Added 2026-09-08: monthly turnover realises almost every gain inside
+        # twelve months, which is the STCG boundary (20% + cess against LTCG's
+        # 12.5%), and a longer hold both cuts turnover and moves lots toward the
+        # lower rate. Whether that is worth anything is measured, not assumed.
+        return (d.year, (d.month - 1) // 3)
     if freq == "monthly":
         return (d.year, d.month)
     if freq == "weekly":

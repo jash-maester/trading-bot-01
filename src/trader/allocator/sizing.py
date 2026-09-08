@@ -134,6 +134,7 @@ REBALANCES_PER_YEAR: Final[dict[str, float]] = {
     "daily": 252.0,
     "weekly": 52.0,
     "monthly": 12.0,
+    "quarterly": 4.0,
 }
 
 # Gross two-sided ANNUAL turnover of the standing best configuration —
