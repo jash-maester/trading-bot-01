@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 # ---------------------------------------------------------------------------
 # Permanently blacklisted tickers — never fetched, never traded.
 # ---------------------------------------------------------------------------
@@ -346,3 +348,43 @@ def sector_id_of(ticker: str) -> int:
     if sector is None:
         return 0
     return SECTOR_IDS.get(sector, 0)
+
+
+def resolve_traded_universe(
+    panel_path: Path | str, *, from_panel: bool
+) -> tuple[list[str], str]:
+    """The names a run may trade, and a one-line account of where they came from.
+
+    Returns ``(tickers, provenance)``. The second element exists to be logged:
+    a run that does not state which universe it used is a run whose table
+    cannot be compared with any other.
+
+    ``from_panel=False`` gives :func:`active_tickers` — the fixed 504 — and is
+    the default everywhere so results already recorded reproduce.
+
+    ``from_panel=True`` takes every ticker present in the panel. That is the
+    setting a point-in-time panel needs, because per-date eligibility lives in
+    ``is_tradeable`` rather than in the ticker list, and the env can only ever
+    see the columns its universe names.
+
+    WHY THIS IS SHARED RATHER THAN WRITTEN TWICE. Both
+    ``scripts/run_baselines.py`` and ``scripts/run_allocator.py`` defaulted to
+    ``active_tickers()``. Pointed at the rebuilt panel, either would have
+    measured the OLD fixed 504 names on the new bars and printed a table that
+    looks entirely normal while answering a question nobody asked — which
+    nearly wasted Phase 1 of the survivorship rebuild. One implementation, one
+    place to get it wrong.
+    """
+    import polars as pl
+
+    if not from_panel:
+        names = active_tickers()
+        return names, f"active_tickers(): {len(names)} tickers"
+    names = sorted(
+        pl.read_parquet(str(panel_path), columns=["ticker"])["ticker"]
+        .unique()
+        .to_list()
+    )
+    if not names:
+        raise ValueError(f"{panel_path} carries no tickers")
+    return names, f"{panel_path}: {len(names)} tickers"

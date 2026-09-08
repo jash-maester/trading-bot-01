@@ -56,7 +56,7 @@ def main(cfg: DictConfig) -> None:
 
     from trader.allocator.rebalance import RebalanceSchedule
     from trader.data.features import FEATURE_COLS, resolve_panels_root
-    from trader.data.universe import active_tickers
+    from trader.data.universe import resolve_traded_universe
     from trader.env.baselines import (
         EqualWeightFrozenUniverse,
         EqualWeightRebalanced,
@@ -92,14 +92,10 @@ def main(cfg: DictConfig) -> None:
     #
     # Default stays `active_tickers()` so every number already recorded against
     # the Kite panels reproduces exactly.
-    if bool(bcfg.get("universe_from_panel", False)):
-        universe = sorted(
-            pl.read_parquet(panel_path, columns=["ticker"])["ticker"].unique().to_list()
-        )
-        logger.info(f"universe from {panel_path}: {len(universe):,} tickers")
-    else:
-        universe = active_tickers()
-        logger.info(f"universe from active_tickers(): {len(universe):,} tickers")
+    universe, provenance = resolve_traded_universe(
+        panel_path, from_panel=bool(bcfg.get("universe_from_panel", False))
+    )
+    logger.info(f"universe from {provenance}")
     lookback = int(cfg.env.lookback_days)
     dates = sorted(pl.read_parquet(panel_path, columns=["date"])["date"].unique().to_list())
     episode_length = len(dates) - lookback - 1

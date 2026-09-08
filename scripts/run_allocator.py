@@ -105,6 +105,18 @@ _STOP_EVENT_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
 )
 
 
+def alloc_cfg_universe_from_panel(cfg: DictConfig) -> bool:
+    """Whether to take the traded universe from the panel rather than the list.
+
+    Read through a helper so the flag is greppable: the same defaulted-wrong
+    universe cost `scripts/run_baselines.py` a silent no-op, and a bare
+    ``cfg.allocator.get(...)`` buried in `main` is easy to miss when auditing
+    which script measures which universe.
+    """
+    alloc = cfg.get("allocator", {})
+    return bool(alloc.get("universe_from_panel", False))
+
+
 def _stop_event_schema() -> dict[str, Any]:
     import polars as pl
 
@@ -452,7 +464,7 @@ def main(cfg: DictConfig) -> None:
     from trader.allocator.risk import RiskOverlay, RiskParams
     from trader.allocator.sizing import REBALANCES_PER_YEAR
     from trader.data.features import FEATURE_COLS, resolve_panels_root
-    from trader.data.universe import active_tickers
+    from trader.data.universe import resolve_traded_universe
     from trader.env.costs import DEFAULT_MIN_TRADE_VALUE
     from trader.env.panel_env import PanelTradingEnv
     from trader.training.eval_metrics import compute_episode_metrics
@@ -460,18 +472,28 @@ def main(cfg: DictConfig) -> None:
 
     orig_cwd = Path(hydra.utils.get_original_cwd())
     panels_root = resolve_panels_root(cfg, orig_cwd)
-    # NOTE for the point-in-time rebuild: this is the fixed 504-name list, so
-    # running this script against data/panels_bhav would measure the OLD
-    # universe on the new bars and look entirely normal doing it.
-    # `scripts/run_baselines.py` grew `baselines.universe_from_panel` for
-    # exactly this; the allocator needs the same before Phase 2.
-    universe = active_tickers()
     seed = int(cfg.get("seed", 42))
 
     split = str(cfg.get("split", "val"))
     panel_path = panels_root / f"{split}.parquet"
     if not panel_path.exists():
         _fail(f"No panel at {panel_path}. Run scripts/build_features.py first.")
+
+    # WHERE THE UNIVERSE COMES FROM, and why the default is not safe everywhere.
+    #
+    # The env is built over `universe` and can only ever see those columns.
+    # Running this against the point-in-time panel while taking the universe
+    # from `active_tickers()` would measure the OLD fixed 504 names on the new
+    # bars — and print a table that looks entirely normal while answering a
+    # question nobody asked. `scripts/run_baselines.py` had the identical bug
+    # and it would have wasted Phase 1.
+    #
+    # Default stays `active_tickers()` so every number already recorded against
+    # the Kite panels reproduces exactly.
+    universe, provenance = resolve_traded_universe(
+        panel_path, from_panel=alloc_cfg_universe_from_panel(cfg)
+    )
+    logger.info(f"universe from {provenance}")
 
     tag = str(cfg.get("signal_tag", "default"))
     signal_dir = orig_cwd / "data" / "signal" / tag
