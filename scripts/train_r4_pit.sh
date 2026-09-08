@@ -17,6 +17,18 @@ say()   { echo "=== $* ==="; }
 stamp() { echo "$(date -Is) $*" >> "$STATUS"; }
 set -a; [ -f .env ] && . ./.env; set +a
 
+# The allocator, not the arithmetic. A point-in-time universe grows every
+# window (254 -> 306 -> 373 -> ... -> 504), so each allocation is larger than
+# the last and PyTorch's default caching allocator cannot reuse the blocks it
+# is holding. empty_cache() between windows recovered ~6 GiB, but the measured
+# marginal cost is ~13 MiB per name, which puts W8 at 504 names near 7,700 of
+# 8,188 MiB -- a 6% margin, and fragmentation eats margins.
+#
+# expandable_segments grows a segment in place instead of allocating a fresh
+# one per size class. It is exactly the case it exists for, and it changes
+# memory layout only: no effect on the maths, so r4_v2 parity is untouched.
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 say "R4 walk-forward on the point-in-time universe"
 # EXACT PARITY WITH r4_v2 on everything except the universe. Three settings had
 # to be stated rather than inherited, and each would have broken the comparison
