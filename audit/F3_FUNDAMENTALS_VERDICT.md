@@ -88,14 +88,14 @@ roughly **half the book** and changing the outcome by nothing.
 The obvious objection is that fundamentals only cover part of the panel, so the
 information never reaches the names being bought. Measured, it does:
 
-| window | panel covered | of R4's top 20 | of R4's top 30 |
-|---|---|---|---|
-| W3 | 4.3% | 0.7 / 20 | 1.1 / 30 |
-| W4 | 57.6% | 11.3 / 20 | 16.9 / 30 |
-| W5 | 73.9% | 15.2 / 20 | 22.7 / 30 |
-| W6 | 74.5% | 15.5 / 20 | 23.2 / 30 |
-| W7 | 75.5% | 14.1 / 20 | 21.2 / 30 |
-| W8 | 78.4% | 14.4 / 20 | 22.2 / 30 |
+| window | panel covered | of R4's top 20 |
+|---|---|---|
+| W3 | 4.4% | 0.7 / 20 |
+| W4 | 58.0% | 11.3 / 20 |
+| W5 | 74.7% | 15.2 / 20 |
+| W6 | 75.3% | 15.5 / 20 |
+| W7 | 76.3% | 14.1 / 20 |
+| W8 | **80.1%** | 14.6 / 20 |
 
 **This corrects a figure in `F2`.** That document quotes "20.4% mean grid
 coverage", which averages over 2016–2018 when coverage was zero and is
@@ -103,6 +103,33 @@ misleading as a statement about what the allocator sees. Within a tradeable
 window from W5 on, coverage is 74–78% of the panel and three-quarters of R4's
 top 20 carry a filing. The blend had every opportunity to act on the names
 being bought.
+
+## 4b. Re-measured on complete data, after both coverage bugs were fixed
+
+Everything above was first measured on a dataset that was missing **every
+bank** — 233 rows across all 33 bank tickers parsed into pure nulls — and six
+symbols whose names contain an ampersand. Banks are among the heaviest index
+weights, so the verdict was re-run rather than assumed to hold.
+
+`scripts/refetch_fundamentals.sh`, 5.4 minutes (175 documents fetched, 9,338
+re-parsed from cache). Field coverage went from 97.3% to **100.0%**, tickers
+from 446 to 453 in-universe (500 overall), and 351 rows that carried no figures
+now carry them. Eight ampersand tickers came back, not the six the missing-list
+suggested: `ARE&M`, `GET&D`, `GMRP&UI`, `GVT&D`, `J&KBANK`, `L&TFH`, `M&M`,
+`M&MFIN`.
+
+The result does not move.
+
+| measure | missing banks | complete data |
+|---|---|---|
+| pooled 5d IC lift | +0.0020 | +0.0020 |
+| pooled 20d IC lift | +0.0078 | +0.0076 |
+| top-20 forward return Δ | −0.00039 (t −0.22) | **−0.00031 (t −0.17)** |
+| top-30 forward return Δ | −0.00105 (t −0.88) | **−0.00106 (t −0.88)** |
+| windows up, K=20 | 3/8 | 3/8 |
+
+So the negative result is not an artefact of the missing banks, and the
+allocator tables in §1 stand as measured.
 
 ## 5. What still stands from F2
 
@@ -145,8 +172,8 @@ Right, at all four settings.
 
 The artefacts stay, because they are cheap to keep and the data is now correct:
 
-- `data/ext/fundamentals.parquet` — 9,370 company-quarters from NSE's own XBRL,
-  no vendor, no paid API;
+- `data/ext/fundamentals.parquet` — 9,533 company-quarters from NSE's own XBRL
+  across 500 tickers at 100% field coverage, no vendor, no paid API;
 - `src/trader/data/fundamental_features.py` and its 17 tests;
 - `scripts/blend_signal.py`, `fundamental_ic.py`, `fundamental_orthogonality.py`,
   `topk_diagnostic.py`, `fundamentals_chain.sh`.

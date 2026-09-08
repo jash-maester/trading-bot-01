@@ -12,6 +12,12 @@ Data: `data/ext/fundamentals.parquet` — 9,370 company-quarters, 491 tickers,
 2017-03-31 … 2024-12-31, parsed from NSE's own XBRL filings by
 `scripts/fetch_xbrl_figures.py`. No vendor, no paid API.
 
+> The tables below were measured on that snapshot, which was missing every
+> bank and every ampersand symbol. Both holes were fixed the same day; the
+> dataset is now 9,533 company-quarters over 500 tickers at 100% field
+> coverage, and re-running on it moves the IC lift by 0.0002 and the verdict
+> not at all. See `audit/F3_FUNDAMENTALS_VERDICT.md` §4b.
+
 ---
 
 ## Verdict
@@ -187,7 +193,7 @@ top-20 book never sees.
 Two figures on this page should be read with that document beside them:
 
 * **"20.4% mean grid coverage"** averages over 2016–2018, when coverage was
-  zero. Within a tradeable window from W5 on it is 74–78%, and 14–15 of R4's top
+  zero. Within a tradeable window from W5 on it is 75–80%, and 14–15 of R4's top
   20 carry a filing. Coverage was never the limitation.
 * the closing inference that an IC lift would translate into return was wrong.
   Pooled rank IC is the wrong yardstick for a long-only top-K book;
