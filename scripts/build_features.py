@@ -149,6 +149,68 @@ def main(cfg: DictConfig) -> None:
     logger.info("Computing features ...")
     panel = compute_features(panel, index_rets=index_rets)
 
+    # ── point-in-time universe ───────────────────────────────────────────────
+    # `align_panel` marks a name untradeable outside its listing span, and
+    # `compute_features` marks it untradeable during feature warm-up. Neither
+    # asks whether it was worth trading. Without this third belt the panel is
+    # still a fixed universe -- every name that ever cleared the bar, tradeable
+    # on every day it was listed -- which is the selection bias the rebuild
+    # exists to remove.
+    #
+    # Eligibility is decided on a monthly grid and carried forward, because that
+    # is when the allocator actually reselects. A name admitted at a rebalance
+    # stays in the book until the next one, exactly as it would in the env.
+    pit_cfg = cfg.data.get("pit_universe", None)
+    if pit_cfg is not None:
+        from trader.data.pit_universe import LiquidityRule, universe_schedule
+
+        rule = LiquidityRule(
+            min_median_turnover=float(pit_cfg.get("min_median_turnover", 5e7)),
+            lookback_days=int(pit_cfg.get("lookback_days", 365)),
+            min_sessions=int(pit_cfg.get("min_sessions", 100)),
+            min_price=float(pit_cfg.get("min_price", 5.0)),
+            max_names=(int(pit_cfg["max_names"]) if pit_cfg.get("max_names") else None),
+        )
+        logger.info(f"Point-in-time universe: {rule.describe()}")
+        # The rule reads raw turnover, which lives on the OHLCV rows rather than
+        # on the aligned panel (alignment fills absent names with zeros, and a
+        # zero-turnover row would look like an illiquid name rather than an
+        # absent one).
+        liq = ohlcv.select(["date", "ticker", "close", "turnover"]).with_columns(
+            pl.lit("EQ").alias("series")
+        )
+        month_starts = sorted({date(d.year, d.month, 1) for d in calendar})
+        sched = universe_schedule(liq, month_starts, rule)
+        elig = pl.DataFrame(
+            {
+                "date": [d for d, names in sched.items() for _ in names],
+                "ticker": [t for names in sched.values() for t in names],
+            },
+            schema={"date": pl.Date(), "ticker": pl.Utf8()},
+        ).with_columns(pl.lit(True).alias("_pit"))
+        sizes = {d: len(v) for d, v in sched.items()}
+        logger.info(
+            f"  eligible per month: min {min(sizes.values())}, "
+            f"max {max(sizes.values())}, "
+            f"union {elig['ticker'].n_unique():,} names over {len(sizes)} months"
+        )
+        # Carry each month's decision forward across its days.
+        panel = (
+            panel.with_columns(
+                pl.col("date")
+                .map_elements(lambda d: date(d.year, d.month, 1), return_dtype=pl.Date())
+                .alias("_month")
+            )
+            .join(
+                elig.rename({"date": "_month"}), on=["_month", "ticker"], how="left"
+            )
+            .with_columns(
+                (pl.col("is_tradeable") & pl.col("_pit").fill_null(False)).alias(
+                    "is_tradeable"
+                )
+            )
+            .drop(["_month", "_pit"])
+        )
     n_feat = len([c for c in FEATURE_COLS if c in panel.columns])
     logger.info(
         f"Panel: {panel['date'].n_unique()} days"

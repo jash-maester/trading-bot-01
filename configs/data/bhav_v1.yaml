@@ -29,3 +29,17 @@ industry_file: data/ext/industries.parquet
 parquet_root: data/bhav_ohlcv
 panels_root: data/panels_bhav
 raw_cache: data/raw/nse/bhavcopy
+
+# The third tradeability belt. align_panel handles listing spans and
+# compute_features handles feature warm-up; neither asks whether a name was
+# worth trading. Without this the panel is still a fixed universe.
+#
+# max_names holds the width constant so the rebuilt panel is directly
+# comparable with the fixed 504 and so the action space does not grow past what
+# an 8 GiB card fits.
+pit_universe:
+  min_median_turnover: 5.0e7    # Rs 5 crore median daily turnover
+  lookback_days: 365
+  min_sessions: 100
+  min_price: 5.0
+  max_names: 504
