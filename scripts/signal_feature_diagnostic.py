@@ -18,8 +18,9 @@ Three things, in order of how much they have cost this project when skipped:
    helped by covering different names or dates.
 
 This is what found the cross-sectional-input defect: on `r4_pit_long`'s OOS
-rows at 20d, a plain rank of `realized_vol_60d` scored +0.0529 against the
-trained 15-feature model's +0.0265.  See `supervised.cross_sectional_normalise`.
+rows at 20d, blocked by year, a plain rank of `realized_vol_60d` scored +0.0535
+against the trained 15-feature model's +0.0275, winning 12 of 14 years.  See
+`supervised.cross_sectional_normalise`.
 """
 from __future__ import annotations
 

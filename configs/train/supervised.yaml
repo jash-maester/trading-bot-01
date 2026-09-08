@@ -74,9 +74,10 @@ out_root: data/signal
 #         the model is asked a relative question and handed absolute inputs.
 # rank  — van der Waerden scores within each date's tradeable cross-section.
 #
-# Measured on r4_pit_long's own OOS rows at 20d: a plain cross-sectional rank of
-# ONE raw feature (realized_vol_60d) scores +0.0529 rank IC against the trained
-# 15-feature model's +0.0265. See `supervised.cross_sectional_normalise`.
+# Measured on r4_pit_long's own OOS rows at 20d, blocked by year: a plain
+# cross-sectional rank of ONE raw feature (realized_vol_60d) scores +0.0535 rank
+# IC against the trained 15-feature model's +0.0275, winning 12 of 14 years.
+# Regenerate: uv run python scripts/signal_feature_diagnostic.py
 xs_normalise: null
 
 # Feature columns to train on. null = trader.data.features.FEATURE_COLS, which

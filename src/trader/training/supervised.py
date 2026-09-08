@@ -342,10 +342,11 @@ def cross_sectional_normalise(
     number, which it cannot do when the market-wide level moves — and it moves
     enormously (2008, 2020).
 
-    Measured consequence, on ``r4_pit_long``'s own OOS rows at 20d: a plain
+    Measured consequence, on ``r4_pit_long``'s own OOS rows at 20d, year as
+    the blocking unit (``scripts/signal_feature_diagnostic.py``): a plain
     cross-sectional rank of one raw feature (``realized_vol_60d``) scores
-    +0.0529 rank IC against the trained 15-feature model's +0.0265.  The
-    ranking operation itself was the missing piece.
+    +0.0535 rank IC against the trained 15-feature model's +0.0275, and wins in
+    12 of 14 years.  The ranking operation itself was the missing piece.
 
     ``mode="rank"`` maps each feature, within each date's tradeable
     cross-section, to van der Waerden scores: average-tied ranks → uniform →

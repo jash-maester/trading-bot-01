@@ -9,11 +9,12 @@
 # peers today?" and handed absolute numbers, which cannot answer it whenever
 # the market-wide level moves -- and it moves enormously.
 #
-# Measured on r4_pit_long's OWN OOS rows, 20d, identical dates and names:
+# Measured on r4_pit_long's OWN OOS rows, 20d, identical dates and names,
+# blocked by year (scripts/signal_feature_diagnostic.py):
 #
-#   trained 15-feature model      +0.0265
-#   -realized_vol_60d, ranked     +0.0529     <- one raw feature, no fitting
-#   -realized_vol_20d, ranked     +0.0463
+#   trained 15-feature model      +0.0275   11/14 years up
+#   -realized_vol_60d, ranked     +0.0535   12/14   <- one feature, no fitting
+#   -realized_vol_20d, ranked     +0.0462   12/14
 #
 # A cross-sectional rank of a single feature roughly doubles the model. The
 # ranking operation is the missing piece, so this run gives the model the same
