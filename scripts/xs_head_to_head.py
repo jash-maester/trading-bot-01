@@ -48,7 +48,8 @@ def _t(x: np.ndarray) -> float:
     return float("nan") if sd == 0 or len(x) < 2 else float(np.mean(x)) / (sd / math.sqrt(len(x)))
 
 
-def compare(panel_path: Path, new_tag: str, base_tag: str, label: str) -> None:
+def compare(panel_path: Path, new_tag: str, base_tag: str, label: str,
+            block: str = "year") -> None:
     new, base = _preds(new_tag), _preds(base_tag)
     print(f"\n{'=' * 74}\n{label}\n  new  = {new_tag}\n  base = {base_tag}\n{'=' * 74}")
     if new is None or base is None:
@@ -80,7 +81,10 @@ def compare(panel_path: Path, new_tag: str, base_tag: str, label: str) -> None:
             .filter((pl.col("n") >= 10) & pl.col("new").is_not_null()
                     & pl.col("base").is_not_null())
             .sort("date")
-            .with_columns(pl.col("date").dt.year().alias("y"))
+            .with_columns(
+                (pl.col("date").dt.year().cast(pl.Utf8) if block == "year"
+                 else pl.col("date").dt.strftime("%Y-%m")).alias("y")
+            )
         )
         if per.height == 0:
             print(f"\n  horizon {h}d: no scorable dates")
@@ -90,17 +94,21 @@ def compare(panel_path: Path, new_tag: str, base_tag: str, label: str) -> None:
         ).sort("y")
         nv, bv = yr["new"].to_numpy(), yr["base"].to_numpy()
         diff = nv - bv
-        print(f"\n  ── horizon {h}d — {per.height:,} dates, {len(nv)} years ──")
-        print(f"    {'':<12}{'mean IC':>10}{'t(year)':>10}{'years up':>11}")
+        print(f"\n  ── horizon {h}d — {per.height:,} dates, "
+              f"{len(nv)} {block} block(s) ──")
+        print(f"    {'':<12}{'mean IC':>10}{f't({block})':>10}"
+              f"{block + 's up':>11}")
         print(f"    {'new':<12}{nv.mean():>+10.4f}{_t(nv):>10.2f}"
               f"{f'{(nv > 0).sum()}/{len(nv)}':>11}")
         print(f"    {'base':<12}{bv.mean():>+10.4f}{_t(bv):>10.2f}"
               f"{f'{(bv > 0).sum()}/{len(bv)}':>11}")
+        verdict = "new ahead" if diff.mean() > 0 else "base ahead"
+        if len(diff) < 4:
+            verdict += "  (too few blocks for a t — read the point estimate only)"
         print(f"    {'DIFF':<12}{diff.mean():>+10.4f}{_t(diff):>10.2f}"
-              f"{f'{(diff > 0).sum()}/{len(diff)}':>11}   "
-              f"{'new ahead' if diff.mean() > 0 else 'base ahead'}")
-        print("    per year: " + "  ".join(
-            f"{int(y)}:{v:+.3f}" for y, v in zip(yr['y'].to_list(), diff, strict=True)))
+              f"{f'{(diff > 0).sum()}/{len(diff)}':>11}   {verdict}")
+        print(f"    per {block}: " + "  ".join(
+            f"{y}:{v:+.3f}" for y, v in zip(yr["y"].to_list(), diff, strict=True)))
 
 
 def main() -> None:
@@ -115,10 +123,14 @@ def main() -> None:
          if (SIGNALS / t / "predictions.parquet").exists()),
         f"{base_tag}_holdout",
     )
+    # The holdout spans ~15 months. Blocking it by year would compute a t from
+    # two numbers, which is not a statistic; months are the only honest unit
+    # there, and they are more autocorrelated, so read that t as generous.
     compare(PANEL / "holdout.parquet", f"{new_tag}_holdout", base_hold,
-            "UNSEEN HOLDOUT (2025-04 .. 2026-09)")
-    print("\nA year is the blocking unit. Rank IC is Spearman within each date's")
-    print("tradeable cross-section, identical rows for both models.")
+            "UNSEEN HOLDOUT (2025-04 .. 2026-09)", block="month")
+    print("\nRank IC is Spearman within each date's tradeable cross-section,")
+    print("identical rows for both models. In-sample blocks by year; the holdout")
+    print("is ~15 months long and blocks by month of necessity.")
 
 
 if __name__ == "__main__":
