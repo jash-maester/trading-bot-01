@@ -140,11 +140,13 @@ def main() -> None:
         raise SystemExit("no arm had enough shared days to test")
     base_name = base_path.stem.replace("nav_", "")
     if "equal_weight" in base_name:
-        print("\nBASELINE WARNING: this is equal_weight, which run_baselines.py "
-              "measured on\n2026-09-08 as NOT the strongest -- MomentumTopK beats "
-              "it on CAGR at monthly\ncadence (0.273 vs 0.257). R5's criterion "
-              "says 'best R2 baseline'. Re-run with\n--baseline momentum_topk "
-              "for the comparison the gate actually asks for.")
+        print("\nBASELINE NOTE: which baseline is strongest depends on the "
+              "UNIVERSE, and the\nanswer inverts between the two.\n"
+              "  fixed 504 names   MomentumTopK 0.273 > equal_weight 0.257\n"
+              "  point-in-time     equal_weight 0.119 > MomentumTopK -0.002\n"
+              "Momentum's win on the fixed list was survivorship "
+              "(audit/S1_SURVIVORSHIP.md).\nOn a point-in-time universe "
+              "equal_weight IS the bar R5's criterion names.")
 
     payload = {
         "gate": "R5 — deterministic allocator",

@@ -7,6 +7,13 @@
 # why walk.data_end was capped at 2024-12-31 and why a run that quietly widened
 # to ten windows had to be stopped. Spending it is a one-way decision.
 #
+# THE BAND IS SWEPT HERE TOO. The in-sample sweep found the no-trade band, not
+# K, is the lever: at K=20 a 1% band takes CAGR from 0.105 to 0.157 against
+# equal-weight's 0.119, and cuts the demat bill from Rs 113,409 to Rs 11,827 --
+# 90% fewer scrips sold. It still did not clear a paired 95% CI (+0.0329/yr,
+# [-0.0016, +0.0672], t 1.98), and it was the best of 36 arms. The holdout is
+# the test that owes nothing to that selection.
+#
 # THE MODEL IS STALE BY CONSTRUCTION. Phase 2's last window trained through
 # ~2022, so predicting 2025-26 asks it to extrapolate. predict_signal.py writes
 # `staleness_years` into index.json for exactly this reason. A deployment would
@@ -79,6 +86,7 @@ if uv run python scripts/run_allocator.py data=bhav_v1 \
       ++allocator.universe_from_panel=true \
       ++allocator.null_control=true \
       ++allocator.k_grid=[20,30] \
+      ++allocator.band_grid=[0.0,0.005,0.010] \
       ++allocator.freq_grid=[monthly] \
       ++allocator.horizon_grid=[20d] \
       ++allocator.nav_dir="$NAVDIR" \
