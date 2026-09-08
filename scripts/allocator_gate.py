@@ -27,11 +27,13 @@ nominal 5% for a persistent series. `--block` therefore defaults to the
 rebalance period, and the lag-1 autocorrelation of the difference is reported so
 a reader can judge whether that was enough.
 
-A CAVEAT THIS CANNOT RESOLVE. The criterion says "best R2 baseline", and R2's
-full 5 baselines × 3 frequencies × 4 benchmarks grid has never been run. This
-tests against `EqualWeightRebalanced` at the same cadence, which is the strongest
-baseline actually measured. If a stronger one exists in the unrun grid, this gate
-is optimistic and says so rather than claiming a comparison it did not make.
+PICK THE BASELINE DELIBERATELY. The criterion says "best R2 baseline", and the
+default here is `EqualWeightRebalanced` only because it is the conventional bar —
+it is **not** the strongest. `scripts/run_baselines.py` measured the grid on
+2026-09-08 and `MomentumTopK` beats equal-weight on CAGR at monthly cadence
+(0.273 against 0.257). Pass `--baseline momentum_topk` for the comparison R5's
+criterion actually asks for; `audit/R5_GATE.md` reports both, and they do not
+agree.
 """
 from __future__ import annotations
 
@@ -136,19 +138,25 @@ def main() -> None:
           f"excluding zero against {base_path.stem.replace('nav_', '')}.")
     if not results:
         raise SystemExit("no arm had enough shared days to test")
-    print("\nBaseline caveat: R2's full 5 x 3 x 4 grid has never been run, so "
-          "'best R2\nbaseline' is here taken to be EqualWeightRebalanced at the "
-          "same cadence -- the\nstrongest baseline actually measured, not "
-          "necessarily the strongest that exists.")
+    base_name = base_path.stem.replace("nav_", "")
+    if "equal_weight" in base_name:
+        print("\nBASELINE WARNING: this is equal_weight, which run_baselines.py "
+              "measured on\n2026-09-08 as NOT the strongest -- MomentumTopK beats "
+              "it on CAGR at monthly\ncadence (0.273 vs 0.257). R5's criterion "
+              "says 'best R2 baseline'. Re-run with\n--baseline momentum_topk "
+              "for the comparison the gate actually asks for.")
 
     payload = {
         "gate": "R5 — deterministic allocator",
         "criterion": "beats best R2 baseline net of cost+tax, paired bootstrap "
                      "CI excluding zero",
         "baseline_used": base_path.stem.replace("nav_", ""),
-        "baseline_caveat": "R2's full 5x3x4 baseline grid has not been run; this "
-                           "is the strongest baseline measured, not proven to be "
-                           "the strongest that exists",
+        "baseline_caveat": (
+            "R5's criterion says 'best R2 baseline'. run_baselines.py measured "
+            "the grid on 2026-09-08: MomentumTopK beats EqualWeightRebalanced on "
+            "CAGR at monthly cadence (0.273 vs 0.257), so a run against "
+            "equal_weight is NOT the criterion's comparison."
+        ),
         "method": "paired daily log-return difference, moving-block bootstrap",
         "block": block,
         "n_boot": int(args.n_boot),

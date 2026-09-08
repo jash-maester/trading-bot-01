@@ -428,34 +428,11 @@ def _run_baseline(
     the one `11_cost_defect_and_fix_plan.md` shows is 97.7% of the daily arm's
     entire cost.  It has no band, so no suppression counterfactual.
     """
-    from trader.env.baselines import EqualWeightRebalanced
-    from trader.env.costs import _DP_CHARGE
+    from trader.env.baselines import EqualWeightRebalanced, run_baseline_episode
 
-    agent = EqualWeightRebalanced()
-    obs, _ = env.reset(seed=seed)
-    agent.reset()
-    navs = [float(obs["nav"])]
-    turnovers: list[float] = []
-    scrip_sell_days = 0
-    legs = 0
-    steps = 0
-    done = False
-    while not done:
-        obs, _, terminated, truncated, info = env.step(agent.act(obs))
-        navs.append(float(info["nav"]))
-        turnovers.append(float(info["turnover"]))
-        scrip_sell_days += int(info["n_scrips_sold"])
-        legs += int(info["n_legs"])
-        steps += 1
-        done = terminated or truncated
-    diag = {
-        "rebalances": float(steps),
-        "scrip_sell_days": float(scrip_sell_days),
-        "scrip_sell_days_per_rebalance": scrip_sell_days / max(steps, 1),
-        "legs": float(legs),
-        "dp_charges_paid": scrip_sell_days * _DP_CHARGE,
-    }
-    return navs, turnovers, diag
+    # Delegates to the library so this baseline and the same one in
+    # `scripts/run_baselines.py` are literally the same computation.
+    return run_baseline_episode(env, EqualWeightRebalanced(), seed)
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")

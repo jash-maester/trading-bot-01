@@ -270,3 +270,61 @@ class RandomPolicy(BaselineAgent):
             if t:
                 logits[i + 1] = float(self._rng.uniform(-1.0, 1.0))
         return logits.astype(np.float32)
+
+
+def run_baseline_episode(
+    env: object, agent: BaselineAgent, seed: int
+) -> tuple[list[float], list[float], dict[str, float]]:
+    """Drive one baseline through a full episode, returning NAVs and diagnostics.
+
+    Lives here rather than in a script because R2 needs five baselines and R5
+    needs one, and two copies of an episode loop is how two runs quietly stop
+    being comparable. ``scripts/run_allocator.py`` and
+    ``scripts/run_baselines.py`` both call this, so a baseline measured for the
+    gate and the same baseline measured for the grid are the same computation.
+
+    The diagnostics deliberately include ``scrip_sell_days``: for Zerodha
+    delivery the flat ₹15.34 demat debit per scrip sold is 83–98% of all cost,
+    and turnover is the wrong instrument for a flat per-scrip fee
+    (`11_cost_defect_and_fix_plan.md`).
+
+    ``rebalances`` counts steps on which the env was WILLING TO TRADE, not every
+    step. Counting every step was a live defect until 2026-09-08: at monthly
+    cadence over 1,919 sessions it divided by 1,919 instead of 91, so
+    ``scrip_sell_days_per_rebalance`` for equal-weight read **2.3** where the
+    truth is **49.5** — and that column sits directly beside the allocator's,
+    which always divided by real rebalances. Two numbers under one header,
+    twenty-one times apart. The rupee column (``dp_charges_paid``) is absolute
+    and was never affected, so cost conclusions drawn from it stand.
+    """
+    from trader.env.costs import _DP_CHARGE
+
+    obs, _ = env.reset(seed=seed)  # type: ignore[attr-defined]
+    agent.reset()
+    navs = [float(obs["nav"])]
+    turnovers: list[float] = []
+    scrip_sell_days = 0
+    legs = 0
+    steps = 0
+    rebalances = 0
+    done = False
+    while not done:
+        # Asked BEFORE the step: it reports whether the next call may trade.
+        if bool(env.is_rebalance_step()):  # type: ignore[attr-defined]
+            rebalances += 1
+        obs, _, terminated, truncated, info = env.step(agent.act(obs))  # type: ignore[attr-defined]
+        navs.append(float(info["nav"]))
+        turnovers.append(float(info["turnover"]))
+        scrip_sell_days += int(info["n_scrips_sold"])
+        legs += int(info["n_legs"])
+        steps += 1
+        done = terminated or truncated
+    diag = {
+        "rebalances": float(rebalances),
+        "steps": float(steps),
+        "scrip_sell_days": float(scrip_sell_days),
+        "scrip_sell_days_per_rebalance": scrip_sell_days / max(rebalances, 1),
+        "legs": float(legs),
+        "dp_charges_paid": scrip_sell_days * _DP_CHARGE,
+    }
+    return navs, turnovers, diag

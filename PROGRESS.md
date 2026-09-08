@@ -29,15 +29,17 @@ Dependency order:
 | A4 — quarantine (optional) | DEFERRED to before R6 | Untrained code moved to `experimental/`, tests still green | `experimental/*/README.md` | — |
 | A5 — standing rules | **DONE** | `CLAUDE.md` exists with the five rules | `CLAUDE.md` | 1 |
 | R1 — one panel, one truth | **PARTIAL** | Deterministic SHA256; every feature nonzero variance; purge ≥ lookback; point-in-time universe | panels rebuilt at 645 tickers; **point-in-time universe still open** | 3 |
-| R2 — honest baselines | **PARTIAL — now the binding constraint** | 5 baselines × 3 frequencies × 4 benchmarks, net of cost **and tax** | `equal_weight` + `null_signal` run in every allocator table; NIFTY via `benchmark_vs_nifty.py`. All five agents exist in `trader/env/baselines.py`; `run_allocator.py` only calls `EqualWeightRebalanced`. This is what keeps R5 conditional. | 3 |
+| R2 — honest baselines | **PARTIAL** | 5 baselines × 3 frequencies × 4 benchmarks, net of cost **and tax** | All 5 baselines run at monthly + weekly via `scripts/run_baselines.py`, after tax, MLflow `baselines`. **`MomentumTopK` beats `EqualWeightRebalanced` on CAGR at monthly (0.273 vs 0.257)** — see `audit/R5_GATE.md`. Daily cadence and the 4-benchmark leg are still outstanding. | 3 |
 | R3 — kill the compute bug | NOT_STARTED | 2M steps < 2h on the 4060, **conditional on encoder caching** | timed run + run ID | — |
 | R4 — supervised cross-sectional | **PASS** (r4_v2) | Window-level: mean of per-window OOS rank IC > 0.02, window t > t_crit(95%), >= 75% windows positive (`12_gate_decision.md`) | `data/signal/r4_v2/gate.json`: 5d +0.0392 t 7.50, 20d +0.0437 t 5.31, 8/8 windows positive | 2026-09-06 |
-| R5 — deterministic allocator | **CONDITIONAL PASS** | Beats best R2 baseline net of cost+tax, **paired bootstrap CI excluding zero** | Paired moving-block bootstrap, 8 arms of 8 clear a 95% CI excluding zero: K=20 no-stop +0.1191/yr, CI [+0.0614, +0.1782], t 4.37. Same on the holdout, +0.1883/yr. `audit/R5_GATE.md`, `audit/r5_gate.json`. **Conditional because the criterion names R2 and R2 is incomplete** — only 1 of its 5 baselines has been run. | 3 |
+| R5 — deterministic allocator | **FAIL** | Beats best R2 baseline net of cost+tax, **paired bootstrap CI excluding zero** | Against the BEST R2 baseline (`MomentumTopK`, monthly): **1 arm of 8** clears the interval — K=20 no-stop, +0.1060/yr, CI [+0.0039, +0.2089], t 2.02. Every stopped arm and every K=30 arm fails. Against `equal_weight` it is 8 of 8, but equal-weight is not the best baseline and itself loses to momentum. `audit/R5_GATE.md`. | 3 |
 | R6 — reinstate RL | **RUN — FAIL** | Beats R5's allocator | Loses out of sample. Diagnosed as 17 policy parameters against ~4 independent 2-year windows. | 3 |
 | R7 — regime conditioning | NOT_STARTED | `corr(val,test)` CI over ≥8 windows excludes zero, then Phase 1 A/B | walk-forward summary | — |
 
-**Current unit: R2 — complete the baseline grid, which is now the only
-thing keeping R5 conditional. In parallel: the point-in-time universe rebuild.** A0–A3
+**Current unit: the point-in-time universe rebuild.** It is now the most
+load-bearing open item: momentum-top-K is the baseline most flattered by a
+survivorship-selected universe, so the bar R5 has to clear may itself be
+inflated. `scripts/fetch_bhavcopy.py` is backfilling the full market from 2010. A0–A3
 pass. A4 remains deferred (large refactor, no new information, and
 `heads.py`/`encoders.py` mix live and quarantined code so it is not a clean
 directory move).
@@ -49,13 +51,19 @@ on an unseen 2025-26 holdout after tax.
 
 **Where R5 stands after 2026-09-08:**
 
-1. **The paired bootstrap CI now exists and clears.** 8 arms of 8 exclude zero
-   on the walk-forward span and again on the holdout (`audit/R5_GATE.md`). The
-   statistical criterion is met.
-2. **R2 is what keeps it conditional.** R5's criterion names "best R2
-   baseline"; only 1 of R2's 5 baselines has ever been run. All five agents
-   already exist, so this is a small piece of work and the cheapest thing on
-   the board.
+1. **The paired bootstrap CI now exists, and R5 fails it.** Against
+   `EqualWeightRebalanced` all 8 arms clear. Against `MomentumTopK` — which R2
+   measured as the *stronger* baseline at monthly cadence, and which
+   equal-weight itself loses to — only the unstopped K=20 arm clears, at
+   t = 2.02 with a lower bound of +0.0039. R5's criterion says "best R2
+   baseline", so the momentum comparison is the gate and the answer is FAIL.
+   Recorded plainly per `CLAUDE.md`; the 8-of-8 equal-weight result is real but
+   is not the gate.
+2. **Every arm still beats momentum on average** (mean excess positive
+   throughout, allocator CAGR 0.416 vs momentum 0.273). What fails is
+   significance: a concentrated 20-name momentum book is volatile and the
+   paired difference is wide. This is a power problem as much as an edge
+   problem.
 3. **The universe is still not point-in-time, and it is worse than assumed.**
    Measured: of the 605 names carrying ≥₹5cr median daily turnover in 2021,
    this universe holds **292 — 48.3%** — and 55 of those had stopped trading by
