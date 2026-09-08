@@ -28,6 +28,12 @@ SPLIT="${SPLIT:-oos_${SIGNAL_TAG}}"
 # clear. Set REQUIRE_GATE=false only to measure a failed signal deliberately;
 # the verdict is stamped into every MLflow run either way.
 REQUIRE_GATE="${REQUIRE_GATE:-true}"
+# Extra Hydra overrides appended verbatim to the allocator stage. Tax is the
+# reason this exists: `+apply_tax=true` was passed by hand on every run that
+# quoted a post-tax number, so the chain could not reproduce them. Anything
+# passed here is echoed into the log and the status file, so a table can be
+# traced back to the flags that produced it.
+EXTRA="${EXTRA:-}"
 STATUS="logs/orchestrate_${TAG}.status"
 mkdir -p logs
 : > "$STATUS"
@@ -52,10 +58,12 @@ else
 fi
 
 # ── Stage 2: R5 deterministic allocator grid ─────────────────────────────────
-say "stage 2: allocator grid on ${SPLIT} (signal ${SIGNAL_TAG}, run ${TAG}, require_gate_pass=${REQUIRE_GATE})"
+say "stage 2: allocator grid on ${SPLIT} (signal ${SIGNAL_TAG}, run ${TAG}, require_gate_pass=${REQUIRE_GATE}) ${EXTRA}"
+stamp "stage2 EXTRA=${EXTRA:-<none>}"
+# shellcheck disable=SC2086  # EXTRA is a deliberate word-split list of overrides
 if uv run python scripts/run_allocator.py data=kite_v1 \
       +split="$SPLIT" +signal_tag="$SIGNAL_TAG" +require_gate_pass="$REQUIRE_GATE" \
-      +allocator.null_control=true \
+      +allocator.null_control=true $EXTRA \
       > "logs/${TAG}_allocator.log" 2>&1; then
     stamp "stage2 OK"
     say "stage 2 complete"
