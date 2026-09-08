@@ -1,0 +1,32 @@
+# @package _global_.train
+# R4 signal, trained on a POINT-IN-TIME universe.
+#
+# Phase 2 of the survivorship rebuild. Everything measured before this -- R4's
+# gate, R5's +0.1191/yr, the 2025-26 holdout -- was on the 504 names a 2026
+# instrument dump happened to contain. Phase 1 showed what that was worth:
+# momentum-top-K went from CAGR +0.273 on that list to -0.002 on a
+# point-in-time universe, losing all of its return, while equal-weight fell
+# 12.5pp. The bar R5 has to clear was mostly survivorship.
+#
+# A model trained here is a DIFFERENT model, not a re-scoring of the old one.
+
+defaults:
+  - supervised
+  - _self_
+
+tag: r4_pit
+
+# Each window picks its own names from bars strictly before its TEST span
+# begins. Fixed at the boundary and held for the window, which is how an index
+# reconstitutes -- not lookahead. max_names keeps the ticker axis at 504 so the
+# observation cost per run is unchanged and the result stays comparable with
+# the fixed-universe runs it is being tested against.
+pit_universe:
+  bars: data/ext/bhavcopy.parquet
+  min_median_turnover: 5.0e7
+  lookback_days: 365
+  min_sessions: 100
+  # Zero because these bars are back-adjusted; a nominal floor on an adjusted
+  # series rejects prices that never traded, and biased against future winners.
+  min_price: 0.0
+  max_names: 504

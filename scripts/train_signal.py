@@ -219,10 +219,52 @@ def main(cfg: DictConfig) -> None:
     mlflow_port = None if mlflow_port_raw is None else int(mlflow_port_raw)
     logger.info(f"Artefacts → {out_dir}  (MLflow port: {mlflow_port})")
 
+    # ── point-in-time universe, per window ──────────────────────────────────
+    # Off unless `train.pit_universe` is configured, so every existing run
+    # reproduces. When on, each window picks its own names from bars strictly
+    # before its TEST span begins — a decision taken once, at the boundary, the
+    # way an index reconstitutes. Not lookahead, and the width stays fixed so
+    # the observation cost per run does not move with the universe.
+    universe_fn = None
+    pit_cfg = cfg.train.get("pit_universe", None)
+    if pit_cfg is not None:
+        from trader.data.pit_universe import LiquidityRule, eligible_on
+
+        bars_path = orig_cwd / str(pit_cfg.get("bars", "data/ext/bhavcopy.parquet"))
+        if not bars_path.exists():
+            logger.error(
+                f"train.pit_universe is set but {bars_path} does not exist. "
+                "Run scripts/fetch_bhavcopy.py first; falling back to the fixed "
+                "universe here would silently train the thing this config exists "
+                "to avoid."
+            )
+            raise SystemExit(1)
+        pit_bars = pl.read_parquet(
+            bars_path, columns=["date", "ticker", "series", "close", "turnover"]
+        )
+        pit_rule = LiquidityRule(
+            min_median_turnover=float(pit_cfg.get("min_median_turnover", 5e7)),
+            lookback_days=int(pit_cfg.get("lookback_days", 365)),
+            min_sessions=int(pit_cfg.get("min_sessions", 100)),
+            # Zero for adjusted bars: see LiquidityRule.min_price.
+            min_price=float(pit_cfg.get("min_price", 0.0)),
+            max_names=(int(pit_cfg["max_names"]) if pit_cfg.get("max_names") else None),
+        )
+        panel_set = set(panel_tickers)
+        logger.info(f"Point-in-time universe per window: {pit_rule.describe()}")
+
+        def universe_fn(window: object) -> list[str]:  # noqa: ANN401
+            asof = window.test_start  # type: ignore[attr-defined]
+            names = eligible_on(pit_bars, asof, pit_rule)
+            # A name the rule admits but the panel lacks would become an
+            # all-False column: present in the action space, never tradeable.
+            return [t for t in names if t in panel_set]
+
     summary = run_signal_walk_forward(
         full_panel=full_panel,
         windows=windows,
         tickers=universe,
+        universe_fn=universe_fn,
         feature_cols=feature_cols,
         model_cfg=model_cfg,
         train_cfg=train_cfg,

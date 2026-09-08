@@ -35,6 +35,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
@@ -1529,6 +1530,7 @@ def run_signal_walk_forward(
     full_panel: pl.DataFrame,
     windows: list[WindowConfig],
     tickers: list[str],
+    universe_fn: Callable[[WindowConfig], list[str]] | None = None,
     feature_cols: list[str],
     model_cfg: SignalConfig,
     train_cfg: SupervisedConfig,
@@ -1578,10 +1580,31 @@ def run_signal_walk_forward(
     oos_frames: list[pl.DataFrame] = []
     last_model: SignalModel | None = None
 
+    window_universes: dict[str, list[str]] = {}
     for window in windows:
         logger.info(f"── {window.name}: train {window.train_start}..{window.train_end}  "
                     f"val {window.val_start}..{window.val_end}  "
                     f"test {window.test_start}..{window.test_end}")
+        # A POINT-IN-TIME universe is chosen per window, from data strictly
+        # before that window's test span. Fixed at the window boundary and held
+        # for its duration, which is how an index reconstitutes — not lookahead,
+        # and it keeps the ticker axis a constant width so the observation cost
+        # per run does not move with the universe.
+        #
+        # `tickers` remains the default so every run predating this reproduces.
+        win_tickers = universe_fn(window) if universe_fn is not None else tickers
+        if not win_tickers:
+            raise ValueError(
+                f"{window.name}: the universe function returned no tickers. A "
+                "window with an empty universe trains on nothing and scores "
+                "nothing, which downstream reads as a window that simply had no "
+                "signal."
+            )
+        if universe_fn is not None:
+            logger.info(f"   universe: {len(win_tickers)} names, "
+                        f"{win_tickers[0]} … {win_tickers[-1]}")
+        window_universes[window.name] = list(win_tickers)
+
         wdir = out_dir / "windows" / window.name
         # The test segment gets `lookback - 1` days of feature context from the
         # purge gap, so the first prediction lands on the first real OOS date
@@ -1606,13 +1629,13 @@ def run_signal_walk_forward(
 
         mcs = train_cfg.min_cross_section
         train_t = build_panel_tensors(
-            train_df, tickers, feature_cols, horizons, min_cross_section=mcs
+            train_df, win_tickers, feature_cols, horizons, min_cross_section=mcs
         )
         val_t = build_panel_tensors(
-            val_df, tickers, feature_cols, horizons, min_cross_section=mcs
+            val_df, win_tickers, feature_cols, horizons, min_cross_section=mcs
         )
         test_t = build_panel_tensors(
-            test_df, tickers, feature_cols, horizons, min_cross_section=mcs
+            test_df, win_tickers, feature_cols, horizons, min_cross_section=mcs
         )
         for name, t in (("train", train_t), ("val", val_t), ("test", test_t)):
             lab = {h: int(np.isfinite(t.targets[h]).sum()) for h in horizons}
@@ -1650,7 +1673,7 @@ def run_signal_walk_forward(
             )
             params: dict[str, Any] = {
                 "seed": train_cfg.seed,
-                "n_tickers": len(tickers),
+                "n_tickers": len(win_tickers),
                 "n_params": n_params,
                 "device": str(device),
                 **{f"train.{k}": str(v) for k, v in asdict(train_cfg).items()},
@@ -1744,8 +1767,14 @@ def run_signal_walk_forward(
         pl.concat(oos_frames) if oos_frames else empty_predictions_frame(horizons)
     )
     assert_unique_date_ticker(predictions)
+    # The saved encoder is the LAST window's, so its embeddings must be taken
+    # over that window's ticker axis. Using the default list here would emit an
+    # embedding matrix whose rows do not correspond to the model that produced
+    # them — a mismatch nothing downstream could detect.
+    embed_tickers = win_tickers if universe_fn is not None else tickers
     full_t = build_panel_tensors(
-        full_panel, tickers, feature_cols, horizons, min_cross_section=train_cfg.min_cross_section
+        full_panel, embed_tickers, feature_cols, horizons,
+        min_cross_section=train_cfg.min_cross_section,
     )
     artefacts = write_artefacts(
         out_dir,
@@ -1763,6 +1792,12 @@ def run_signal_walk_forward(
         "gate": gate.to_dict(),
         "pooled_test": {str(h): m.to_dict() for h, m in pooled.items()},
         "windows": [r.to_dict() for r in results],
+        # Which names each window actually traded. Without this a point-in-time
+        # run is unauditable: two windows can report different ICs simply
+        # because they ranked different universes, and nothing in the metrics
+        # would say so.
+        "window_universes": window_universes,
+        "universe_is_point_in_time": universe_fn is not None,
         "encoder_window": results[-1].window.name,
         "encoder_state_sha256": last_model.encoder_state_sha256(),
         "model_state_sha256": state_dict_sha256(last_model.state_dict()),
