@@ -137,7 +137,45 @@ without: identical. There is no tax overhang left to recover, and at band 0.010
 the strategy is *more* tax-efficient than holding everything equally. What
 remains between +3.2%/yr and a passing gate is not cost.
 
-## 7. What would settle it
+## 7. Quarterly, and the first arm to clear a gate
+
+My prediction, recorded before the run, was that quarterly would not materially
+help and might hurt — a 20-day-horizon signal traded four times a year should
+decay inside the holding period. **Wrong on both counts.**
+
+| K=20 | monthly | quarterly |
+|---|---|---|
+| band 0.000 | −0.0139 | **+0.0110** |
+| band 0.010 | +0.0374 | **+0.0431** |
+| turnover | 2.338 | 1.129 |
+| demat ₹ | 11,827 | 5,200 |
+
+Quarterly flips the sign at band 0, before the band is applied at all. And one
+arm finally clears a paired interval:
+
+> **K=20, band 0.010, quarterly, no stop: +0.0421/yr, CI [+0.0011, +0.0830],
+> t 2.11 — PASS.** 1 of 17 arms.
+
+Why the prediction failed: I reasoned from the tax number alone — 0.6pp of drag
+left, so little to win — and treated one measured quantity as the whole cost
+surface. Quarterly halves turnover again on top of the band and halves the
+demat bill with it, and the 20-day signal evidently does not decay inside a
+quarter the way I assumed.
+
+**Three cautions before this is called a result.**
+
+1. It is 1 of 17 arms. At 95% you expect ~0.85 false passes from 17 tries, so
+   this is exactly the rate chance produces.
+2. The lower bound is **+0.0011**. It clears by a whisker.
+3. The volstop quarterly arm does **not** clear (+0.0174, t 0.46), so the pass
+   is not robust across risk arms.
+
+What makes it more than noise-mining is that the ordering is consistent —
+quarterly beats monthly at both bands, the band beats no-band at both cadences
+— and both effects have mechanical explanations given in advance, even where
+the magnitude was wrong.
+
+## 8. What would settle it
 
 Not another sweep of the same space — that is how a t of 1.98 becomes a t of
 2.1 by accident. The honest options, in order of what they would actually
