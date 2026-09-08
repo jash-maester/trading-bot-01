@@ -370,3 +370,44 @@ def test_a_series_switch_must_not_look_like_a_corporate_action() -> None:
         "guard cannot see a two-day hole"
     )
     assert spurious.row(0, named=True)["ratio"] == pytest.approx(0.9)
+
+
+def test_a_two_digit_year_timestamp_parses() -> None:
+    """NSE switched TIMESTAMP to a two-digit year around mid-2020.
+
+    "13-Jul-20" against a hardcoded %d-%b-%Y raised a plain ValueError, which
+    is NOT caught by `except BhavcopyParseError` because that class is a
+    SUBCLASS of ValueError — so it propagated and killed a 4,138-day backfill at
+    session 2,600.
+    """
+    doc = _CLASSIC.replace("04-JAN-2016", "13-Jul-20")
+    df = parse_classic_bhavcopy(doc)
+    assert df["date"].to_list() == [date(2020, 7, 13)] * df.height
+
+
+def test_both_year_forms_give_the_same_date() -> None:
+    a = parse_classic_bhavcopy(_CLASSIC.replace("04-JAN-2016", "13-JUL-2020"))
+    b = parse_classic_bhavcopy(_CLASSIC.replace("04-JAN-2016", "13-Jul-20"))
+    assert a["date"].to_list() == b["date"].to_list()
+
+
+def test_an_implausible_year_is_refused_rather_than_guessed() -> None:
+    """`%y` maps 69-99 to the 1900s; a 1970 bhavcopy does not exist.
+
+    Accepting it would mean the format guess was wrong and the row silently
+    lands two-thousand-odd years from where it belongs.
+    """
+    with pytest.raises(BhavcopyParseError, match="TIMESTAMP"):
+        parse_classic_bhavcopy(_CLASSIC.replace("04-JAN-2016", "13-Jul-70"))
+
+
+def test_an_unparseable_timestamp_raises_the_typed_error() -> None:
+    """It must be a BhavcopyParseError so the fetcher marks the day bad."""
+    with pytest.raises(BhavcopyParseError, match="matches none of"):
+        parse_classic_bhavcopy(_CLASSIC.replace("04-JAN-2016", "not-a-date"))
+
+
+def test_the_sec_layout_accepts_both_year_forms_too() -> None:
+    a = parse_sec_bhavdata_ohlcv(_SEC)
+    b = parse_sec_bhavdata_ohlcv(_SEC.replace("02-Jan-2024", "02-Jan-24"))
+    assert a["date"].to_list() == b["date"].to_list() == [date(2024, 1, 2)]

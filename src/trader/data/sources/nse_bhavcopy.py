@@ -144,6 +144,29 @@ def unzip_bhavcopy(payload: bytes) -> str:
         raise BhavcopyParseError(f"corrupt zip: {exc}") from exc
 
 
+#: TIMESTAMP formats seen in the classic archive. NSE switched to a two-digit
+#: year around mid-2020 ("13-Jul-20"), which killed a 4,138-day backfill at
+#: session 2,600. Tried in order; the four-digit form is the common one.
+_TIMESTAMP_FORMATS: Final[tuple[str, ...]] = ("%d-%b-%Y", "%d-%b-%y")
+
+
+def _parse_timestamp(text: str, *, name: str) -> date:
+    """Parse a classic bhavcopy TIMESTAMP, whichever year form it uses."""
+    for fmt in _TIMESTAMP_FORMATS:
+        try:
+            d = datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+        # `%y` maps 00-68 to 2000-2068 and 69-99 to 1969-1999. A bhavcopy from
+        # 1970 does not exist, so a date outside the plausible archive range
+        # means the format guess was wrong rather than the data being odd.
+        if 2000 <= d.year <= 2100:
+            return d
+    raise BhavcopyParseError(
+        f"{name}: TIMESTAMP {text!r} matches none of {list(_TIMESTAMP_FORMATS)}"
+    )
+
+
 def parse_classic_bhavcopy(text: str, *, name: str = "<classic>") -> pl.DataFrame:
     """Parse a classic ``cm*bhav.csv`` body into :data:`BHAVCOPY_SCHEMA`.
 
@@ -180,7 +203,7 @@ def parse_classic_bhavcopy(text: str, *, name: str = "<classic>") -> pl.DataFram
         ts = r.get("TIMESTAMP", "")
         if not ts or not r.get("SYMBOL"):
             continue
-        out["date"].append(datetime.strptime(ts, "%d-%b-%Y").date())
+        out["date"].append(_parse_timestamp(ts, name=name))
         out["symbol"].append(r["SYMBOL"])
         out["ticker"].append(nse_symbol_to_ticker(r["SYMBOL"]))
         out["isin"].append(r.get("ISIN") or None)
@@ -225,7 +248,7 @@ def parse_sec_bhavdata_ohlcv(text: str, *, name: str = "<sec>") -> pl.DataFrame:
         d1 = r.get("DATE1", "")
         if not d1 or not r.get("SYMBOL"):
             continue
-        out["date"].append(datetime.strptime(d1, "%d-%b-%Y").date())
+        out["date"].append(_parse_timestamp(d1, name=name))
         out["symbol"].append(r["SYMBOL"])
         out["ticker"].append(nse_symbol_to_ticker(r["SYMBOL"]))
         out["isin"].append(None)

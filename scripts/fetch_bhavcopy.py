@@ -131,7 +131,14 @@ def main() -> None:
                 if body is not None:
                     try:
                         frame = parse_classic_bhavcopy(body, name=name)
-                    except BhavcopyParseError as exc:
+                    except ValueError as exc:
+                        # ValueError, not BhavcopyParseError: the latter is a
+                        # SUBCLASS of it, so anything raised deeper in the parse
+                        # walked straight past this handler and killed the run.
+                        # A two-digit TIMESTAMP did exactly that at session
+                        # 2,600 of 4,138. One malformed day must never abort a
+                        # multi-thousand-day backfill -- the same lesson the
+                        # bhavdata backfill already paid for.
                         cache.mark_bad(name, str(exc))
                         logger.warning(f"{name}: unparseable classic, marked bad — {exc}")
 
@@ -154,7 +161,7 @@ def main() -> None:
                 if body is not None:
                     try:
                         frame = parse_sec_bhavdata_ohlcv(body, name=name)
-                    except BhavcopyParseError as exc:
+                    except ValueError as exc:
                         cache.mark_bad(name, str(exc))
                         logger.warning(f"{name}: unparseable sec, marked bad — {exc}")
 
