@@ -56,7 +56,6 @@ def main() -> None:
     args = ap.parse_args()
 
     from trader.data.sources.nse_bhavcopy import (
-        CLASSIC_VERIFIED_FROM,
         BhavcopyParseError,
         classic_url,
         parse_classic_bhavcopy,
@@ -111,7 +110,13 @@ def main() -> None:
         frame: pl.DataFrame | None = None
         # Classic first, for the ISIN. Only attempted where it is plausible, so
         # the 2024-07+ tail does not pay a 404 per session.
-        if day >= CLASSIC_VERIFIED_FROM:
+        # Attempted for EVERY session, not gated on CLASSIC_VERIFIED_FROM. That
+        # constant records what has been verified, and using it as a floor made
+        # a span extension a silent no-op: 1,239 sessions from 2005-2010 skipped
+        # the archive entirely and were logged as "no data". A doomed request
+        # for a genuinely absent date costs one 404; a missing five years costs
+        # the experiment.
+        if True:
             name = f"cm{day.strftime('%d%b%Y').upper()}bhav.csv"
             if not cache.is_bad(name):
                 body = cache.read(name)
@@ -192,6 +197,16 @@ def main() -> None:
     )
     if df.is_empty():
         raise SystemExit("no bhavcopy rows fetched")
+    if failed > total * 0.25:
+        logger.error(
+            f"{failed:,} of {total:,} sessions ({failed / max(total, 1):.0%}) "
+            "yielded no data. A span extension that silently adds nothing looks "
+            "exactly like this: the run reports success, the date range does not "
+            "move, and everything downstream is rebuilt on the same data. Check "
+            "the archive actually serves the requested dates before trusting a "
+            "wider span."
+        )
+        raise SystemExit(1)
 
     eq = df.filter(pl.col("series").is_in(["EQ", "BE"]))
     print(f"\n{'metric':<44}{'value':>22}")

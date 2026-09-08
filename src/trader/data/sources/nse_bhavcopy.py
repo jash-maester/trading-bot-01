@@ -76,8 +76,17 @@ CLASSIC_BHAV_URL: Final[str] = (
 #: cutoff would have silently dropped ISIN for every session after it.
 CLASSIC_VERIFIED_TO: Final[date] = date(2024, 7, 1)
 
-#: First date the classic archive was verified to serve.
-CLASSIC_VERIFIED_FROM: Final[date] = date(2010, 1, 4)
+#: First date the classic archive was verified to serve. Re-measured 2026-09-08:
+#: 2005-01-03 returns a normal file (816 rows, 814 EQ/BE), so the archive is at
+#: least five years deeper than the 2010-01-04 first recorded here.
+#:
+#: INFORMATIONAL ONLY, and that matters. Used as a hard floor, the earlier value
+#: silently blocked a span extension: `fetch_bhavcopy.py` gated the classic
+#: attempt on `day >= CLASSIC_VERIFIED_FROM`, so 1,239 sessions from 2005-2010
+#: never tried the archive at all, fell through to a layout that starts in 2019,
+#: and were logged as "no data for this date". The run reported success having
+#: added nothing.
+CLASSIC_VERIFIED_FROM: Final[date] = date(2005, 1, 3)
 
 BHAVCOPY_SCHEMA: Final[dict[str, pl.DataType]] = {
     "date": pl.Date(),
