@@ -60,10 +60,18 @@ for.
 
 When a stop fires, the proceeds sit in cash. The cooldown bars *re-buying that
 name* for 21 steps, but the cash itself is redeployed at the next monthly
-rebalance — on average about 10 trading days later. **So 10 days is the window
-over which stopping actually costs or saves anything.** The 21d and 60d columns
-overstate both the cost and the ceiling, because by then the money is working
-again somewhere else.
+rebalance. That gap is measured, not assumed, because the sign of the whole
+result depends on it:
+
+| arm | cash idle until the next rebalance |
+|---|---|
+| `stop10` | mean 10.5d, median 11d, p10 3, p90 18 |
+| `stop15` | mean 11.0d, median 11d, p10 4, p90 19 |
+| `volstop` | mean 10.3d, median 10d, p10 3, p90 18 |
+
+**So 10 days is the window over which stopping actually costs or saves
+anything.** The 21d and 60d columns overstate both the cost and the ceiling,
+because by then the money is working again somewhere else.
 
 That distinction is not a technicality. It flips the sign of the result.
 

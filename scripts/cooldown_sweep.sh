@@ -30,6 +30,7 @@ cd "$(dirname "$0")/.." || exit 1
 TAG="${RUN_TAG:-cooldown}"
 SIGNAL="${SIGNAL_TAG:-r4_v2}"
 SPLIT="${SPLIT:-oos_r4_v2}"
+GATE="${REQUIRE_GATE:-true}"
 STATUS="logs/cooldown_${TAG}.status"
 mkdir -p logs
 : > "$STATUS"
@@ -53,7 +54,7 @@ GRID=$(echo "$GRID" | tr -d '\n')
 
 say "cooldown sweep (${SIGNAL} on ${SPLIT}, after tax, K=20 monthly 20d)"
 if uv run python scripts/run_allocator.py data=kite_v1 \
-      +split="$SPLIT" +signal_tag="$SIGNAL" +require_gate_pass=true \
+      +split="$SPLIT" +signal_tag="$SIGNAL" +require_gate_pass="$GATE" \
       +apply_tax=true \
       ++allocator.null_control=false \
       ++allocator.k_grid=[20] \

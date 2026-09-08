@@ -53,7 +53,8 @@ def main() -> None:
     ap.add_argument("--signal", type=Path,
                     default=Path("data/signal/r4_v2/predictions.parquet"))
     ap.add_argument("--horizons", default="5,10,21,60")
-    ap.add_argument("--benchmark", default="", help="ticker for a market control")
+    ap.add_argument("--freq", default="monthly",
+                    help="the cadence the events were generated at")
     args = ap.parse_args()
 
     horizons = [int(h) for h in args.horizons.split(",")]
@@ -75,6 +76,13 @@ def main() -> None:
         for r in sig.iter_rows(named=True):
             if r["r_hat_20d"] is not None:
                 sig_map[(r["date"], r["ticker"])] = float(r["r_hat_20d"])
+
+    from trader.allocator.rebalance import RebalanceSchedule
+
+    reb = np.flatnonzero(
+        np.asarray(RebalanceSchedule(args.freq).mask(dates), dtype=bool)
+    )
+    logger.info(f"{len(dates)} sessions, {reb.size} {args.freq} rebalance days")
 
     files = sorted(args.events_dir.glob("stop_events_*.parquet"))
     if not files:
@@ -114,6 +122,23 @@ def main() -> None:
             )
         logger.info(f"{arm}: date mapping verified on {checked} event(s), "
                     f"{mismatch} mismatch")
+
+        # How long the proceeds ACTUALLY sit in cash. The whole verdict turns
+        # on this: the cooldown bars re-buying the stopped NAME for 21 steps,
+        # but the cash is redeployed at the next scheduled rebalance. If that
+        # is ~10 days, the 10d column is the honest one; if it were ~21, the
+        # 21d column would be, and the sign of the result flips between them.
+        # Measured rather than assumed for exactly that reason.
+        if reb.size:
+            gaps = np.array([
+                int(reb[reb > d][0]) - d
+                for d in ev["day_index"].to_list() if (reb > d).any()
+            ])
+            if gaps.size:
+                print(f"  cash idle until the next rebalance: mean "
+                      f"{gaps.mean():.1f}d, median {np.median(gaps):.0f}d, "
+                      f"p10 {np.percentile(gaps, 10):.0f}, "
+                      f"p90 {np.percentile(gaps, 90):.0f}")
 
         span = float(len(dates)) / 252.0
         print(f"  {ev.height / max(span, 1e-9):.1f} stops per year over "
