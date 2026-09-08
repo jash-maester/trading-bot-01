@@ -70,21 +70,32 @@ def main() -> None:
     files = sorted(args.nav_dir.glob("nav_*.parquet"))
     if not files:
         raise SystemExit(f"no nav_*.parquet under {args.nav_dir}")
-    def _match(name: str) -> list[Path]:
-        """Files whose arm name is `name`, matched on a TOKEN boundary.
+    _CADENCES = ("daily", "weekly", "monthly", "quarterly")
 
-        Plain substring matching is wrong here and quietly gave the wrong
-        answer: `--baseline equal_weight` also matches
-        `nav_equal_weight_frozen_...`, so a Phase 3 run that asked for two
-        different baselines tested the same one twice and reported both.
-        A baseline must match the arm name up to a `_`, not anywhere in it.
+    def _arm_name(stem: str) -> str:
+        """The strategy part of a nav filename, with cadence and split removed.
+
+        `nav_equal_weight_frozen_monthly_oos_pit` -> `equal_weight_frozen`.
+        The cadence token is the delimiter, because the strategy name itself
+        contains underscores and nothing else marks where it ends.
         """
-        exact = []
-        for f in files:
-            arm = f.stem.removeprefix("nav_")
-            if arm == name or arm.startswith(name + "_"):
-                exact.append(f)
-        return exact
+        parts = stem.removeprefix("nav_").split("_")
+        for i, tok in enumerate(parts):
+            if tok in _CADENCES:
+                return "_".join(parts[:i])
+        return "_".join(parts)
+
+    def _match(name: str) -> list[Path]:
+        """Files whose ARM NAME is exactly `name`.
+
+        Substring matching is wrong here and quietly gave the wrong answer:
+        `--baseline equal_weight` also matched `equal_weight_frozen`, so a
+        Phase 3 run that asked for two different baselines tested the same one
+        twice and printed both as though they differed. Prefix matching on `_`
+        does not fix it either — `equal_weight_frozen_monthly` genuinely starts
+        with `equal_weight_` — so the arm name has to be extracted first.
+        """
+        return [f for f in files if _arm_name(f.stem) == name]
 
     wanted = args.baseline or "equal_weight"
     base_files = _match(wanted)

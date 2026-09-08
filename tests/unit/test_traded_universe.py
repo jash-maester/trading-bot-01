@@ -70,26 +70,41 @@ def test_an_empty_panel_is_refused(tmp_path) -> None:
         resolve_traded_universe(p, from_panel=True)
 
 
-def test_baseline_names_must_match_on_a_token_boundary() -> None:
+def test_a_baseline_name_must_match_the_whole_arm_not_a_prefix() -> None:
     """`equal_weight` must not select `equal_weight_frozen`.
 
-    Plain substring matching quietly gave the wrong answer: a Phase 3 run asked
-    for two different baselines, got `equal_weight_frozen` both times, and
-    reported both comparisons as though they differed. The rule is that a
-    baseline matches the arm name up to a `_`, not anywhere inside it.
+    Substring matching quietly gave the wrong answer: a Phase 3 run asked for
+    two different baselines, got `equal_weight_frozen` both times, and printed
+    both comparisons as though they differed. Prefix matching on `_` does not
+    fix it either — `equal_weight_frozen_monthly` genuinely starts with
+    `equal_weight_` — so the arm name has to be extracted at the cadence token,
+    which is the only thing marking where a strategy name ends.
     """
-    arms = [
-        "equal_weight_monthly_oos",
-        "equal_weight_frozen_monthly_oos",
-        "momentum_topk_monthly_oos",
+    cadences = ("daily", "weekly", "monthly", "quarterly")
+
+    def arm_name(stem: str) -> str:
+        parts = stem.removeprefix("nav_").split("_")
+        for i, tok in enumerate(parts):
+            if tok in cadences:
+                return "_".join(parts[:i])
+        return "_".join(parts)
+
+    stems = [
+        "nav_equal_weight_monthly_oos_pit",
+        "nav_equal_weight_frozen_monthly_oos_pit",
+        "nav_momentum_topk_quarterly_oos_pit",
+        "nav_allocator_k20_b0.01_rnone_quarterly_20d_oos_pit",
     ]
+    got = {s: arm_name(s) for s in stems}
+    assert got["nav_equal_weight_monthly_oos_pit"] == "equal_weight"
+    assert got["nav_equal_weight_frozen_monthly_oos_pit"] == "equal_weight_frozen"
+    assert got["nav_momentum_topk_quarterly_oos_pit"] == "momentum_topk"
 
     def match(name: str) -> list[str]:
-        return [a for a in arms if a == name or a.startswith(name + "_")]
+        return [s for s in stems if arm_name(s) == name]
 
-    assert match("equal_weight_frozen") == ["equal_weight_frozen_monthly_oos"]
-    assert match("equal_weight") == ["equal_weight_monthly_oos"], (
+    assert match("equal_weight") == ["nav_equal_weight_monthly_oos_pit"], (
         "equal_weight must not also select equal_weight_frozen"
     )
-    assert match("momentum_topk") == ["momentum_topk_monthly_oos"]
+    assert match("equal_weight_frozen") == ["nav_equal_weight_frozen_monthly_oos_pit"]
     assert match("nonsense") == []
