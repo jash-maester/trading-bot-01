@@ -1,6 +1,6 @@
 # PROGRESS
 
-**Last updated:** 2026-09-05 by session 2
+**Last updated:** 2026-09-08 by session 3
 **Plan:** `09_revamp_and_audit.md` (process) · `10_architecture_revamp.md` (architecture)
 **Rules:** `CLAUDE.md`
 
@@ -28,21 +28,33 @@ Dependency order:
 | A3 — reconcile specs | **PASS** | Every spec carries a `## Status` block + verifying commit | `02/03/05/08_*.md` | 2 |
 | A4 — quarantine (optional) | DEFERRED to before R6 | Untrained code moved to `experimental/`, tests still green | `experimental/*/README.md` | — |
 | A5 — standing rules | **DONE** | `CLAUDE.md` exists with the five rules | `CLAUDE.md` | 1 |
-| R1 — one panel, one truth | NOT_STARTED | Deterministic SHA256; every feature nonzero variance; purge ≥ lookback; point-in-time universe | panel hashes | — |
-| R2 — honest baselines | NOT_STARTED | 5 baselines × 3 frequencies × 4 benchmarks, net of cost **and tax** | metrics table + run IDs | — |
+| R1 — one panel, one truth | **PARTIAL** | Deterministic SHA256; every feature nonzero variance; purge ≥ lookback; point-in-time universe | panels rebuilt at 645 tickers; **point-in-time universe still open** | 3 |
+| R2 — honest baselines | **PARTIAL** | 5 baselines × 3 frequencies × 4 benchmarks, net of cost **and tax** | `equal_weight` + `null_signal` run in every allocator table; NIFTY via `benchmark_vs_nifty.py`. The full 5×3×4 grid has not been run. | 3 |
 | R3 — kill the compute bug | NOT_STARTED | 2M steps < 2h on the 4060, **conditional on encoder caching** | timed run + run ID | — |
-| R4 — supervised cross-sectional | RUN (r4_v2) | Window-level: mean of per-window OOS rank IC > 0.02, window t > t_crit(95%), >= 75% windows positive (`12_gate_decision.md`) | `audit/r4_v2/`, MLflow `signal` | 2026-09-06 |
-| R5 — deterministic allocator | NOT_STARTED | Beats best R2 baseline net of cost+tax, paired bootstrap CI excluding zero | metrics table + run ID | — |
-| R6 — reinstate RL | NOT_STARTED | Beats R5's allocator | run ID | — |
+| R4 — supervised cross-sectional | **PASS** (r4_v2) | Window-level: mean of per-window OOS rank IC > 0.02, window t > t_crit(95%), >= 75% windows positive (`12_gate_decision.md`) | `data/signal/r4_v2/gate.json`: 5d +0.0392 t 7.50, 20d +0.0437 t 5.31, 8/8 windows positive | 2026-09-06 |
+| R5 — deterministic allocator | **RUN — gate not formally evidenced** | Beats best R2 baseline net of cost+tax, **paired bootstrap CI excluding zero** | Beats `equal_weight` by +0.159 CAGR in sample and +0.304 on the 2025-26 holdout, after tax and every Zerodha charge, MLflow `allocator`. **No paired bootstrap CI has been computed**, so the gate as written is not met. | 3 |
+| R6 — reinstate RL | **RUN — FAIL** | Beats R5's allocator | Loses out of sample. Diagnosed as 17 policy parameters against ~4 independent 2-year windows. | 3 |
 | R7 — regime conditioning | NOT_STARTED | `corr(val,test)` CI over ≥8 windows excludes zero, then Phase 1 A/B | walk-forward summary | — |
 
-**Current unit: R1 — one panel, one truth.** A0–A3 all pass. A4 deferred to
-before R6 (large refactor, no new information, and `heads.py`/`encoders.py` mix
-live and quarantined code so it is not a clean directory move).
+**Current unit: R5 — deterministic allocator, closing out its gate.** A0–A3
+pass. A4 remains deferred (large refactor, no new information, and
+`heads.py`/`encoders.py` mix live and quarantined code so it is not a clean
+directory move).
 
-**No run has been launched.** The queue is `09` §10; the config is N=504, L=30,
-minibatch 64. Seven blocking code fixes (B1–B7 in §10.0) must land before any
-number off a run means anything.
+**Runs have been launched; this table was stale until 2026-09-08 and said
+otherwise.** B1–B7 landed, panels were rebuilt at the full universe, r4_v2
+cleared the window-level gate, and the allocator has been measured in sample and
+on an unseen 2025-26 holdout after tax.
+
+**The two things standing between R5 and a genuine PASS:**
+
+1. **No paired bootstrap CI.** The allocator beats equal-weight by a wide
+   margin, but the gate asks for an interval and none has been computed. Until
+   it is, the margin is a measurement, not a passed gate (`CLAUDE.md` rule 2).
+2. **The universe is still not point-in-time.** `market.universe_snapshots` is
+   empty and has no read site. Roughly +13pp of the measured alpha decomposes
+   to the universe premium, which is where survivorship would live, so this is
+   not a footnote on the R5 number — it is a bound on how much of it is real.
 
 <!-- superseded: -->
 **Previously: A3 — reconcile the specs.** A0, A1 and A2 all pass; their

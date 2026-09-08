@@ -36,7 +36,10 @@ The blocker is that the arm has a bounded and modest upside, no measurable
 prior that news would capture any of it, and no way to find out before running
 it live.
 
-The same events surfaced a better lead that needs no new data source, in §5.
+The same events surfaced a promising lead that needed no new data source —
+60-day mean reversion, and a 21-step quarantine that might be blocking it. It
+tested well in sample and **failed to replicate on the holdout**; §5 has both
+tables. The default is unchanged.
 
 ---
 
@@ -123,7 +126,7 @@ would be to read that, not to buy news.
 At the 10-day horizon that matters, everything is noise. The two significant
 numbers are both at 60 days, and they point at §5 rather than at news.
 
-## 5. The lead this actually produced
+## 5. The lead this produced, and why it did not survive
 
 At 60 trading days a stopped name beats the market by **+4.36%** (`stop10`), and
 **the depth of the fall that triggered the stop predicts the size of the
@@ -133,12 +136,49 @@ anywhere in this document.
 
 Meanwhile the overlay bars re-buying a stopped name for 21 steps. If R4 would
 have picked the name back up inside that window, the quarantine is refusing a
-trade the data says was good.
+trade the data says was good. `scripts/cooldown_sweep.sh` tests exactly that —
+same signal, same K, same cadence, same thresholds, only `stop_cooldown_steps`
+varying, for both stop shapes.
 
-`scripts/cooldown_sweep.sh` tests exactly that — same signal, same K, same
-cadence, same thresholds, only `stop_cooldown_steps` varying over {0, 5, 21,
-42} for both stop shapes. It needs no new data source and no forward
-validation.
+**In sample it looked like a real finding.** On `oos_r4_v2`, K=20 monthly 20d,
+after tax:
+
+| cooldown | volstop Sharpe | volstop CAGR | fixed-10% CAGR |
+|---|---|---|---|
+| 0 | 1.940 | 0.396 | 0.370 |
+| **5** | **1.946** | **0.397** | **0.376** |
+| 21 (current) | 1.928 | 0.381 | 0.365 |
+| 42 | 1.911 | 0.368 | 0.368 |
+
+Monotone in the volatility-scaled arm, +1.6pp of CAGR from shortening 21 → 5,
+Sharpe up as well, and both stop shapes agreeing. The higher turnover and the
+extra ₹8,452 of demat fees are already inside those CAGRs.
+
+**On the unseen 2025-26 holdout it reverses and collapses.**
+
+| cooldown | volstop Sharpe | volstop CAGR | volstop MDD | fixed-10% CAGR |
+|---|---|---|---|---|
+| 0 | 2.365 | 0.279 | −0.070 | 0.253 |
+| 5 | 2.353 | 0.275 | −0.070 | 0.254 |
+| **21 (current)** | **2.391** | **0.279** | **−0.067** | 0.254 |
+| 42 | 2.375 | 0.270 | −0.069 | 0.248 |
+
+The current default is at or near the top of both shapes — best Sharpe, best
+drawdown, tied best CAGR — and the whole spread is 0.9pp against 1.6pp in
+sample. The in-sample ordering was almost certainly selection across the eight
+arms I chose to look at.
+
+**No change to `stop_cooldown_steps`. It stays at 21.**
+
+Two honest caveats on the holdout, in both directions. It is 355 sessions with
+~17 rebalances, so it has little power to resolve a 1pp effect — this is not
+proof the effect is absent, only that it did not replicate. And
+`r4_v2_holdout` carries no `gate.json`, so the runner stamped *"SIGNAL GATE DID
+NOT PASS: these numbers are NOT evidence"* across the table; they are
+measurements of a signal whose gate was never computed.
+
+What this cost was about twenty minutes, and what it bought was not changing a
+production default on a number that does not replicate.
 
 ## 6. Predictions, scored
 
@@ -159,6 +199,17 @@ Recorded in `scripts/stop_veto_headroom.py` before the numbers existed:
 
 Two of four wrong, and being wrong about the bounce is what made the horizon
 question decisive rather than incidental.
+
+And on the cooldown sweep, recorded in `scripts/cooldown_sweep.sh` before it
+ran:
+
+> the effect is SMALL and possibly negative … I expect |delta CAGR| < 1pp
+> between cooldown 0 and 21.
+
+Wrong in sample — it was +1.5pp, and monotone. Right on the holdout, where
+cooldown 0 and 21 both give 0.279. The prediction was correct about the world
+and wrong about the in-sample run, which is the failure mode this whole section
+exists to catch.
 
 ## 7. What would change the verdict
 

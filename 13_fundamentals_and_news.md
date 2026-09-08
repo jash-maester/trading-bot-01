@@ -6,13 +6,28 @@ saying so is most of the value of this document.
 
 ---
 
-> **STATUS 2026-09-08.** The fundamentals arm (§3, §3b) is COMPLETE and the
-> result is NEGATIVE: real, stable, independent rank IC that reaches nothing a
-> long-only top-20 book buys. See `audit/F2_FUNDAMENTAL_IC.md` for what the
-> features carry and `audit/F3_FUNDAMENTALS_VERDICT.md` for why it does not
-> translate. §3b.6 records the evaluation rule that came out of it, and it
-> applies to the news arm (§4) too. Kronos (§2) was measured separately: it
-> beats the TCN by +0.0107, not significant, but is far more stable.
+> **STATUS 2026-09-08. Both data arms are closed, both negative.**
+>
+> **Fundamentals (§3, §3b)** — real, stable, independent rank IC that reaches
+> nothing a long-only top-20 book buys. `audit/F2_FUNDAMENTAL_IC.md` for what
+> the features carry, `audit/F3_FUNDAMENTALS_VERDICT.md` for why it does not
+> translate. §3b.6 records the evaluation rule that came out of it.
+>
+> **News (§4)** — not built, and the reason is stronger than "cannot be
+> validated". The ceiling was measurable without buying any news:
+> `audit/N1_STOP_VETO_HEADROOM.md`. Cash from a stop is idle ~10 days, not 21
+> (measured), and at 10 days stopping is ALREADY the right call in all three
+> arms. A veto with perfect foresight is worth +1.7 to +2.3%/yr, nothing
+> available separates the recoverers from the fallers (R4's own score: Spearman
+> +0.014), and 49–52% recover — a coin flip. §4's design and cost estimate were
+> sound; the upside is bounded and modest. §7 of N1 says what would reopen it.
+>
+> A follow-up lead from the same events — 60-day mean reversion against a
+> 21-step quarantine — tested well in sample (+1.6pp CAGR) and **failed to
+> replicate on the holdout**. The default is unchanged.
+>
+> **Kronos (§2)** was measured separately: beats the TCN by +0.0107, not
+> significant, but far more stable.
 
 ## 0. Verdict
 
