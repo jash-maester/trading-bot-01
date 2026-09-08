@@ -66,8 +66,46 @@ def main(cfg: DictConfig) -> None:
     panels_root.mkdir(parents=True, exist_ok=True)
 
     store = OhlcvStore(root=parquet_root)
-    tickers = all_tickers()
-    sector_ids = {t: sector_id_of(t) for t in tickers}
+
+    # Where the universe and its sector ids come from. Absent or "sectoral" is
+    # the historical behaviour, unchanged: the 504 hand-curated names and
+    # `sector_id_of`. "store" is for the point-in-time rebuild, where the
+    # universe is every name the bhavcopy store holds and sector ids come from
+    # NSE's own classification.
+    #
+    # These MUST travel together. `sector_id_of` returns 0 for anything outside
+    # SECTOR_MAP, and 0 is the phantom sector `CLAUDE.md` records; a wide
+    # universe scored with the narrow sector function would put hundreds of
+    # names into it at once. So selecting "store" without an industry file is
+    # refused rather than defaulted.
+    source = str(cfg.data.get("universe_source", "sectoral"))
+    if source == "sectoral":
+        tickers = all_tickers()
+        sector_ids = {t: sector_id_of(t) for t in tickers}
+    elif source == "store":
+        industry_file = cfg.data.get("industry_file", None)
+        if not industry_file:
+            logger.error(
+                "data.universe_source='store' needs data.industry_file. Without "
+                "it every name outside SECTOR_MAP would take sector_id 0 — the "
+                "phantom sector in CLAUDE.md — and there would be hundreds of "
+                "them. Run scripts/fetch_industries.py."
+            )
+            raise SystemExit(1)
+        from trader.data.nse_industry import UNKNOWN_INDUSTRY_ID, industry_ids
+
+        ind = pl.read_parquet(orig_cwd / str(industry_file))
+        tickers = store.tickers()
+        sector_ids = industry_ids(ind, tickers)
+        n_unknown = sum(1 for v in sector_ids.values() if v == UNKNOWN_INDUSTRY_ID)
+        logger.info(
+            f"universe from {parquet_root}: {len(tickers):,} tickers, "
+            f"{n_unknown:,} in the unknown industry bucket "
+            f"({UNKNOWN_INDUSTRY_ID})"
+        )
+    else:
+        logger.error(f"data.universe_source must be 'sectoral' or 'store', got {source!r}")
+        raise SystemExit(1)
 
     # OhlcvStore.load defaults to scanning from 2010 when no start is given, which
     # would silently amputate the five extra years the Kite fetch went and got.

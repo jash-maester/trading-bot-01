@@ -49,6 +49,20 @@ class OhlcvStore:
                 group.sort("date").write_parquet(out)
                 logger.debug(f"Created {out} ({len(group)} rows)")
 
+    def tickers(self) -> list[str]:
+        """Every ticker with at least one partition, sorted.
+
+        Exists so a caller can take the universe FROM the store rather than
+        from a hand-curated list — which is the whole point of a point-in-time
+        rebuild. Sorted so a panel built from it has a deterministic column
+        order and therefore a stable hash.
+        """
+        found: set[str] = set()
+        for year_dir in sorted(self._root.glob("year=*")):
+            for p in year_dir.glob("ticker=*.parquet"):
+                found.add(p.stem.removeprefix("ticker="))
+        return sorted(found)
+
     def load(
         self,
         tickers: list[str] | None = None,
