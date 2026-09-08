@@ -47,7 +47,13 @@ pit_universe:
   min_median_turnover: 5.0e7    # Rs 5 crore median daily turnover
   lookback_days: 365
   min_sessions: 100
-  min_price: 5.0
+  # ZERO on purpose. These bars are back-adjusted, so a nominal floor is applied
+  # to a price that never traded: a stock at Rs 50 in 2012 that later split 10:1
+  # reads as Rs 5 in the adjusted history. And the bias has a direction --
+  # splits follow appreciation, so the floor would preferentially drop future
+  # winners out of the early universe. The Rs 5cr turnover bar already excludes
+  # the untradeable tail. See LiquidityRule.min_price.
+  min_price: 0.0
   max_names: 504
 
 # MEASURED 2026-09-08, against data/ext/delivery.parquet (2020-07..2026-09):

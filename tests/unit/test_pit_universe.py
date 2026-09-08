@@ -295,3 +295,23 @@ def test_monthly_mask_needs_is_tradeable() -> None:
         apply_monthly_mask(
             pl.DataFrame({"date": [date(2020, 1, 1)], "ticker": ["A.NS"]}), {}
         )
+
+
+def test_a_price_floor_on_adjusted_bars_drops_a_future_winner() -> None:
+    """Why bhav_v1 sets min_price to 0.
+
+    Back-adjustment divides history by the cumulative split factor, so a stock
+    that traded at ₹50 in 2012 and later split 10:1 appears at ₹5. A nominal
+    floor then rejects it for a price it never traded at — and because splits
+    follow appreciation, the rejection lands on exactly the names that went on
+    to do well. This pins the behaviour so the default is not applied to
+    adjusted bars by accident.
+    """
+    adjusted = _bars({"SPLITTER.NS": 5e8}, close=4.9)   # ₹49 pre-split, /10
+    assert eligible_on(adjusted, date(2020, 6, 1), _LOOSE) == [], (
+        "the default ₹5 floor should reject it — that is the trap"
+    )
+    no_floor = LiquidityRule(
+        min_median_turnover=1e7, min_sessions=10, min_price=0.0
+    )
+    assert eligible_on(adjusted, date(2020, 6, 1), no_floor) == ["SPLITTER.NS"]

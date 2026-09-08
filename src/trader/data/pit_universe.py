@@ -71,6 +71,16 @@ class LiquidityRule:
     min_sessions: int = 100
     #: Last close must clear this. A sub-₹5 stock cannot be sized sensibly
     #: against a flat ₹15.34 demat debit per sell.
+    #:
+    #: **Set this to 0 when the bars are BACK-ADJUSTED, which they are anywhere
+    #: downstream of `nse_bhavcopy.back_adjust`.** A nominal floor applied to an
+    #: adjusted series does not mean what it says: a stock at ₹50 in 2012 that
+    #: later split 10:1 shows as ₹5 in the adjusted history and fails the floor
+    #: for a price it never traded at. Worse, the bias has a direction — splits
+    #: follow price appreciation, so adjusted early prices are systematically
+    #: low for exactly the companies that went on to do well, and the floor
+    #: would preferentially drop future winners out of the early universe.
+    #: The turnover bar already excludes the untradeable tail.
     min_price: float = 5.0
     #: Cash-market series. EQ is normal rolling settlement; BE is
     #: trade-to-trade. Everything else is a different instrument.
