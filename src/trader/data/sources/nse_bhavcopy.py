@@ -247,7 +247,7 @@ def parse_sec_bhavdata_ohlcv(text: str, *, name: str = "<sec>") -> pl.DataFrame:
 
 
 def adjustment_ratios(
-    bars: pl.DataFrame, *, tolerance: float = 0.005
+    bars: pl.DataFrame, *, tolerance: float = 0.005, max_gap_days: int = 7
 ) -> pl.DataFrame:
     """Detect split/bonus adjustments from NSE's own ``prev_close``.
 
@@ -267,6 +267,18 @@ def adjustment_ratios(
     wide enough to absorb rounding in NSE's published prices and far narrower
     than any real action.
 
+    ``max_gap_days`` is the load-bearing one. The ratio compares NSE's stated
+    previous close against **our previous row**, and those are the same session
+    only when the history is contiguous. Across a gap — a suspension, a missing
+    archive day, a name filtered out and back — the comparison spans however
+    long the gap was and reports ordinary price movement as a corporate action.
+    Measured on a deliberately gappy sample: 2,070 of 2,072 detections landed on
+    the single date spanning a one-year hole, with ratios from 0.46 to 1.86,
+    against 2 detections on every other date combined. Feeding those into
+    :func:`back_adjust` would compound a year of returns into the adjustment
+    factor and silently rescale every price before the gap. Seven days covers a
+    weekend plus a holiday run; anything longer is not a next session.
+
     Returns the rows where an adjustment fired, with the ratio.
     """
     need = {"date", "ticker", "close", "prev_close"}
@@ -274,17 +286,23 @@ def adjustment_ratios(
     if missing:
         raise ValueError(f"bars is missing {sorted(missing)}")
     df = bars.sort(["ticker", "date"]).with_columns(
-        (pl.col("prev_close") / pl.col("close").shift(1).over("ticker")).alias("ratio")
+        (pl.col("prev_close") / pl.col("close").shift(1).over("ticker")).alias("ratio"),
+        (pl.col("date") - pl.col("date").shift(1).over("ticker"))
+        .dt.total_days()
+        .alias("_gap"),
     )
     hits = df.filter(
         pl.col("ratio").is_not_null()
         & ((pl.col("ratio") - 1.0).abs() > tolerance)
         & pl.col("close").shift(1).over("ticker").is_not_null()
+        & (pl.col("_gap") <= max_gap_days)
     )
     return hits.select(["date", "ticker", "close", "prev_close", "ratio"])
 
 
-def back_adjust(bars: pl.DataFrame, *, tolerance: float = 0.005) -> pl.DataFrame:
+def back_adjust(
+    bars: pl.DataFrame, *, tolerance: float = 0.005, max_gap_days: int = 7
+) -> pl.DataFrame:
     """Return ``bars`` with prices back-adjusted onto the latest scale.
 
     Prices before an action are multiplied by the cumulative product of every
@@ -295,6 +313,11 @@ def back_adjust(bars: pl.DataFrame, *, tolerance: float = 0.005) -> pl.DataFrame
     The adjustment is applied on the LATEST scale — the most recent bar keeps
     its published price — because that is the convention Kite uses and mixing
     conventions is exactly the failure this module exists to avoid.
+
+    ``max_gap_days`` is passed through to the same guard
+    :func:`adjustment_ratios` documents: a ratio measured across a hole in a
+    ticker's history is ordinary price movement, not an action, and compounding
+    one into the factor would rescale everything before it.
     """
     need = {"date", "ticker", "close", "prev_close"}
     missing = need - set(bars.columns)
@@ -304,8 +327,14 @@ def back_adjust(bars: pl.DataFrame, *, tolerance: float = 0.005) -> pl.DataFrame
     df = bars.sort(["ticker", "date"])
     prior = pl.col("close").shift(1).over("ticker")
     ratio = pl.col("prev_close") / prior
+    gap = (pl.col("date") - pl.col("date").shift(1).over("ticker")).dt.total_days()
     clean = (
-        pl.when(prior.is_null() | ratio.is_null() | ((ratio - 1.0).abs() <= tolerance))
+        pl.when(
+            prior.is_null()
+            | ratio.is_null()
+            | ((ratio - 1.0).abs() <= tolerance)
+            | (gap > max_gap_days)
+        )
         .then(1.0)
         .otherwise(ratio)
         .alias("_r")

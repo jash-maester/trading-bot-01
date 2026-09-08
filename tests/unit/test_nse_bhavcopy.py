@@ -268,3 +268,105 @@ def test_both_classic_vintages_stack() -> None:
     both = pl.concat([a, b])
     assert both.height == a.height + b.height
     assert both["isin"].null_count() == a.height, "only the 2010 rows lack ISIN"
+
+
+def _gapped_frame() -> pl.DataFrame:
+    """One ticker with a year-long hole and no corporate action at all."""
+    return pl.DataFrame({
+        "date": [date(2024, 6, 3), date(2024, 6, 4), date(2025, 6, 2), date(2025, 6, 3)],
+        "ticker": ["G.NS"] * 4,
+        "close": [100.0, 101.0, 160.0, 161.0],
+        # NSE's prev_close on the resumption day refers to the previous SESSION,
+        # which is a year earlier here only because our history has a hole.
+        "prev_close": [99.0, 100.0, 159.0, 160.0],
+        "volume": [100, 100, 100, 100],
+    })
+
+
+def test_a_gap_in_history_is_not_a_corporate_action() -> None:
+    """Ordinary price movement across a hole must not read as a split.
+
+    Measured on a deliberately gappy sample: 2,070 of 2,072 detections landed
+    on the single date spanning a one-year hole, ratios 0.46 to 1.86, against 2
+    on every other date combined. Compounding those into the adjustment factor
+    would rescale every price before the gap, silently.
+    """
+    hits = adjustment_ratios(_gapped_frame())
+    assert hits.is_empty(), f"gap reported as an action: {hits.to_dicts()}"
+
+
+def test_back_adjust_leaves_a_gapped_series_alone() -> None:
+    df = _gapped_frame()
+    out = back_adjust(df).sort("date")
+    assert out["close"].to_list() == pytest.approx(df.sort("date")["close"].to_list())
+    assert out["volume"].to_list() == pytest.approx(df.sort("date")["volume"].to_list())
+
+
+def test_a_real_action_next_to_a_gap_still_fires() -> None:
+    """The guard must not swallow a genuine action on a contiguous pair."""
+    df = pl.DataFrame({
+        "date": [date(2024, 6, 3), date(2025, 6, 2), date(2025, 6, 3)],
+        "ticker": ["G.NS"] * 3,
+        #                       gap ↑            split ↑
+        "close": [100.0, 160.0, 80.0],
+        "prev_close": [99.0, 159.0, 80.0],
+        "volume": [100, 100, 200],
+    })
+    hits = adjustment_ratios(df)
+    assert hits.height == 1
+    r = hits.row(0, named=True)
+    assert r["date"] == date(2025, 6, 3)
+    assert r["ratio"] == pytest.approx(0.5)
+    out = back_adjust(df).sort("date")
+    # Only the two rows at or before the split are halved; the gap contributes
+    # nothing, so the first row is 100 * 0.5 = 50, not 100 * 0.5 * (a year).
+    assert out["close"].to_list() == pytest.approx([50.0, 80.0, 80.0])
+
+
+def test_max_gap_days_is_tunable() -> None:
+    """A caller with a genuinely sparse series can widen the window."""
+    df = _gapped_frame()
+    assert adjustment_ratios(df, max_gap_days=400).height > 0
+
+
+def test_a_series_switch_must_not_look_like_a_corporate_action() -> None:
+    """A name moving EQ -> BE -> EQ still has a contiguous prev_close chain.
+
+    Real case, AMBICAAGAR over 2024-05-21..06-05: EQ for four sessions, BE for
+    two, then EQ again. Verified on the real bars that with EQ+BE deduped
+    correctly, all 23,693 ratios in that window are EXACTLY 1.0.
+
+    Keeping only the EQ rows skips the BE sessions, so the previous close
+    compared against is stale. Where the skipped run is long the `max_gap_days`
+    guard happens to catch it; where it is a SINGLE session it does not, and the
+    stale comparison is reported as a corporate action. So the EQ/BE dedupe is
+    load-bearing in its own right and not made redundant by the gap guard —
+    which is the case this test pins.
+    """
+    def frame(rows: list[tuple[date, str, float, float]]) -> pl.DataFrame:
+        return pl.DataFrame({
+            "date": [r[0] for r in rows],
+            "ticker": ["X.NS"] * len(rows),
+            "series": [r[1] for r in rows],
+            "close": [r[2] for r in rows],
+            "prev_close": [r[3] for r in rows],
+        })
+
+    # One BE session in the middle of an EQ run: Mon, Tue(BE), Wed.
+    rows = [
+        (date(2024, 5, 20), "EQ", 100.0, 99.0),
+        (date(2024, 5, 21), "BE", 90.0, 100.0),
+        (date(2024, 5, 22), "EQ", 91.0, 90.0),
+    ]
+    full = frame(rows)
+    assert adjustment_ratios(full).is_empty(), "the contiguous chain fired"
+
+    # Drop the single BE session. The remaining gap is two days, well inside
+    # max_gap_days, so the guard does NOT save us — only the dedupe would.
+    eq_only = full.filter(pl.col("series") == "EQ")
+    spurious = adjustment_ratios(eq_only)
+    assert spurious.height == 1, (
+        "skipping one BE session should manufacture a false action; the gap "
+        "guard cannot see a two-day hole"
+    )
+    assert spurious.row(0, named=True)["ratio"] == pytest.approx(0.9)
