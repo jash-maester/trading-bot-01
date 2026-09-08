@@ -64,14 +64,19 @@ on an unseen 2025-26 holdout after tax.
    significance: a concentrated 20-name momentum book is volatile and the
    paired difference is wide. This is a power problem as much as an edge
    problem.
-3. **The universe is still not point-in-time, and it is worse than assumed.**
-   Measured: of the 605 names carrying ≥₹5cr median daily turnover in 2021,
-   this universe holds **292 — 48.3%** — and 55 of those had stopped trading by
-   2026. This does NOT invalidate the R5 interval, which is paired and so
-   largely cancels a shared universe bias; it bounds the LEVEL of every
-   absolute number. The full-market bhavcopy backfill
-   (`scripts/fetch_bhavcopy.py`, classic archive with ISIN back to 2010) is the
-   fix and is in progress.
+3. **The universe is still not point-in-time.** Measured on 2010–2020
+   bhavcopy by `scripts/pit_universe_report.py`: of the names clearing ≥₹5cr
+   median daily turnover, the **645 panelled names cover 60.0%** on average,
+   and at 2016-01-01 twenty-seven of the ninety-nine missing had stopped
+   trading altogether (ABIRLANUVO, ALBK, ANDHRABANK, AMTEKAUTO, CAIRN, FRL) —
+   names no list drawn today can contain. Coverage against the 504 *traded*
+   names reads 49.5%, but ~10pp of that is `INACTIVE_SECTORS` capping the
+   observation width, which is a compute decision rather than survivorship; an
+   earlier entry here quoted the conflated figure. This does NOT invalidate the
+   R5 interval, which is paired and so largely cancels a shared universe bias;
+   it bounds the LEVEL of every absolute number. The full-market bhavcopy
+   backfill (`scripts/fetch_bhavcopy.py`, classic archive with ISIN back to
+   2010) is the fix and is in progress.
 
 <!-- superseded: -->
 **Previously: A3 — reconcile the specs.** A0, A1 and A2 all pass; their
