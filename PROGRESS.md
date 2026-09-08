@@ -29,14 +29,15 @@ Dependency order:
 | A4 — quarantine (optional) | DEFERRED to before R6 | Untrained code moved to `experimental/`, tests still green | `experimental/*/README.md` | — |
 | A5 — standing rules | **DONE** | `CLAUDE.md` exists with the five rules | `CLAUDE.md` | 1 |
 | R1 — one panel, one truth | **PARTIAL** | Deterministic SHA256; every feature nonzero variance; purge ≥ lookback; point-in-time universe | panels rebuilt at 645 tickers; **point-in-time universe still open** | 3 |
-| R2 — honest baselines | **PARTIAL** | 5 baselines × 3 frequencies × 4 benchmarks, net of cost **and tax** | `equal_weight` + `null_signal` run in every allocator table; NIFTY via `benchmark_vs_nifty.py`. The full 5×3×4 grid has not been run. | 3 |
+| R2 — honest baselines | **PARTIAL — now the binding constraint** | 5 baselines × 3 frequencies × 4 benchmarks, net of cost **and tax** | `equal_weight` + `null_signal` run in every allocator table; NIFTY via `benchmark_vs_nifty.py`. All five agents exist in `trader/env/baselines.py`; `run_allocator.py` only calls `EqualWeightRebalanced`. This is what keeps R5 conditional. | 3 |
 | R3 — kill the compute bug | NOT_STARTED | 2M steps < 2h on the 4060, **conditional on encoder caching** | timed run + run ID | — |
 | R4 — supervised cross-sectional | **PASS** (r4_v2) | Window-level: mean of per-window OOS rank IC > 0.02, window t > t_crit(95%), >= 75% windows positive (`12_gate_decision.md`) | `data/signal/r4_v2/gate.json`: 5d +0.0392 t 7.50, 20d +0.0437 t 5.31, 8/8 windows positive | 2026-09-06 |
-| R5 — deterministic allocator | **RUN — gate not formally evidenced** | Beats best R2 baseline net of cost+tax, **paired bootstrap CI excluding zero** | Beats `equal_weight` by +0.159 CAGR in sample and +0.304 on the 2025-26 holdout, after tax and every Zerodha charge, MLflow `allocator`. **No paired bootstrap CI has been computed**, so the gate as written is not met. | 3 |
+| R5 — deterministic allocator | **CONDITIONAL PASS** | Beats best R2 baseline net of cost+tax, **paired bootstrap CI excluding zero** | Paired moving-block bootstrap, 8 arms of 8 clear a 95% CI excluding zero: K=20 no-stop +0.1191/yr, CI [+0.0614, +0.1782], t 4.37. Same on the holdout, +0.1883/yr. `audit/R5_GATE.md`, `audit/r5_gate.json`. **Conditional because the criterion names R2 and R2 is incomplete** — only 1 of its 5 baselines has been run. | 3 |
 | R6 — reinstate RL | **RUN — FAIL** | Beats R5's allocator | Loses out of sample. Diagnosed as 17 policy parameters against ~4 independent 2-year windows. | 3 |
 | R7 — regime conditioning | NOT_STARTED | `corr(val,test)` CI over ≥8 windows excludes zero, then Phase 1 A/B | walk-forward summary | — |
 
-**Current unit: R5 — deterministic allocator, closing out its gate.** A0–A3
+**Current unit: R2 — complete the baseline grid, which is now the only
+thing keeping R5 conditional. In parallel: the point-in-time universe rebuild.** A0–A3
 pass. A4 remains deferred (large refactor, no new information, and
 `heads.py`/`encoders.py` mix live and quarantined code so it is not a clean
 directory move).
@@ -46,15 +47,23 @@ otherwise.** B1–B7 landed, panels were rebuilt at the full universe, r4_v2
 cleared the window-level gate, and the allocator has been measured in sample and
 on an unseen 2025-26 holdout after tax.
 
-**The two things standing between R5 and a genuine PASS:**
+**Where R5 stands after 2026-09-08:**
 
-1. **No paired bootstrap CI.** The allocator beats equal-weight by a wide
-   margin, but the gate asks for an interval and none has been computed. Until
-   it is, the margin is a measurement, not a passed gate (`CLAUDE.md` rule 2).
-2. **The universe is still not point-in-time.** `market.universe_snapshots` is
-   empty and has no read site. Roughly +13pp of the measured alpha decomposes
-   to the universe premium, which is where survivorship would live, so this is
-   not a footnote on the R5 number — it is a bound on how much of it is real.
+1. **The paired bootstrap CI now exists and clears.** 8 arms of 8 exclude zero
+   on the walk-forward span and again on the holdout (`audit/R5_GATE.md`). The
+   statistical criterion is met.
+2. **R2 is what keeps it conditional.** R5's criterion names "best R2
+   baseline"; only 1 of R2's 5 baselines has ever been run. All five agents
+   already exist, so this is a small piece of work and the cheapest thing on
+   the board.
+3. **The universe is still not point-in-time, and it is worse than assumed.**
+   Measured: of the 605 names carrying ≥₹5cr median daily turnover in 2021,
+   this universe holds **292 — 48.3%** — and 55 of those had stopped trading by
+   2026. This does NOT invalidate the R5 interval, which is paired and so
+   largely cancels a shared universe bias; it bounds the LEVEL of every
+   absolute number. The full-market bhavcopy backfill
+   (`scripts/fetch_bhavcopy.py`, classic archive with ISIN back to 2010) is the
+   fix and is in progress.
 
 <!-- superseded: -->
 **Previously: A3 — reconcile the specs.** A0, A1 and A2 all pass; their

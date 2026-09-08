@@ -1,0 +1,165 @@
+#!/usr/bin/env python
+"""R5's gate: does the allocator beat its baseline by more than chance?
+
+`PROGRESS.md` carries R5's acceptance criterion verbatim:
+
+> Beats best R2 baseline net of cost+tax, **paired bootstrap CI excluding zero**
+
+The margin has been measured many times — +0.159 CAGR over equal-weight in
+sample, +0.304 on the 2025-26 holdout, after tax and every Zerodha charge — and
+the interval never has been. Until it is, R5 is a measurement rather than a
+passed gate, and `CLAUDE.md` rule 1 forbids building R6 or R7 on top of it.
+
+    uv run python scripts/run_allocator.py ... ++allocator.nav_dir=audit/navs
+    uv run python scripts/allocator_gate.py --nav-dir audit/navs
+
+WHY PAIRED, AND WHY BLOCKS
+--------------------------
+Paired because both arms trade the same universe over the same days: their
+returns share every market-wide move, and testing them as two independent
+samples would drown a real difference in market volatility that cancels exactly.
+
+Blocks because the daily difference is not i.i.d. Positions are held for a month
+at monthly cadence, so consecutive daily excesses share the same book. The i.i.d.
+bootstrap this reuses was measured against a strict null in
+`bootstrap_mean_ci`'s own docstring and excluded zero in 33.7% of trials at a
+nominal 5% for a persistent series. `--block` therefore defaults to the
+rebalance period, and the lag-1 autocorrelation of the difference is reported so
+a reader can judge whether that was enough.
+
+A CAVEAT THIS CANNOT RESOLVE. The criterion says "best R2 baseline", and R2's
+full 5 baselines × 3 frequencies × 4 benchmarks grid has never been run. This
+tests against `EqualWeightRebalanced` at the same cadence, which is the strongest
+baseline actually measured. If a stronger one exists in the unrun grid, this gate
+is optimistic and says so rather than claiming a comparison it did not make.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+import numpy as np
+import polars as pl
+from loguru import logger
+
+_ANNUALISE = 252.0
+
+
+def _returns(nav: np.ndarray) -> np.ndarray:
+    """Daily log returns from a NAV path."""
+    if nav.size < 3 or np.any(nav <= 0):
+        raise ValueError("NAV path is too short or non-positive")
+    return np.diff(np.log(nav))
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--nav-dir", type=Path, default=Path("audit/navs"))
+    ap.add_argument("--baseline", default="", help="substring of the baseline file")
+    ap.add_argument("--block", type=int, default=0,
+                    help="moving-block length; 0 = infer from the cadence")
+    ap.add_argument("--n-boot", type=int, default=10000)
+    ap.add_argument("--out", type=Path, default=Path("audit/r5_gate.json"))
+    args = ap.parse_args()
+
+    from trader.training.supervised import bootstrap_mean_ci
+
+    files = sorted(args.nav_dir.glob("nav_*.parquet"))
+    if not files:
+        raise SystemExit(f"no nav_*.parquet under {args.nav_dir}")
+    base_files = [f for f in files if "equal_weight" in f.stem]
+    if args.baseline:
+        base_files = [f for f in files if args.baseline in f.stem]
+    if not base_files:
+        raise SystemExit(f"no baseline file among {[f.stem for f in files]}")
+    base_path = base_files[0]
+    bl = pl.read_parquet(base_path).drop_nulls("date").sort("date")
+    logger.info(f"baseline {base_path.stem}: {bl.height:,} rows")
+
+    cadence = "monthly" if "monthly" in base_path.stem else (
+        "weekly" if "weekly" in base_path.stem else "daily")
+    block = args.block or {"monthly": 21, "weekly": 5, "daily": 1}[cadence]
+    logger.info(f"cadence {cadence} -> moving-block length {block}")
+
+    results: list[dict[str, object]] = []
+    arms = [f for f in files if f != base_path]
+    def short(stem: str) -> str:
+        """Trim the arm name to what varies, so the table stays readable."""
+        n = stem.replace("nav_", "")
+        for junk in (f"_{cadence}", f"_{split_tag}", "_b0.0", "allocator_"):
+            n = n.replace(junk, "")
+        return n
+
+    split_tag = base_path.stem.split(f"_{cadence}_", 1)[-1]
+    print(f"\n{'arm':<24}{'excess/yr':>12}{'95% CI':>24}{'t':>8}{'ACF1':>8}  verdict")
+    print("-" * 84)
+    for f in arms:
+        arm = pl.read_parquet(f).drop_nulls("date").sort("date")
+        j = bl.join(arm, on="date", how="inner", suffix="_arm")
+        if j.height < 60:
+            logger.warning(f"{f.stem}: only {j.height} shared days, skipped")
+            continue
+        rb = _returns(j["nav"].to_numpy().astype(np.float64))
+        ra = _returns(j["nav_arm"].to_numpy().astype(np.float64))
+        d = ra - rb                                   # the paired difference
+        lo, hi = bootstrap_mean_ci(d, block=block, n_boot=args.n_boot, rng_seed=0)
+        mean_ann = float(d.mean() * _ANNUALISE)
+        lo_ann, hi_ann = lo * _ANNUALISE, hi * _ANNUALISE
+        sd = float(d.std(ddof=1))
+        t = float(d.mean() / (sd / np.sqrt(d.size))) if sd > 0 else float("nan")
+        acf1 = (float(np.corrcoef(d[:-1], d[1:])[0, 1])
+                if d.size > 2 and sd > 0 else float("nan"))
+        excludes = bool(lo > 0.0 or hi < 0.0)
+        verdict = "PASS" if excludes and mean_ann > 0 else "FAIL"
+        print(f"{short(f.stem):<24}{mean_ann:>+12.4f}"
+              f"{f'[{lo_ann:+.4f}, {hi_ann:+.4f}]':>24}{t:>8.2f}{acf1:>8.3f}  {verdict}")
+        results.append({
+            "arm": f.stem.replace("nav_", ""),
+            "baseline": base_path.stem.replace("nav_", ""),
+            "n_days": int(d.size),
+            "mean_excess_log_return_daily": float(d.mean()),
+            "mean_excess_annualised": mean_ann,
+            "ci_low_annualised": float(lo_ann),
+            "ci_high_annualised": float(hi_ann),
+            "t_stat": t,
+            "acf_lag1": acf1,
+            "block": block,
+            "n_boot": int(args.n_boot),
+            "ci_excludes_zero": excludes,
+            "verdict": verdict,
+        })
+    print("-" * 84)
+
+    passed = [r for r in results if r["verdict"] == "PASS"]
+    print(f"\n{len(passed)} of {len(results)} arm(s) clear a paired 95% CI "
+          f"excluding zero against {base_path.stem.replace('nav_', '')}.")
+    if not results:
+        raise SystemExit("no arm had enough shared days to test")
+    print("\nBaseline caveat: R2's full 5 x 3 x 4 grid has never been run, so "
+          "'best R2\nbaseline' is here taken to be EqualWeightRebalanced at the "
+          "same cadence -- the\nstrongest baseline actually measured, not "
+          "necessarily the strongest that exists.")
+
+    payload = {
+        "gate": "R5 — deterministic allocator",
+        "criterion": "beats best R2 baseline net of cost+tax, paired bootstrap "
+                     "CI excluding zero",
+        "baseline_used": base_path.stem.replace("nav_", ""),
+        "baseline_caveat": "R2's full 5x3x4 baseline grid has not been run; this "
+                           "is the strongest baseline measured, not proven to be "
+                           "the strongest that exists",
+        "method": "paired daily log-return difference, moving-block bootstrap",
+        "block": block,
+        "n_boot": int(args.n_boot),
+        "arms": results,
+        "n_pass": len(passed),
+        "n_arms": len(results),
+    }
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(payload, indent=2) + "\n")
+    print(f"\nwrote {args.out}")
+
+
+if __name__ == "__main__":
+    main()

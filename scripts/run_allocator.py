@@ -111,6 +111,24 @@ def _stop_event_schema() -> dict[str, Any]:
     return {name: getattr(pl, dtype)() for name, dtype in _STOP_EVENT_COLUMNS}
 
 
+def _write_navs(nav_dir: str, tag: str, navs: list[float], dates: list[Any]) -> None:
+    """Dump one arm's NAV path beside its dates.
+
+    Written per arm rather than as one wide frame because arms are produced in
+    a nested loop and a partial run should still leave usable files.
+    """
+    import polars as pl
+
+    out = Path(nav_dir) / f"nav_{tag}.parquet"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # navs carries the opening NAV plus one per step, so it is one longer than
+    # the stepped dates. Trimming the dates rather than the NAVs keeps the
+    # opening value, which every return series has to start from.
+    n = len(navs)
+    d = list(dates[:n]) if len(dates) >= n else list(dates) + [None] * (n - len(dates))
+    pl.DataFrame({"date": d, "nav": navs}).write_parquet(out)
+
+
 def _dense_signal(
     pred_path: Path,
     dates: list[Any],
@@ -582,6 +600,10 @@ def main(cfg: DictConfig) -> None:
     cash_floor = float(alloc_cfg.get("cash_floor", 0.0))
     # Where to write per-stop diagnostics. Unset = do not record.
     stop_events_dir = alloc_cfg.get("stop_events_dir", None)
+    # Where to dump each arm's NAV path. Unset = do not write. R5's gate asks
+    # for a PAIRED bootstrap CI against the baseline, and a paired test needs
+    # both NAV series day by day -- a summary CAGR cannot produce one.
+    nav_dir = alloc_cfg.get("nav_dir", None)
 
     env_base: dict[str, Any] = dict(
         panel_path=panel_path,
@@ -643,6 +665,8 @@ def main(cfg: DictConfig) -> None:
         # not the universe.
         bl_env = PanelTradingEnv(rebalance_schedule=schedule, **env_base)
         bl_navs, bl_turns, bl_diag = _run_baseline(bl_env, seed)
+        if nav_dir:
+            _write_navs(nav_dir, f"equal_weight_{freq}_{split}", bl_navs, dates[lookback:])
         bl = compute_episode_metrics(bl_navs, bl_turns)
         lines.append(
             f"{'equal_weight':<26}{'-':>4}{'-':>7}{freq:>9}{'-':>5}"
@@ -757,6 +781,12 @@ def main(cfg: DictConfig) -> None:
                         # sees "none fired" rather than "file missing".
                         pl.DataFrame(events, schema=_stop_event_schema()).write_parquet(out)
                         logger.info(f"{len(events):,} stop event(s) -> {out}")
+                    if nav_dir:
+                        _write_navs(
+                            nav_dir,
+                            f"allocator_k{k}_b{band}_r{risk_name}_{freq}_{horizon}_{split}",
+                            navs, dates[lookback:],
+                        )
                     m = compute_episode_metrics(navs, turns)
                     # P5's closed form against this run's OWN measured turnover,
                     # so the estimate and the bill are comparable rather than
