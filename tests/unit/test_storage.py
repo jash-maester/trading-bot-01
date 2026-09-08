@@ -1,5 +1,7 @@
 """Tests for the partitioned OHLCV store."""
 from __future__ import annotations
+
+
 def test_tickers_lists_the_store_deterministically(tmp_path) -> None:  # noqa: ANN001
     """The universe can be taken FROM the store, which is the point of a rebuild.
 
