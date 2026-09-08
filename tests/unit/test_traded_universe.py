@@ -68,3 +68,28 @@ def test_an_empty_panel_is_refused(tmp_path) -> None:
     pl.DataFrame(schema={"date": pl.Date, "ticker": pl.Utf8}).write_parquet(p)
     with pytest.raises(ValueError, match="no tickers"):
         resolve_traded_universe(p, from_panel=True)
+
+
+def test_baseline_names_must_match_on_a_token_boundary() -> None:
+    """`equal_weight` must not select `equal_weight_frozen`.
+
+    Plain substring matching quietly gave the wrong answer: a Phase 3 run asked
+    for two different baselines, got `equal_weight_frozen` both times, and
+    reported both comparisons as though they differed. The rule is that a
+    baseline matches the arm name up to a `_`, not anywhere inside it.
+    """
+    arms = [
+        "equal_weight_monthly_oos",
+        "equal_weight_frozen_monthly_oos",
+        "momentum_topk_monthly_oos",
+    ]
+
+    def match(name: str) -> list[str]:
+        return [a for a in arms if a == name or a.startswith(name + "_")]
+
+    assert match("equal_weight_frozen") == ["equal_weight_frozen_monthly_oos"]
+    assert match("equal_weight") == ["equal_weight_monthly_oos"], (
+        "equal_weight must not also select equal_weight_frozen"
+    )
+    assert match("momentum_topk") == ["momentum_topk_monthly_oos"]
+    assert match("nonsense") == []

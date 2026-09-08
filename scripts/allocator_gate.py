@@ -70,11 +70,38 @@ def main() -> None:
     files = sorted(args.nav_dir.glob("nav_*.parquet"))
     if not files:
         raise SystemExit(f"no nav_*.parquet under {args.nav_dir}")
-    base_files = [f for f in files if "equal_weight" in f.stem]
-    if args.baseline:
-        base_files = [f for f in files if args.baseline in f.stem]
+    def _match(name: str) -> list[Path]:
+        """Files whose arm name is `name`, matched on a TOKEN boundary.
+
+        Plain substring matching is wrong here and quietly gave the wrong
+        answer: `--baseline equal_weight` also matches
+        `nav_equal_weight_frozen_...`, so a Phase 3 run that asked for two
+        different baselines tested the same one twice and reported both.
+        A baseline must match the arm name up to a `_`, not anywhere in it.
+        """
+        exact = []
+        for f in files:
+            arm = f.stem.removeprefix("nav_")
+            if arm == name or arm.startswith(name + "_"):
+                exact.append(f)
+        return exact
+
+    wanted = args.baseline or "equal_weight"
+    base_files = _match(wanted)
     if not base_files:
-        raise SystemExit(f"no baseline file among {[f.stem for f in files]}")
+        raise SystemExit(
+            f"no baseline matching {wanted!r} among "
+            f"{sorted(f.stem.removeprefix('nav_') for f in files)}"
+        )
+    if len({f.stem for f in base_files}) > 1:
+        # Several arms share the prefix (different cadences, say). Take the
+        # shortest — the least-qualified name — and say which, so a reader can
+        # see what was compared instead of inferring it.
+        base_files = sorted(base_files, key=lambda f: (len(f.stem), f.stem))
+        logger.info(
+            f"{wanted!r} matched {len(base_files)} arms; using "
+            f"{base_files[0].stem.removeprefix('nav_')}"
+        )
     base_path = base_files[0]
     bl = pl.read_parquet(base_path).drop_nulls("date").sort("date")
     logger.info(f"baseline {base_path.stem}: {bl.height:,} rows")

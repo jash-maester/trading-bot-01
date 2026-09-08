@@ -7,6 +7,12 @@
 # why walk.data_end was capped at 2024-12-31 and why a run that quietly widened
 # to ten windows had to be stopped. Spending it is a one-way decision.
 #
+# CADENCE IS SWEPT HERE TOO, and it was not before. The best in-sample arm is
+# K=20, band 0.010, QUARTERLY (+0.0421/yr, t 2.11) -- and the earlier holdout
+# run swept the band while leaving freq=monthly, so the one genuinely unseen
+# span had never tested the configuration actually being proposed. That is the
+# gap this closes.
+#
 # THE BAND IS SWEPT HERE TOO. The in-sample sweep found the no-trade band, not
 # K, is the lever: at K=20 a 1% band takes CAGR from 0.105 to 0.157 against
 # equal-weight's 0.119, and cuts the demat bill from Rs 113,409 to Rs 11,827 --
@@ -87,7 +93,7 @@ if uv run python scripts/run_allocator.py data=bhav_v1 \
       ++allocator.null_control=true \
       ++allocator.k_grid=[20,30] \
       ++allocator.band_grid=[0.0,0.005,0.010] \
-      ++allocator.freq_grid=[monthly] \
+      ++allocator.freq_grid=[monthly,quarterly] \
       ++allocator.horizon_grid=[20d] \
       ++allocator.nav_dir="$NAVDIR" \
       > "logs/${TAG}_alloc.log" 2>&1; then
@@ -102,7 +108,7 @@ fi
 say "stage 4: baselines on the holdout"
 if uv run python scripts/run_baselines.py data=bhav_v1 \
       +split=holdout +apply_tax=true \
-      '++baselines.freq_grid=[monthly]' \
+      '++baselines.freq_grid=[monthly,quarterly]' \
       '++baselines.universe_from_panel=true' \
       '++baselines.nav_dir=audit/navs_p4' \
       > "logs/${TAG}_baselines.log" 2>&1; then
