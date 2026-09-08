@@ -117,9 +117,22 @@ def main() -> None:
         )
 
     panel = pl.read_parquet(args.panel)
+    # The input representation is part of the checkpoint's contract, not a
+    # property of this panel. A model fitted on per-date rank scores that is
+    # handed raw features here would still run, still emit finite numbers, and
+    # be silently meaningless -- `dollar_volume_20` alone would arrive ~1e9
+    # standard deviations from anything the encoder ever saw. Artefacts written
+    # before this key existed carry no entry and get None, which is exactly the
+    # behaviour they were fitted with.
+    xs_normalise = tcfg.get("xs_normalise") or None
+    logger.info(
+        f"input representation: xs_normalise={xs_normalise!r} "
+        f"(from {args.signal_dir.name}/summary.json train_cfg)"
+    )
     tensors = build_panel_tensors(
         panel, tickers, feature_cols, horizons,
         min_cross_section=int(tcfg.get("min_cross_section", 10)),
+        xs_normalise=xs_normalise,
     )
     logger.info(
         f"{args.panel.name}: {tensors.n_days} days "

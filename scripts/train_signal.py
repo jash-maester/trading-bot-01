@@ -211,6 +211,10 @@ def main(cfg: DictConfig) -> None:
         n_boot=int(cfg.train.n_boot),
         seed=int(cfg.seed),
         device=str(cfg.train.get("device", "auto")),
+        xs_normalise=(
+            None if cfg.train.get("xs_normalise", None) in (None, "null", "none", "")
+            else str(cfg.train.xs_normalise)
+        ),
     )
 
     tag = str(cfg.train.get("tag", "v1"))

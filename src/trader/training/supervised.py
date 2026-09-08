@@ -322,6 +322,64 @@ def cross_sectional_zscore(
     return z.astype(np.float32)
 
 
+XS_NORMALISE_MODES: tuple[str, ...] = ("rank",)
+
+
+def cross_sectional_normalise(
+    feats: np.ndarray,           # [T, N, F]
+    mask: np.ndarray,            # [T, N] bool, the tradeable cross-section
+    mode: str = "rank",
+    min_cross_section: int = 10,
+) -> np.ndarray:
+    """Per-date cross-sectional normalisation of every input feature.
+
+    The target is a per-date cross-sectional z-score
+    (:func:`cross_sectional_zscore`) — the model is asked where a stock sits
+    *relative to its peers that day*.  The inputs, however, were standardised
+    by one global (mean, std) per feature frozen over the whole train split
+    (``feature_stats.compute_feature_stats``).  So the model had to infer
+    "is this stock's volatility high for today's market?" from an absolute
+    number, which it cannot do when the market-wide level moves — and it moves
+    enormously (2008, 2020).
+
+    Measured consequence, on ``r4_pit_long``'s own OOS rows at 20d: a plain
+    cross-sectional rank of one raw feature (``realized_vol_60d``) scores
+    +0.0529 rank IC against the trained 15-feature model's +0.0265.  The
+    ranking operation itself was the missing piece.
+
+    ``mode="rank"`` maps each feature, within each date's tradeable
+    cross-section, to van der Waerden scores: average-tied ranks → uniform →
+    ``Phi^-1``.  That is exactly the information rank IC scores, it is bounded
+    and robust to the ~11 orders of magnitude the raw features span, and it is
+    computed from a single day's cross-section, so it looks ahead by nothing.
+
+    Non-tradeable entries are left at 0.0 (the fill `_dense_column` already
+    uses); dates with fewer than two tradeable names are left entirely at 0.0.
+    """
+    if mode not in XS_NORMALISE_MODES:
+        raise ValueError(f"xs_normalise must be one of {XS_NORMALISE_MODES}, got {mode!r}")
+    from scipy.special import ndtri  # noqa: PLC0415
+    from scipy.stats import rankdata  # noqa: PLC0415
+
+    if feats.ndim != 3:
+        raise ValueError(f"feats must be [T, N, F], got shape {feats.shape}")
+    if mask.shape != feats.shape[:2]:
+        raise ValueError(f"mask {mask.shape} does not match feats {feats.shape[:2]}")
+
+    n = mask.sum(axis=1)                                             # [T]
+    usable = n >= max(min(min_cross_section, 2), 2)
+    out = np.zeros_like(feats, dtype=np.float32)
+    denom = np.maximum(n, 1).astype(np.float64)[:, None]
+    for f in range(feats.shape[2]):
+        # +inf sorts the masked names to the end, so they never displace a
+        # real name's rank; their scores are discarded immediately after.
+        x = np.where(mask, feats[:, :, f].astype(np.float64), np.inf)
+        r = rankdata(x, axis=1)
+        u = np.clip((r - 0.5) / denom, 1e-6, 1.0 - 1e-6)
+        out[:, :, f] = np.where(mask & usable[:, None], ndtri(u), 0.0).astype(np.float32)
+    return out
+
+
 def build_panel_tensors(
     panel: pl.DataFrame,
     tickers: list[str],
@@ -329,6 +387,7 @@ def build_panel_tensors(
     horizons: tuple[int, ...] = DEFAULT_HORIZONS,
     *,
     min_cross_section: int = 10,
+    xs_normalise: str | None = None,
 ) -> PanelTensors:
     """Dense arrays for one split, with targets computed from *this split only*.
 
@@ -358,6 +417,13 @@ def build_panel_tensors(
     # return a label would be built on.  Check the *source* rows, before the
     # fill has hidden them.  (Masked rows may be null; nothing reads them.)
     _assert_finite_on_tradeable(panel, [*feature_cols, "log_return_1d"])
+
+    # Cross-sectional input normalisation, if asked for. Applied AFTER the
+    # finiteness check so that check still sees the raw panel values.
+    if xs_normalise is not None:
+        feats = cross_sectional_normalise(
+            feats, mask, mode=xs_normalise, min_cross_section=min_cross_section
+        )
 
     # Leading feature-context days, if `materialise_window` prepended any. They
     # must be contiguous at the front: anything else means the column was built
@@ -1036,6 +1102,10 @@ class SupervisedConfig:
     n_boot: int = 1000
     seed: int = 42
     device: str = "auto"
+    # None keeps the historical behaviour: one global (mean, std) per feature.
+    # "rank" normalises every feature within each date's tradeable
+    # cross-section instead — see `cross_sectional_normalise`.
+    xs_normalise: str | None = None
 
     def __post_init__(self) -> None:
         if self.lr_schedule not in ("cosine", "constant"):
@@ -1044,6 +1114,11 @@ class SupervisedConfig:
             )
         if self.lookback < 1:
             raise ValueError("lookback must be >= 1")
+        if self.xs_normalise is not None and self.xs_normalise not in XS_NORMALISE_MODES:
+            raise ValueError(
+                f"xs_normalise must be None or one of {XS_NORMALISE_MODES}, "
+                f"got {self.xs_normalise!r}"
+            )
 
 
 @dataclass
@@ -1642,17 +1717,36 @@ def run_signal_walk_forward(
         stats_path = wdir / "train.feature_stats.json"
         feat_stats = compute_feature_stats(paths["train"], feature_cols)
         save_stats(feat_stats, stats_path)
-        feat_mean, feat_std_t = stats_to_tensors(feat_stats, feature_cols)
+        if train_cfg.xs_normalise is not None:
+            # The features reaching the model are already per-date standardised,
+            # so the frozen global stats would now MIS-scale them, not scale
+            # them: dollar_volume_20's raw mean is ~2e9 against a rank score in
+            # [-4, 4]. Hand the model identity stats; the raw ones are still
+            # computed and saved above because the liveness check and the
+            # artefact both read them.
+            feat_mean, feat_std_t = stats_to_tensors(
+                {c: (0.0, 1.0) for c in feature_cols}, feature_cols
+            )
+            logger.info(
+                f"{window.name}: xs_normalise={train_cfg.xs_normalise!r} — "
+                "model given identity feature stats"
+            )
+        else:
+            feat_mean, feat_std_t = stats_to_tensors(feat_stats, feature_cols)
 
         mcs = train_cfg.min_cross_section
+        xsn = train_cfg.xs_normalise
         train_t = build_panel_tensors(
-            train_df, win_tickers, feature_cols, horizons, min_cross_section=mcs
+            train_df, win_tickers, feature_cols, horizons,
+            min_cross_section=mcs, xs_normalise=xsn,
         )
         val_t = build_panel_tensors(
-            val_df, win_tickers, feature_cols, horizons, min_cross_section=mcs
+            val_df, win_tickers, feature_cols, horizons,
+            min_cross_section=mcs, xs_normalise=xsn,
         )
         test_t = build_panel_tensors(
-            test_df, win_tickers, feature_cols, horizons, min_cross_section=mcs
+            test_df, win_tickers, feature_cols, horizons,
+            min_cross_section=mcs, xs_normalise=xsn,
         )
         for name, t in (("train", train_t), ("val", val_t), ("test", test_t)):
             lab = {h: int(np.isfinite(t.targets[h]).sum()) for h in horizons}

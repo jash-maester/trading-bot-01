@@ -67,6 +67,18 @@ mlflow_experiment: signal
 # Artefact root; the run writes to <out_root>/<tag>/.
 out_root: data/signal
 
+# Per-date cross-sectional normalisation of the INPUT features.
+#
+# null  — historical behaviour: one global (mean, std) per feature, frozen from
+#         the train split. The target is a per-date cross-sectional z-score, so
+#         the model is asked a relative question and handed absolute inputs.
+# rank  — van der Waerden scores within each date's tradeable cross-section.
+#
+# Measured on r4_pit_long's own OOS rows at 20d: a plain cross-sectional rank of
+# ONE raw feature (realized_vol_60d) scores +0.0529 rank IC against the trained
+# 15-feature model's +0.0265. See `supervised.cross_sectional_normalise`.
+xs_normalise: null
+
 # Feature columns to train on. null = trader.data.features.FEATURE_COLS, which
 # is the panel's own contract. Every column listed must have nonzero variance on
 # the train split's tradeable rows or the run refuses to start.
