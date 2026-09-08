@@ -51,7 +51,8 @@ If it is not there this script says so and stops; it never invents a signal.
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Final
 
 import hydra
 from loguru import logger
@@ -85,6 +86,29 @@ def _fail(message: str) -> None:
     """Stop with a message that names what is missing and who produces it."""
     logger.error(message)
     sys.exit(1)
+
+
+#: Pinned column order and dtype names for the stop-event log. Kept as strings
+#: because polars is imported lazily in this module; `_stop_event_schema()`
+#: turns them into a real schema at the one place that needs one. An arm can
+#: legitimately fire no stops, and an empty frame with no schema is unreadable.
+_STOP_EVENT_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
+    ("day_index", "Int64"),
+    ("name_index", "Int64"),
+    ("ticker", "Utf8"),
+    ("entry_price", "Float64"),
+    ("close", "Float64"),
+    ("loss", "Float64"),
+    ("threshold", "Float64"),
+    ("weight", "Float64"),
+    ("nav", "Float64"),
+)
+
+
+def _stop_event_schema() -> dict[str, Any]:
+    import polars as pl
+
+    return {name: getattr(pl, dtype)() for name, dtype in _STOP_EVENT_COLUMNS}
 
 
 def _dense_signal(
@@ -166,6 +190,7 @@ def _run_allocator(
     params: AllocatorParams,
     seed: int,
     risk: RiskOverlay | None = None,
+    stop_events: list[dict[str, Any]] | None = None,
 ) -> tuple[list[float], list[float], dict[str, float]]:
     """Drive one full pass of the env from the allocator.
 
@@ -252,6 +277,27 @@ def _run_allocator(
             target = np.empty(len(cur), dtype=np.float64)
             target[1:] = eq
             target[0] = 1.0 - tot
+            if stop_events is not None:
+                # Recorded before register_stops() clears the mask and before
+                # the sale releases the entry price. `day_index` is the row
+                # about to be stepped, so the event is stamped with the day the
+                # stop acts on, not the day it was detected.
+                fired = np.flatnonzero(risk.stops_to_execute())
+                entry = risk.entry_prices()
+                closes = env.closes_today()
+                thr = risk.stop_thresholds()
+                for j in fired:
+                    stop_events.append({
+                        "day_index": int(env.day_index),
+                        "name_index": int(j),
+                        "ticker": str(env.universe[j]),
+                        "entry_price": float(entry[j]),
+                        "close": float(closes[j]),
+                        "loss": float(closes[j] / max(entry[j], 1e-12) - 1.0),
+                        "threshold": float(thr[j]),
+                        "weight": float(cur[1 + j]),
+                        "nav": float(obs["nav"]),
+                    })
             stops_fired += risk.register_stops()
             forced_days += 1
             obs, _, terminated, truncated, info = env.step_weights(target, force=True)
@@ -534,6 +580,8 @@ def main(cfg: DictConfig) -> None:
     capital = float(cfg.env.initial_cash)
     min_trade_value = float(cfg.env.get("min_trade_value", DEFAULT_MIN_TRADE_VALUE))
     cash_floor = float(alloc_cfg.get("cash_floor", 0.0))
+    # Where to write per-stop diagnostics. Unset = do not record.
+    stop_events_dir = alloc_cfg.get("stop_events_dir", None)
 
     env_base: dict[str, Any] = dict(
         panel_path=panel_path,
@@ -690,9 +738,25 @@ def main(cfg: DictConfig) -> None:
                         if risk_kw
                         else None
                     )
-                    navs, turns, diag = _run_allocator(
-                        env, r_hat_all[horizon], vol_all, params, seed, risk=overlay
+                    # Stop-event recording is opt-in and off by default: it
+                    # costs a dict per stopped name and only makes sense for the
+                    # arms that have a stop at all.
+                    events: list[dict[str, Any]] | None = (
+                        [] if (stop_events_dir and overlay is not None) else None
                     )
+                    navs, turns, diag = _run_allocator(
+                        env, r_hat_all[horizon], vol_all, params, seed, risk=overlay,
+                        stop_events=events,
+                    )
+                    if events is not None:
+                        tag = f"k{k}_b{band}_r{risk_name}_{freq}_{horizon}_{split}"
+                        out = Path(stop_events_dir) / f"stop_events_{tag}.parquet"
+                        out.parent.mkdir(parents=True, exist_ok=True)
+                        # An arm can legitimately fire no stops; write the empty
+                        # frame with its schema anyway so a downstream reader
+                        # sees "none fired" rather than "file missing".
+                        pl.DataFrame(events, schema=_stop_event_schema()).write_parquet(out)
+                        logger.info(f"{len(events):,} stop event(s) -> {out}")
                     m = compute_episode_metrics(navs, turns)
                     # P5's closed form against this run's OWN measured turnover,
                     # so the estimate and the bill are comparable rather than

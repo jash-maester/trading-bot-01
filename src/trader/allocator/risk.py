@@ -216,6 +216,15 @@ class RiskOverlay:
             n_quarantined=int((self._cooldown > 0).sum()),
         )
 
+    def entry_prices(self) -> np.ndarray:
+        """Price each held name was bought at, ``[N]``; NaN where not held.
+
+        Exposed so a caller can record WHY a stop fired, not merely that one
+        did. The loss a stop acts on is measured against this number, and a
+        stop-event log that cannot show it is not auditable.
+        """
+        return self._entry.copy()
+
     def stop_thresholds(self) -> np.ndarray:
         """Per-name loss fraction that triggers a sale, ``[N]``, positive.
 
