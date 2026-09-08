@@ -172,10 +172,23 @@ worst names in the cross-section, and a −50 → +50 turnaround reads exactly
 which is identical for a positive base and monotone through zero. Locked by
 `tests/unit/test_fundamental_features.py::test_growth_is_monotone_through_zero`.
 
-## Next
+## Next — ANSWERED, and the answer is no
 
-The IC lift is measured; the money is not. Build the blended signal — the 50/50
-rank blend where a filing exists, R4 alone where it does not, so coverage is
-preserved — and run it through the allocator grid with tax and the standing risk
-arms, in-sample and then on the holdout. That is the test that decides whether
-any of this ships.
+> The IC lift is measured; the money is not. Build the blended signal and run it
+> through the allocator grid with tax and the standing risk arms. That is the
+> test that decides whether any of this ships.
+
+It was built and run. **See `audit/F3_FUNDAMENTALS_VERDICT.md`.** The IC lift is
+real and reaches nothing: top-20 forward return moves −0.00039 (t −0.22), every
+one of eight allocator arms is flat or worse after tax, and a top-N filter fails
+at four settings. The lift lands in the middle of the ranking, which a long-only
+top-20 book never sees.
+
+Two figures on this page should be read with that document beside them:
+
+* **"20.4% mean grid coverage"** averages over 2016–2018, when coverage was
+  zero. Within a tradeable window from W5 on it is 74–78%, and 14–15 of R4's top
+  20 carry a filing. Coverage was never the limitation.
+* the closing inference that an IC lift would translate into return was wrong.
+  Pooled rank IC is the wrong yardstick for a long-only top-K book;
+  `scripts/topk_diagnostic.py` is the right one.

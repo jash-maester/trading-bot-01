@@ -37,34 +37,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import warnings
 from datetime import date
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 from loguru import logger
-from scipy.stats import rankdata
-
-#: The three features that survived the standalone IC pass 6/6 windows positive
-#: at both horizons (`audit/F2_FUNDAMENTAL_IC.md` §2). The level features are
-#: deliberately excluded: not one of them was significant, and net margin flips
-#: sign at W5 and stays flipped.
-SCORE_COLS: tuple[str, ...] = (
-    "f_profit_growth_yoy",
-    "f_eps_growth_yoy",
-    "f_net_margin_change_yoy",
-)
-
-
-def _rank01(x: np.ndarray) -> np.ndarray:
-    """Cross-sectional rank in [0, 1], NaN-preserving."""
-    out = np.full_like(x, np.nan, dtype=np.float64)
-    v = np.isfinite(x)
-    if v.sum() < 2:
-        return out
-    out[v] = (rankdata(x[v]) - 1.0) / (v.sum() - 1.0)
-    return out
 
 
 def main() -> None:
@@ -88,9 +66,11 @@ def main() -> None:
 
     from trader.data.fundamental_features import (
         CHANGE_COLS,
-        as_of_panel,
+        SIGNAL_COLS,
         attach_earnings_yield,
         build_quarterly_features,
+        company_score,
+        rank01,
     )
     from trader.data.universe import active_tickers
     from trader.training.supervised import (
@@ -103,7 +83,7 @@ def main() -> None:
     )
     from trader.training.walk_forward import compute_windows
 
-    score_cols = tuple(CHANGE_COLS) if args.all_change_features else SCORE_COLS
+    score_cols = tuple(CHANGE_COLS) if args.all_change_features else SIGNAL_COLS
     logger.info(f"blending on {len(score_cols)} feature(s): {', '.join(score_cols)}")
 
     src = args.signal_root / args.signal_tag / "predictions.parquet"
@@ -124,15 +104,7 @@ def main() -> None:
     d_idx = {d: i for i, d in enumerate(dates)}
     t_idx = {t: i for i, t in enumerate(tickers)}
 
-    grids = as_of_panel(feats, list(dates), tickers, score_cols)
-    with warnings.catch_warnings():
-        # All-NaN rows are the norm: most names have not filed on most days.
-        warnings.simplefilter("ignore", RuntimeWarning)
-        fscore = np.nanmean(
-            np.stack([np.stack([_rank01(grids[c][t]) for t in range(T)])
-                      for c in score_cols]),
-            axis=0,
-        )
+    fscore = company_score(feats, list(dates), tickers, score_cols)
 
     r4 = {h: np.full((T, N), np.nan, dtype=np.float64) for h in horizons}
     for row in sig.iter_rows(named=True):
@@ -153,8 +125,8 @@ def main() -> None:
             idx = np.flatnonzero(cov & np.isfinite(r4[h][t]))
             if idx.size < args.min_names:
                 continue
-            f = _rank01(fscore[t][idx])
-            s = _rank01(r4[h][t][idx])
+            f = rank01(fscore[t][idx])
+            s = rank01(r4[h][t][idx])
             blended = args.weight * f + (1.0 - args.weight) * s
             # Re-assign R4's own values among the covered names in blended
             # order. `order[k]` is the name that should hold the k-th smallest
@@ -209,6 +181,7 @@ def main() -> None:
 
     per_window: dict[str, dict[int, object]] = {}
     pooled_daily: dict[int, list[np.ndarray]] = {h: [] for h in horizons}
+    pooled_spread: dict[int, list[np.ndarray]] = {h: [] for h in horizons}
     for w in windows:
         te = np.array([i for d, i in p_idx.items() if w.test_start <= d <= w.test_end],
                       dtype=np.int64)
@@ -222,6 +195,7 @@ def main() -> None:
                 continue
             hm[h] = summarise_daily(h, ds)
             pooled_daily[h].append(ds.ic)
+            pooled_spread[h].append(ds.decile_spread)
         if hm:
             per_window[w.name] = hm
 
@@ -232,9 +206,14 @@ def main() -> None:
         if not pooled_daily[h]:
             continue
         ic = np.concatenate(pooled_daily[h])
+        # The decile spread is carried through from the per-window scores, not
+        # zero-filled. A zero here would be written into gate.json and read as
+        # "this signal separates the top decile from the bottom by nothing",
+        # which is a claim, not a missing value.
+        spread = np.concatenate(pooled_spread[h])
         pooled[h] = summarise_daily(
             h, DailyScores(day_index=np.arange(ic.size), ic=ic,
-                           decile_spread=np.zeros_like(ic),
+                           decile_spread=spread,
                            n_skipped_thin=0, n_skipped_degenerate=0)
         )
 

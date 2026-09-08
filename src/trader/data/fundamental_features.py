@@ -223,3 +223,56 @@ def as_of_panel(
         np.maximum.accumulate(src, axis=0, out=src)
         out[c] = arr[src, cols_ix]
     return out
+
+
+#: The change features that survived the standalone IC pass 6/6 windows
+#: positive at both horizons (`audit/F2_FUNDAMENTAL_IC.md` §2). Anything
+#: scoring a company on its fundamentals should use these, and the list lives
+#: here rather than in a script so two consumers cannot drift apart.
+#:
+#: The LEVEL features are deliberately absent: not one was significant, and net
+#: margin flips sign at W5 and stays flipped, which is a regime, not a factor.
+SIGNAL_COLS: Final[tuple[str, ...]] = (
+    "f_profit_growth_yoy",
+    "f_eps_growth_yoy",
+    "f_net_margin_change_yoy",
+)
+
+
+def rank01(x: np.ndarray) -> np.ndarray:
+    """Cross-sectional rank in [0, 1], NaN-preserving.
+
+    Ranks rather than raw values because growth rates have unbounded tails: one
+    company recovering from a near-zero base would otherwise dominate any
+    average taken across features.
+    """
+    out = np.full_like(x, np.nan, dtype=np.float64)
+    v = np.isfinite(x)
+    if v.sum() < 2:
+        return out
+    order = np.argsort(np.argsort(x[v], kind="stable"), kind="stable")
+    out[v] = order.astype(np.float64) / (v.sum() - 1.0)
+    return out
+
+
+def company_score(
+    features: pl.DataFrame,
+    dates: list[object],
+    tickers: list[str],
+    cols: tuple[str, ...] = SIGNAL_COLS,
+) -> np.ndarray:
+    """One fundamental score per (date, ticker): the mean of feature ranks.
+
+    NaN where nothing has been filed for that ticker yet. An all-NaN row is the
+    normal case rather than a fault -- most names have not filed on most days.
+    """
+    import warnings
+
+    grids = as_of_panel(features, dates, tickers, cols)
+    stacked = np.stack(
+        [np.stack([rank01(grids[c][i]) for i in range(len(dates))]) for c in cols]
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        out: np.ndarray = np.nanmean(stacked, axis=0)
+    return out
