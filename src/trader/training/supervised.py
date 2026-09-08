@@ -342,11 +342,24 @@ def cross_sectional_normalise(
     number, which it cannot do when the market-wide level moves — and it moves
     enormously (2008, 2020).
 
-    Measured consequence, on ``r4_pit_long``'s own OOS rows at 20d, year as
-    the blocking unit (``scripts/signal_feature_diagnostic.py``): a plain
-    cross-sectional rank of one raw feature (``realized_vol_60d``) scores
-    +0.0535 rank IC against the trained 15-feature model's +0.0275, and wins in
-    12 of 14 years.  The ranking operation itself was the missing piece.
+    That was the reasoning.  **It was tested and it is wrong** — see
+    ``audit/S3_CROSS_SECTIONAL_INPUTS.md``.  Supplying the ranking operation
+    made the model worse on both spans: the 13-window gate falls from 20d
+    +0.0280 (t 4.19, PASS) to +0.0131 (t 1.52, FAIL), and on the unseen holdout
+    from +0.0459 to +0.0117, with only 3 of 15 months favouring it.
+
+    The likely mechanism, stated as a hypothesis: the encoder is a TCN reading
+    a 60-day trajectory per stock, and ranking each day independently across
+    the cross-section destroys the time axis inside that window.
+    ``log_return_1d``'s cross-sectional rank is close to white noise day over
+    day, where its raw value carries the momentum structure a convolution
+    exists to read.  This fixed the representation the *target* needed and
+    broke the one the *encoder* needed.
+
+    Kept, defaulting off, so the option is not retried blind.  If it is
+    revisited, the variant worth trying is normalising only the slow-moving
+    features (``realized_vol_60d``, ``dollar_volume_20``) and leaving the
+    return series raw.
 
     ``mode="rank"`` maps each feature, within each date's tradeable
     cross-section, to van der Waerden scores: average-tied ranks → uniform →

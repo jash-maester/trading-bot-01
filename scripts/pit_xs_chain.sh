@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# The cross-sectional-input experiment. RUN, AND THE HYPOTHESIS WAS REFUTED --
+# audit/S3_CROSS_SECTIONAL_INPUTS.md. Kept so the run reproduces; do not read
+# the reasoning below as a live proposal.
+#
+# Result: 20d gate IC fell from +0.0280 (t 4.19, PASS) to +0.0131 (t 1.52,
+# FAIL); on the unseen holdout from +0.0459 to +0.0117, 3 of 15 months
+# favouring it. The motivating gap was in-sample only and reverses out of it.
+#
 # The cross-sectional-input experiment.
 #
 #   RUN_TAG=xs bash scripts/pit_xs_chain.sh

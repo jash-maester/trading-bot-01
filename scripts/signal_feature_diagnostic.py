@@ -17,10 +17,15 @@ Three things, in order of how much they have cost this project when skipped:
 3. **The same comparison on the model's own OOS rows**, so neither side is
    helped by covering different names or dates.
 
-This is what found the cross-sectional-input defect: on `r4_pit_long`'s OOS
-rows at 20d, blocked by year, a plain rank of `realized_vol_60d` scored +0.0535
-against the trained 15-feature model's +0.0275, winning 12 of 14 years.  See
-`supervised.cross_sectional_normalise`.
+This is what motivated the cross-sectional-input experiment: on `r4_pit_long`'s
+OOS rows at 20d, blocked by year, a plain rank of `realized_vol_60d` scored
++0.0535 against the trained 15-feature model's +0.0275, winning 12 of 14 years.
+
+Read that gap with the caveat the experiment then established: it is IN-SAMPLE
+ONLY. On the unseen holdout the ordering reverses -- the model scores +0.0459
+against the feature's +0.0312 -- and acting on the gap made the model worse.
+`audit/S3_CROSS_SECTIONAL_INPUTS.md`. A feature that beats the model on the
+span you measured it on is a hypothesis, not a finding.
 """
 from __future__ import annotations
 

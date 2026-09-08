@@ -74,10 +74,10 @@ out_root: data/signal
 #         the model is asked a relative question and handed absolute inputs.
 # rank  — van der Waerden scores within each date's tradeable cross-section.
 #
-# Measured on r4_pit_long's own OOS rows at 20d, blocked by year: a plain
-# cross-sectional rank of ONE raw feature (realized_vol_60d) scores +0.0535 rank
-# IC against the trained 15-feature model's +0.0275, winning 12 of 14 years.
-# Regenerate: uv run python scripts/signal_feature_diagnostic.py
+# TESTED AND REJECTED. "rank" was run at full parity as r4_pit_xs and is WORSE:
+# the 13-window gate falls from 20d +0.0280 (t 4.19, PASS) to +0.0131 (t 1.52,
+# FAIL), and on the unseen holdout from +0.0459 to +0.0117. Leave this null.
+# audit/S3_CROSS_SECTIONAL_INPUTS.md has the numbers and the likely mechanism.
 xs_normalise: null
 
 # Feature columns to train on. null = trader.data.features.FEATURE_COLS, which
