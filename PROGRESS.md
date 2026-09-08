@@ -46,11 +46,11 @@ instrument dump. `audit/S1_SURVIVORSHIP.md` has the numbers.
 | — | Full-market bhavcopy 2010–2026 | **DONE** | 8.16M rows, 4,337 EQ/BE symbols, 0 failures |
 | — | Corporate actions | **DONE** | 1,118 actions; 3 known splits verified end to end |
 | 1 | Baselines on the PIT universe | **DONE** | Momentum-top-K: CAGR +0.273 → **−0.002** |
-| 2 | Retrain R4 on the PIT universe | **RUNNING** | Whether any signal survives a real universe |
-| 3 | R5 allocator + gate on PIT | armed, auto-fires after 2 | Does the edge survive? |
-| 4 | Holdout 2025–26 on PIT | not started | Unseen-data confirmation |
-| 5 | Paper-trading parity | not started | Backtest matches the broker tick-for-tick |
-| 6 | Live readiness | not started | Auth, daily job, monitoring, kill-switch |
+| 2 | Retrain R4 on the PIT universe | **DONE — PASS** | Signal survives: 13 windows 2005–2024, 5d IC +0.0240, t 6.43, 12/13 positive (`data/signal/r4_pit_long/gate.json`) |
+| 3 | R5 allocator + gate on PIT | **DONE — FAIL** | Edge partly survives: 4 of 49 arms clear in sample, best +0.0456 t 2.83. Not a pass. |
+| 4 | Holdout 2025–26 on PIT | **DONE — NOT CONFIRMED** | 0 of 57 arms clear; candidate ranking reverses vs in-sample. Mostly power (295 sessions), but no corroboration. |
+| 5 | Paper-trading parity | **DONE — PASS** | Backtest vs paper broker: max gap 0.15% in sample, 0.27% holdout, tolerance 5% (`scripts/broker_parity.py`) |
+| 6 | Live readiness | **BLOCKED — CLAUDE.md rule 1** | Predecessor R5 has not passed. Blocked until forward evidence changes that. |
 
 **NOTHING IS TRADEABLE YET.** Every number in the R4/R5 rows above was measured
 on the fixed 504-name universe, and Phase 1 showed roughly 12 points of a ~0.26
