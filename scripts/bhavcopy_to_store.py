@@ -160,6 +160,20 @@ def main() -> None:
     # ── the index ────────────────────────────────────────────────────────────
     src = OhlcvStore(root=args.index_from)
     nsei = src.load(tickers=["^NSEI"], start=datetime(2005, 1, 1))
+    if not nsei.is_empty():
+        # `OhlcvStore.load` concatenates partitions vertically, which needs
+        # identical column names AND order. The Kite store's ^NSEI has no
+        # `turnover` — bhavcopy publishes it and Kite bars do not — so a plain
+        # copy makes the store unreadable with
+        # "unable to vstack, column names don't match". Align it to the bhav
+        # schema with a null turnover: an index has no traded value, and null
+        # says that, where 0.0 would claim it traded nothing and quietly fail
+        # the liquidity rule for a reason that is not true.
+        cols = out.columns
+        for c in cols:
+            if c not in nsei.columns:
+                nsei = nsei.with_columns(pl.lit(None).cast(out.schema[c]).alias(c))
+        nsei = nsei.select(cols)
     if nsei.is_empty():
         raise SystemExit(
             f"^NSEI not found in {args.index_from}. compute_features needs NIFTY "

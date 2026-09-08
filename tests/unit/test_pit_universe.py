@@ -220,3 +220,78 @@ def test_zero_max_names_is_refused() -> None:
 def test_describe_states_the_cap() -> None:
     assert "top 504 by turnover" in LiquidityRule(max_names=504).describe()
     assert "top" not in LiquidityRule().describe()
+
+
+def _panel(dates: list[date], tickers: list[str], tradeable: bool = True) -> pl.DataFrame:
+    return pl.DataFrame({
+        "date": [d for d in dates for _ in tickers],
+        "ticker": [t for _ in dates for t in tickers],
+        "is_tradeable": [tradeable] * (len(dates) * len(tickers)),
+    })
+
+
+def test_monthly_mask_carries_the_month_start_decision_across_its_days() -> None:
+    """A name admitted at a rebalance stays tradeable until the next one.
+
+    Deciding daily would drop a name mid-hold on a liquidity wobble, which is
+    not how the strategy behaves.
+    """
+    from trader.data.pit_universe import apply_monthly_mask
+
+    dates = [date(2020, 3, 2), date(2020, 3, 20), date(2020, 4, 1), date(2020, 4, 15)]
+    panel = _panel(dates, ["A.NS", "B.NS"])
+    sched = {date(2020, 3, 1): ["A.NS"], date(2020, 4, 1): ["B.NS"]}
+    out = apply_monthly_mask(panel, sched)
+    got = {
+        (r["date"], r["ticker"]): r["is_tradeable"]
+        for r in out.iter_rows(named=True)
+    }
+    # March: only A, on BOTH March days including the 20th.
+    assert got[(date(2020, 3, 2), "A.NS")] and got[(date(2020, 3, 20), "A.NS")]
+    assert not got[(date(2020, 3, 2), "B.NS")]
+    # April: the decision flips, and again holds across the month.
+    assert got[(date(2020, 4, 1), "B.NS")] and got[(date(2020, 4, 15), "B.NS")]
+    assert not got[(date(2020, 4, 15), "A.NS")]
+
+
+def test_monthly_mask_never_grants_tradeability() -> None:
+    """It can only take away. A name untradeable for any other reason stays so.
+
+    `align_panel` marks names outside their listing span untradeable and
+    `compute_features` marks feature warm-up untradeable. This is a third belt,
+    not a replacement for either.
+    """
+    from trader.data.pit_universe import apply_monthly_mask
+
+    panel = _panel([date(2020, 3, 2)], ["A.NS"], tradeable=False)
+    out = apply_monthly_mask(panel, {date(2020, 3, 1): ["A.NS"]})
+    assert not out.row(0, named=True)["is_tradeable"]
+
+
+def test_a_month_with_no_decision_is_not_permission() -> None:
+    """A missing month must not fall through to tradeable."""
+    from trader.data.pit_universe import apply_monthly_mask
+
+    panel = _panel([date(2020, 3, 2), date(2020, 5, 4)], ["A.NS"])
+    out = apply_monthly_mask(panel, {date(2020, 3, 1): ["A.NS"]})
+    got = {r["date"]: r["is_tradeable"] for r in out.iter_rows(named=True)}
+    assert got[date(2020, 3, 2)]
+    assert not got[date(2020, 5, 4)], "an unscheduled month granted tradeability"
+
+
+def test_monthly_mask_preserves_shape_and_columns() -> None:
+    from trader.data.pit_universe import apply_monthly_mask
+
+    panel = _panel([date(2020, 3, 2), date(2020, 3, 3)], ["A.NS", "B.NS"])
+    out = apply_monthly_mask(panel, {date(2020, 3, 1): ["A.NS"]})
+    assert out.height == panel.height
+    assert set(out.columns) == set(panel.columns), "helper columns leaked"
+
+
+def test_monthly_mask_needs_is_tradeable() -> None:
+    from trader.data.pit_universe import apply_monthly_mask
+
+    with pytest.raises(ValueError, match="is_tradeable"):
+        apply_monthly_mask(
+            pl.DataFrame({"date": [date(2020, 1, 1)], "ticker": ["A.NS"]}), {}
+        )

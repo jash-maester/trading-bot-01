@@ -162,7 +162,11 @@ def main(cfg: DictConfig) -> None:
     # stays in the book until the next one, exactly as it would in the env.
     pit_cfg = cfg.data.get("pit_universe", None)
     if pit_cfg is not None:
-        from trader.data.pit_universe import LiquidityRule, universe_schedule
+        from trader.data.pit_universe import (
+            LiquidityRule,
+            apply_monthly_mask,
+            universe_schedule,
+        )
 
         rule = LiquidityRule(
             min_median_turnover=float(pit_cfg.get("min_median_turnover", 5e7)),
@@ -181,43 +185,51 @@ def main(cfg: DictConfig) -> None:
         )
         month_starts = sorted({date(d.year, d.month, 1) for d in calendar})
         sched = universe_schedule(liq, month_starts, rule)
-        elig = pl.DataFrame(
-            {
-                "date": [d for d, names in sched.items() for _ in names],
-                "ticker": [t for names in sched.values() for t in names],
-            },
-            schema={"date": pl.Date(), "ticker": pl.Utf8()},
-        ).with_columns(pl.lit(True).alias("_pit"))
         sizes = {d: len(v) for d, v in sched.items()}
+        union = {t for names in sched.values() for t in names}
         logger.info(
             f"  eligible per month: min {min(sizes.values())}, "
             f"max {max(sizes.values())}, "
-            f"union {elig['ticker'].n_unique():,} names over {len(sizes)} months"
+            f"union {len(union):,} names over {len(sizes)} months"
         )
-        # Carry each month's decision forward across its days.
-        panel = (
-            panel.with_columns(
-                pl.col("date")
-                .map_elements(lambda d: date(d.year, d.month, 1), return_dtype=pl.Date())
-                .alias("_month")
+        if not union or max(sizes.values()) == 0:
+            logger.error(
+                "The point-in-time rule admitted NOTHING on any month. A panel "
+                "with no tradeable row is not an empty result, it is a backtest "
+                "that silently does nothing and still prints a CAGR. Most likely "
+                f"the bars are shorter than the rule needs (min_sessions="
+                f"{rule.min_sessions} over {rule.lookback_days}d) or the "
+                "turnover bar is set above the whole market."
             )
-            .join(
-                elig.rename({"date": "_month"}), on=["_month", "ticker"], how="left"
-            )
-            .with_columns(
-                (pl.col("is_tradeable") & pl.col("_pit").fill_null(False)).alias(
-                    "is_tradeable"
-                )
-            )
-            .drop(["_month", "_pit"])
+            raise SystemExit(1)
+        # Unknown industries matter among names that can actually be TRADED, not
+        # among every column: the union carries years of delisted names that no
+        # current constituent list can classify and that the rule never selects.
+        from trader.data.nse_industry import UNKNOWN_INDUSTRY_ID as _UNK
+
+        ever = union
+        unk_tradeable = sum(1 for t in ever if sector_ids.get(t) == _UNK)
+        logger.info(
+            f"  of the {len(ever):,} ever-eligible names, {unk_tradeable:,} "
+            f"({unk_tradeable / max(len(ever), 1):.1%}) have no NSE industry"
         )
+        panel = apply_monthly_mask(panel, sched)
+
     n_feat = len([c for c in FEATURE_COLS if c in panel.columns])
+    n_tradeable = int(panel["is_tradeable"].sum())
     logger.info(
         f"Panel: {panel['date'].n_unique()} days"
         f" × {panel['ticker'].n_unique()} tickers"
         f" × {n_feat} features"
-        f" | tradeable: {panel['is_tradeable'].sum():,}"
+        f" | tradeable: {n_tradeable:,}"
     )
+    if n_tradeable == 0:
+        logger.error(
+            "No row in this panel is tradeable. Every downstream backtest would "
+            "hold cash for the whole span and report it as a result. Refusing to "
+            "write."
+        )
+        raise SystemExit(1)
 
     # ── corporate actions ────────────────────────────────────────────────────
     # Detection is diagnostic and always runs: the triage list is how a *new*

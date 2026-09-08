@@ -254,3 +254,46 @@ def survivorship_gap(
         )
         .sort(["reason", "ticker"])
     )
+
+
+def apply_monthly_mask(
+    panel: pl.DataFrame, schedule: dict[date, list[str]]
+) -> pl.DataFrame:
+    """AND ``is_tradeable`` with the month's eligible set, carried forward.
+
+    ``schedule`` is keyed by month start, as :func:`universe_schedule` returns
+    it. Every panel row takes the decision made at the start of its own month,
+    so a name admitted at a rebalance stays tradeable until the next one —
+    deciding daily would drop a name mid-hold on a liquidity wobble, which is
+    not how the strategy behaves.
+
+    A month with no entry in ``schedule`` makes every row in it untradeable.
+    That is deliberate: a missing decision is not permission.
+
+    Lives here rather than inline in `scripts/build_features.py` because it is
+    the step that makes the whole rebuild mean anything, and a step that cannot
+    be tested is a step that gets quietly wrong.
+    """
+    if "is_tradeable" not in panel.columns:
+        raise ValueError("panel is missing is_tradeable")
+    if "date" not in panel.columns or "ticker" not in panel.columns:
+        raise ValueError("panel is missing date/ticker")
+
+    elig = pl.DataFrame(
+        {
+            "_month": [m for m, names in schedule.items() for _ in names],
+            "ticker": [t for names in schedule.values() for t in names],
+        },
+        schema={"_month": pl.Date(), "ticker": pl.Utf8()},
+    ).with_columns(pl.lit(True).alias("_pit"))
+
+    return (
+        panel.with_columns(pl.col("date").dt.truncate("1mo").alias("_month"))
+        .join(elig, on=["_month", "ticker"], how="left")
+        .with_columns(
+            (pl.col("is_tradeable") & pl.col("_pit").fill_null(False)).alias(
+                "is_tradeable"
+            )
+        )
+        .drop(["_month", "_pit"])
+    )
