@@ -2,10 +2,10 @@
 # Phase 1 of the point-in-time rebuild: how much of the measured edge is a
 # universe chosen in 2026?
 #
-# Measured 2026-09-08: of the 605 names carrying >= Rs 5 crore of median daily
-# turnover in 2021, the 504-name universe holds 292 -- 48.3% -- and 55 of those
-# 605 had stopped trading by 2026. Every headline number in this repository
-# sits on that list.
+# Measured 2026-09-08: of the names clearing >= Rs 5 crore of median daily
+# turnover, the 645 panelled names cover only 60.0% on average over 2011-2020,
+# and 27 of the 99 missing at 2016-01-01 had stopped trading altogether. Every
+# headline number in this repository sits on a list drawn in 2026.
 #
 #   RUN_TAG=pit bash scripts/pit_rebuild_chain.sh
 #

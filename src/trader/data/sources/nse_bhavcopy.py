@@ -4,18 +4,18 @@ Why this exists
 ---------------
 `CLAUDE.md` lists survivorship under *Known-dangerous ground* and
 `audit/P4_survivorship.md` called delisting an unrecoverable limit. Measured
-2026-09-08 against `data/ext/delivery.parquet`, the cost of that limit is
-larger than the note implies: of the 605 names carrying at least ₹5 crore of
-median daily turnover in 2021, **our 504-name universe contains 292 — 48.3%** —
-and 55 of those 605 had stopped trading by 2026. Every headline number in this
-repository is measured on a list chosen in 2026.
+2026-09-08 by `scripts/pit_universe_report.py`, the cost is real: of the names
+clearing ₹5 crore of median daily turnover, the **645 panelled names cover only
+60.0%** on average over 2011–2020, and at 2016-01-01 twenty-seven of the
+ninety-nine missing had stopped trading altogether. Every headline number in
+this repository is measured on a list drawn in 2026.
 
 It is recoverable after all, because NSE archives the whole market daily.
 
 Two layouts, and the boundary matters
 -------------------------------------
 **Classic** (``cm<DDMMMYYYY>bhav.csv.zip``), verified 2026-09-08 to serve
-2010-01-04 … 2024-06-03 and 404 from 2024-08-01::
+2010-01-04 … 2024-07-01, with 404 from 2025-01-01::
 
     SYMBOL,SERIES,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,TOTTRDQTY,TOTTRDVAL,
     TIMESTAMP,TOTALTRADES,ISIN
@@ -68,10 +68,13 @@ CLASSIC_BHAV_URL: Final[str] = (
     NSE_ARCHIVES + "/content/historical/EQUITIES/{year}/{mon}/cm{stamp}bhav.csv.zip"
 )
 
-#: Last date the classic archive was verified to serve. Not a hard cutoff — the
-#: fetcher tries classic first and falls back — but it stops the backfill from
-#: making a doomed request for every session after the changeover.
-CLASSIC_VERIFIED_TO: Final[date] = date(2024, 6, 3)
+#: Last date the classic archive was verified to serve, re-measured 2026-09-08:
+#: 2024-07-01 returns a normal file and 2025-01-01 returns 404, so the changeover
+#: sits between them. INFORMATIONAL ONLY — the fetcher tries classic on every
+#: session and falls back on a 404 rather than trusting this date, because the
+#: first value recorded here (2024-06-03) was already a month early and a hard
+#: cutoff would have silently dropped ISIN for every session after it.
+CLASSIC_VERIFIED_TO: Final[date] = date(2024, 7, 1)
 
 #: First date the classic archive was verified to serve.
 CLASSIC_VERIFIED_FROM: Final[date] = date(2010, 1, 4)

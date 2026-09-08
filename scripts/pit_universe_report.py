@@ -4,8 +4,9 @@
 The number that motivated the whole rebuild, made reproducible rather than
 quoted (`CLAUDE.md` rule 3):
 
-> of the 605 names carrying at least ₹5 crore of median daily turnover in 2021,
-> the 504-name universe contains 292 — 48.3% — and 55 had stopped trading by 2026
+> of the names clearing ₹5 crore of median daily turnover, the 645 panelled
+> names cover 60.0% on average over 2011–2020, and 27 of the 99 missing at
+> 2016-01-01 had stopped trading altogether
 
     uv run python scripts/pit_universe_report.py
     uv run python scripts/pit_universe_report.py --max-names 504
@@ -41,7 +42,7 @@ def main() -> None:
         coverage_report,
         survivorship_gap,
     )
-    from trader.data.universe import active_tickers
+    from trader.data.universe import active_tickers, all_tickers
 
     rule = LiquidityRule(
         min_median_turnover=args.min_turnover_cr * 1e7,
@@ -69,20 +70,44 @@ def main() -> None:
     if not dates:
         raise SystemExit("no evaluation dates inside the bar range")
 
-    universe = active_tickers()
-    rep = coverage_report(bars, dates, universe, rule)
+    # TWO universes, and conflating them overstates the problem.
+    #
+    # `active_tickers()` is 504 and `all_tickers()` is 645. The difference is
+    # not survivorship: `INACTIVE_SECTORS` holds out five whole sectors --
+    # chemicals, services, construction materials, consumer durables, telecom --
+    # explicitly "to keep the observation width, and therefore the wall-clock
+    # cost per run, at 504 rather than 645" (universe.py). It costs eight NIFTY
+    # 50 names including ASIANPAINT and BHARTIARTL, and emptying that set is a
+    # config change, not a re-download.
+    #
+    # So coverage against 504 measures a compute decision PLUS selection, and
+    # only coverage against 645 -- everything actually fetched and panelled --
+    # isolates the selection bias this rebuild exists to remove.
+    active, everything = active_tickers(), all_tickers()
+    rep = coverage_report(bars, dates, everything, rule)
+    rep_active = coverage_report(bars, dates, active, rule)
 
-    print(f"\n{'date':<14}{'eligible':>10}{'in our 504':>13}{'coverage':>11}{'missing':>10}")
-    print("-" * 58)
-    for r in rep.iter_rows(named=True):
-        print(f"{str(r['date']):<14}{r['n_eligible']:>10,}{r['n_covered']:>13,}"
-              f"{r['coverage']:>10.1%}{r['n_missing']:>10,}")
-    print("-" * 58)
+    print(f"\n{'date':<12}{'eligible':>10}{'in 645':>9}{'cover':>8}"
+          f"{'in 504':>9}{'cover':>8}{'missing/645':>13}")
+    print("-" * 69)
+    for a, b in zip(rep.iter_rows(named=True), rep_active.iter_rows(named=True)):
+        print(f"{str(a['date']):<12}{a['n_eligible']:>10,}{a['n_covered']:>9,}"
+              f"{a['coverage']:>8.1%}{b['n_covered']:>9,}{b['coverage']:>8.1%}"
+              f"{a['n_missing']:>13,}")
+    print("-" * 69)
     fin = rep.filter(pl.col("n_eligible") > 0)
+    fa = rep_active.filter(pl.col("n_eligible") > 0)
     if fin.height:
-        print(f"{'mean':<14}{fin['n_eligible'].mean():>10,.0f}"
-              f"{fin['n_covered'].mean():>13,.0f}{fin['coverage'].mean():>10.1%}"
-              f"{fin['n_missing'].mean():>10,.0f}")
+        print(f"{'mean':<12}{fin['n_eligible'].mean():>10,.0f}"
+              f"{fin['n_covered'].mean():>9,.0f}{fin['coverage'].mean():>8.1%}"
+              f"{fa['n_covered'].mean():>9,.0f}{fa['coverage'].mean():>8.1%}"
+              f"{fin['n_missing'].mean():>13,.0f}")
+        print("\n  in 645 = everything fetched and panelled; the honest measure "
+              "of selection bias.")
+        print("  in 504 = the traded subset, which also excludes five sectors "
+              "for compute\n           reasons (universe.py INACTIVE_SECTORS) "
+              "-- not survivorship.")
+    universe = everything
 
     # The split that decides what widening a list can and cannot fix.
     probe = dates[len(dates) // 2]
@@ -106,8 +131,8 @@ def main() -> None:
                 print(f"\n  {reason} e.g.: {names}")
 
     n_elig = int(rep["n_eligible"].max() or 0)
-    print(f"\nOur universe is {len(universe)} names. The point-in-time universe "
-          f"peaks at {n_elig:,}.")
+    print(f"\nPanelled universe {len(everything)} names ({len(active)} traded). "
+          f"The point-in-time universe peaks at {n_elig:,}.")
     print("A coverage below 100% is names that were liquid and tradeable on the "
           "date and\nare simply absent — the selection half of survivorship, "
           "which `listing.py`\nstates is not prevented.")

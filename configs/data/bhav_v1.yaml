@@ -6,9 +6,15 @@
 # be compared — which is the entire experiment: how much of the measured edge is
 # a universe chosen in 2026?
 #
-# Measured 2026-09-08: of the 605 names carrying >= Rs 5 crore of median daily
-# turnover in 2021, the 504-name Kite universe contains 292 — 48.3% — and 55 of
-# those 605 had stopped trading by 2026.
+# Measured 2026-09-08 by scripts/pit_universe_report.py: of the names clearing
+# Rs 5 crore of median daily turnover, the 645 panelled names cover only 60.0%
+# on average over 2011-2020, and at 2016-01-01 twenty-seven of the ninety-nine
+# missing had stopped trading altogether.
+#
+# Coverage against active_tickers() reads 49.5%, but about ten points of that is
+# INACTIVE_SECTORS holding out five sectors to keep the observation width at 504
+# (universe.py) -- a compute decision, not survivorship. Only the 645 figure
+# isolates selection.
 #
 # Prices here are back-adjusted from NSE's own `prev_close`
 # (`nse_bhavcopy.back_adjust`), which catches splits, bonuses AND demergers. Kite

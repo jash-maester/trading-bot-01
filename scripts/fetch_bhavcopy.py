@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 """Fetch NSE's full-market daily bars, so the universe can be point-in-time.
 
-Measured 2026-09-08: of the 605 names carrying at least ₹5 crore of median daily
-turnover in 2021, our 504-name universe contains **292 — 48.3%** — and 55 of
-those 605 had stopped trading by 2026. Every number in this repository is
-measured on a list chosen in 2026, and this is the data that fixes it.
+Measured 2026-09-08: of the names clearing ₹5 crore of median daily turnover,
+the 645 panelled names cover only **60.0%** on average over 2011–2020, and 27 of
+the 99 missing at 2016-01-01 had stopped trading altogether. Every number in
+this repository is measured on a list drawn in 2026, and this is the data that
+fixes it.
 
     uv run python scripts/fetch_bhavcopy.py --from 2010-01-01     # everything
     uv run python scripts/fetch_bhavcopy.py --limit 20            # a probe

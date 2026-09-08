@@ -7,9 +7,18 @@ independent belts, while **selection** — a universe chosen in 2026 — is not.
 
 This module addresses selection. Measured 2026-09-08, the size of the problem:
 
-* of the 605 names carrying at least ₹5 crore of median daily turnover in 2021,
-  the 504-name universe contains **292 — 48.3%**;
-* 55 of those 605 had stopped trading altogether by 2026.
+* of the names clearing ₹5 crore of median daily turnover, the **645 panelled
+  names cover 60.0%** on average over 2011–2020 — measured by
+  `scripts/pit_universe_report.py`;
+* at 2016-01-01, 99 eligible names are missing: **72 still trade** and were
+  simply never selected, while **27 had stopped trading altogether** and no
+  list drawn today can contain them.
+
+**A figure quoted earlier in this project was conflated and is corrected here.**
+Coverage against `active_tickers()` reads 49.5%, but roughly ten points of that
+gap is `INACTIVE_SECTORS` — five sectors held out purely to keep the observation
+width at 504 rather than 645 (`universe.py`), which is a compute decision and
+not survivorship. Only coverage against `all_tickers()` isolates selection.
 
 The fix is to stop choosing the universe at all, and derive it: on each
 rebalance date, the eligible set is every name that a liquidity rule would have
