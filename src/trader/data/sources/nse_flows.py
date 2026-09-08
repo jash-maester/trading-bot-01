@@ -279,6 +279,37 @@ class NSEClient:
             time.sleep(2.0 * (attempt + 1))
         raise NSEFetchError(f"GET {url} failed after {self.max_retries} attempts: {last_error}")
 
+    def get_bytes(self, url: str) -> bytes:
+        """GET ``url`` and return its raw body, with the same retry policy.
+
+        The text twin of this decodes, which corrupts a zip. NSE's classic
+        bhavcopy archive is served zipped, so it needs the bytes.
+
+        Raises:
+            NSENotFound: NSE answered 404 (typically a non-trading day).
+            NSEFetchError: every attempt failed, or a non-404 error status.
+        """
+        session = self._ensure_session()
+        last_error: str = "no attempt made"
+        for attempt in range(self.max_retries):
+            self._sleep_for_throttle()
+            try:
+                response = session.get(url, timeout=self.timeout_s)
+            except Exception as exc:  # noqa: BLE001 — any transport error retries
+                last_error = f"{type(exc).__name__}: {exc}"
+                logger.debug(f"NSE GET {url} attempt {attempt + 1} failed: {last_error}")
+                time.sleep(2.0 * (attempt + 1))
+                continue
+            status = int(response.status_code)
+            if status == 404:
+                raise NSENotFound(f"404 for {url}")
+            if status == 200:
+                return bytes(response.content)
+            last_error = f"HTTP {status}"
+            logger.debug(f"NSE GET {url} attempt {attempt + 1}: {last_error}")
+            time.sleep(2.0 * (attempt + 1))
+        raise NSEFetchError(f"GET {url} failed after {self.max_retries} attempts: {last_error}")
+
 
 # ── Symbol mapping ───────────────────────────────────────────────────────────
 
