@@ -16,6 +16,20 @@ defaults:
 
 tag: r4_pit
 
+# ── MATCH r4_v2 EXACTLY, so the universe is the only thing that differs ──────
+# This experiment compares a model trained on a point-in-time universe against
+# r4_v2, which was trained on the fixed 504. If any other setting moves, the
+# comparison answers nothing.
+#
+# supervised.yaml defaults to batch_days 32 / eval 64. r4_v2 actually ran 12/24
+# (data/signal/r4_v2/summary.json). Inheriting the defaults made the working
+# set 2.67x larger and the run walked off the 8 GiB cliff at W2: VRAM 7,928 of
+# 8,188 MiB, GPU pegged at 100%, and the epoch time went from 2m41s to 18m --
+# the step-function penalty WSL2 CUDA oversubscription produces, not a gradual
+# slowdown.
+batch_days: 12
+eval_batch_days: 24
+
 # Each window picks its own names from bars strictly before its TEST span
 # begins. Fixed at the boundary and held for the window, which is how an index
 # reconstitutes -- not lookahead. max_names keeps the ticker axis at 504 so the
