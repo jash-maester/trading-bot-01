@@ -230,3 +230,41 @@ def test_isin_map_exposes_a_rename() -> None:
 def test_isin_map_needs_the_column() -> None:
     with pytest.raises(ValueError, match="isin"):
         isin_map(pl.DataFrame({"symbol": ["X"], "date": [date(2020, 1, 1)]}))
+
+
+_CLASSIC_2010 = (
+    "SYMBOL,SERIES,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,TOTTRDQTY,TOTTRDVAL,"
+    "TIMESTAMP,\n"
+    "20MICRONS,EQ,58.5,60.0,57.1,58.0,58.2,58.9,100000,5800000.0,04-JAN-2010,\n"
+)
+
+
+def test_the_pre_isin_layout_still_parses() -> None:
+    """2010-2011 files carry neither ISIN nor TOTALTRADES.
+
+    Requiring ISIN rejected 369 of the first 500 sessions of the 2010 backfill,
+    and because the rejection path marks the body `.bad` and deletes it, each
+    one then fell through to a newer archive that does not reach back that far
+    and was logged as "no data for this date". The header was the whole cause.
+    """
+    df = parse_classic_bhavcopy(_CLASSIC_2010, name="cm04JAN2010bhav.csv")
+    assert df.height == 1
+    r = df.row(0, named=True)
+    assert r["date"] == date(2010, 1, 4)
+    assert r["ticker"] == "20MICRONS.NS"
+    assert r["close"] == pytest.approx(58.0)
+    assert r["prev_close"] == pytest.approx(58.9)
+    assert r["turnover"] == pytest.approx(5_800_000.0)
+    assert r["isin"] is None, "this vintage has no ISIN and must not invent one"
+    assert r["n_trades"] is None, "this vintage has no TOTALTRADES either"
+    assert list(df.columns) == list(BHAVCOPY_SCHEMA)
+
+
+def test_both_classic_vintages_stack() -> None:
+    """A 2010 file and a 2016 file must concatenate without a cast."""
+    a = parse_classic_bhavcopy(_CLASSIC_2010)
+    b = parse_classic_bhavcopy(_CLASSIC)
+    assert a.schema == b.schema
+    both = pl.concat([a, b])
+    assert both.height == a.height + b.height
+    assert both["isin"].null_count() == a.height, "only the 2010 rows lack ISIN"

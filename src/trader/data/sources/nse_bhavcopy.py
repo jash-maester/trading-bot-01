@@ -145,11 +145,31 @@ def unzip_bhavcopy(payload: bytes) -> str:
 
 
 def parse_classic_bhavcopy(text: str, *, name: str = "<classic>") -> pl.DataFrame:
-    """Parse a classic ``cm*bhav.csv`` body into :data:`BHAVCOPY_SCHEMA`."""
+    """Parse a classic ``cm*bhav.csv`` body into :data:`BHAVCOPY_SCHEMA`.
+
+    **The layout changed inside the classic era, and ISIN is the part that
+    moved.** Files from 2010-2011 carry::
+
+        SYMBOL,SERIES,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,TOTTRDQTY,TOTTRDVAL,
+        TIMESTAMP,
+
+    with no ``TOTALTRADES`` and no ``ISIN`` at all; both were added later.
+    Requiring ISIN rejected every pre-ISIN session — 369 of the first 500 in the
+    2010 backfill — and, because the rejection path marks the body ``.bad`` and
+    deletes it, each one then fell through to a newer archive that does not
+    reach back that far and was recorded as "no data for this date".
+
+    So ISIN is OPTIONAL here and null where the file predates it. That is a real
+    limitation, not a cosmetic one: rename resolution needs ISIN, and it is
+    unavailable for the earliest years. It does not bite for this project's
+    purpose — the walk-forward starts 2016-07 and only pre-2016 *feature
+    history* comes from those years — but a caller doing identity work before
+    ~2011 must know the column is empty rather than assume a join failed.
+    """
     head = text.lstrip()[:200]
-    if "SYMBOL" not in head or "ISIN" not in head:
+    if "SYMBOL" not in head:
         raise BhavcopyParseError(
-            f"{name}: no SYMBOL/ISIN header in the first 200 chars; got {head[:80]!r}"
+            f"{name}: no SYMBOL header in the first 200 chars; got {head[:80]!r}"
         )
     rows = [
         {(k or "").strip(): (v or "").strip() for k, v in r.items()}
