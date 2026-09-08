@@ -6,6 +6,14 @@ saying so is most of the value of this document.
 
 ---
 
+> **STATUS 2026-09-08.** The fundamentals arm (§3, §3b) is COMPLETE and the
+> result is NEGATIVE: real, stable, independent rank IC that reaches nothing a
+> long-only top-20 book buys. See `audit/F2_FUNDAMENTAL_IC.md` for what the
+> features carry and `audit/F3_FUNDAMENTALS_VERDICT.md` for why it does not
+> translate. §3b.6 records the evaluation rule that came out of it, and it
+> applies to the news arm (§4) too. Kronos (§2) was measured separately: it
+> beats the TCN by +0.0107, not significant, but is far more stable.
+
 ## 0. Verdict
 
 | Proposal | Reality | Verdict |
@@ -270,6 +278,37 @@ neither fits a single new parameter:
 **Prediction, recorded in advance so it can be wrong:** the change component
 gives a small lift, the level component gives none and mildly overfits, and the
 quality filter is worth more than either as a ranking feature.
+
+### 3b.6 A THIRD check, which these two were not enough without
+
+Run 2026-09-08. Both checks above passed convincingly and the conclusion they
+supported was still wrong.
+
+The change score cleared them: 6/6 windows positive at both horizons, t up to
+3.5, near-independent of R4 (cross-sectional corr +0.022), pooled 20d IC up
+from +0.0439 to +0.0517, and an unselected control keeping 80% of the lift. It
+then earned **nothing** — every one of eight allocator arms flat or worse after
+tax, and top-20 forward return moving −0.00039 (t −0.22).
+
+The reason is structural, not a fluke of this dataset. **Rank IC scores
+agreement over all 504 names; a long-only book of K=20 sees only the extreme
+top of the ranking and is blind to how the other 484 are ordered.** A feature
+can be genuinely informative about the middle of the cross-section, lift IC,
+and never touch what gets bought. The decile spread does not rescue this
+either: it improved +13%, but it is top-50 minus bottom-50 and half of that
+improvement lives in a tail a long-only book cannot trade.
+
+So, as a standing rule for every candidate on this page including the news arm:
+
+3. **Top-K forward return, before any allocator run.** The plain mean forward
+   return of the K names the signal selects, no costs and no rebalancing rules
+   in between. `scripts/topk_diagnostic.py`. If that does not move, the
+   allocator will not either, and the IC number is not evidence about this
+   strategy.
+
+Full write-up: `audit/F3_FUNDAMENTALS_VERDICT.md`. Prediction scoring:
+change lifts — right; levels give none — right; quality filter worth more —
+wrong, it would be built from the levels, which carry nothing.
 
 ## 4. News — real information, but it cannot be validated
 
