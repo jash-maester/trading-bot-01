@@ -43,3 +43,25 @@ pit_universe:
   min_sessions: 100
   min_price: 5.0
   max_names: 504
+
+# MEASURED 2026-09-08, against data/ext/delivery.parquet (2020-07..2026-09):
+#
+#   top-504 cap   per month exactly 504   union over 5.2 yrs   944 names
+#   uncapped      per month 523..1022     union over 5.2 yrs 1,426 names
+#
+# Monthly churn is 2.31% at the cap, so the union over the full 2016-2024
+# walk-forward extrapolates to roughly 1,185 columns. The cap binds every
+# single month, which means there are always at least 504 names clearing the
+# turnover floor and the width really is constant.
+#
+# CONSEQUENCE FOR TRAINING. The PANEL carries the union (~1,185 columns), which
+# is cheap on disk. The MODEL must not: 1,185 names is 2.35x the 504/L=30/mb=64
+# configuration measured against the 8 GiB card, and cost scales linearly in
+# ticker count. So a walk-forward window has to fix its universe at the start
+# of its test span -- chosen from data strictly before it -- and hold those 504
+# for the window. That is a genuine point-in-time decision taken once a year,
+# which is how an index reconstitutes; it is not lookahead, and it keeps the
+# action space at exactly 504.
+#
+# The baselines and the allocator do NOT train and can read the full panel, so
+# Phase 1 needs none of this.
