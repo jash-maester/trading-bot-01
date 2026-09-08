@@ -1605,6 +1605,23 @@ def run_signal_walk_forward(
                         f"{win_tickers[0]} … {win_tickers[-1]}")
         window_universes[window.name] = list(win_tickers)
 
+        # Release the previous window's CUDA blocks before allocating this
+        # window's. r4_v2 held a CONSTANT 504-name universe, so its peak was set
+        # in W1 and every later window reused the same blocks — it ran at a flat
+        # 122-125 s/epoch for all eight. A point-in-time universe GROWS (254 ->
+        # 306 -> 373 -> ...), so each window needs strictly more than the last
+        # and cannot reuse what the caching allocator is holding. The result is
+        # fragmentation that reaches the 8 GiB ceiling early: measured 7,938 of
+        # 8,188 MiB at W3, with the epoch time going 25s -> 8min. That is the
+        # step-function penalty WSL2 CUDA oversubscription produces.
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            free_b, total_b = torch.cuda.mem_get_info()
+            logger.info(
+                f"   VRAM before {window.name}: "
+                f"{(total_b - free_b) / 2**20:,.0f} / {total_b / 2**20:,.0f} MiB used"
+            )
+
         wdir = out_dir / "windows" / window.name
         # The test segment gets `lookback - 1` days of feature context from the
         # purge gap, so the first prediction lands on the first real OOS date
