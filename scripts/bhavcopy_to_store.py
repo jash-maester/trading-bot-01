@@ -51,6 +51,12 @@ def main() -> None:
     ap.add_argument("--series", default="EQ,BE")
     ap.add_argument("--min-sessions", type=int, default=60,
                     help="drop a ticker with fewer sessions than this in total")
+    ap.add_argument("--ever-eligible", action="store_true", default=True,
+                    help="keep only tickers that clear the liquidity bar at "
+                         "least once (see --min-turnover-cr)")
+    ap.add_argument("--keep-all", dest="ever_eligible", action="store_false")
+    ap.add_argument("--min-turnover-cr", type=float, default=5.0)
+    ap.add_argument("--min-eligible-sessions", type=int, default=100)
     args = ap.parse_args()
 
     from trader.data.sources.nse_bhavcopy import back_adjust
@@ -86,6 +92,40 @@ def main() -> None:
     if thin.height:
         logger.info(f"dropping {thin.height:,} ticker(s) with < {args.min_sessions} sessions")
         bars = bars.join(thin.select("ticker"), on="ticker", how="anti")
+
+    # ── ever-eligible prefilter ──────────────────────────────────────────────
+    # NSE lists ~2,200 EQ/BE securities. Writing all of them would make a panel
+    # of 2,200 x 4,138 = 9.1M rows, and `build_features` takes its universe from
+    # the store, so the action space would follow. Almost all of that width is
+    # names the liquidity rule never admits on any date.
+    #
+    # So the store holds exactly the modelling universe: every ticker that
+    # clears the turnover bar in at least ONE year-long window. That is a
+    # strictly wider set than any single date's universe -- it is the union over
+    # all dates -- so nothing the point-in-time rule would ever select is
+    # dropped here, and the per-date decision still happens later against
+    # `is_tradeable`.
+    if args.ever_eligible:
+        per_year = (
+            bars.with_columns(pl.col("date").dt.year().alias("_y"))
+            .group_by(["ticker", "_y"])
+            .agg(
+                pl.col("turnover").median().alias("med"),
+                pl.len().alias("n"),
+            )
+            .filter(
+                (pl.col("med") >= args.min_turnover_cr * 1e7)
+                & (pl.col("n") >= args.min_eligible_sessions)
+            )
+        )
+        keep_t = per_year.select("ticker").unique()
+        before_t = bars["ticker"].n_unique()
+        bars = bars.join(keep_t, on="ticker", how="inner")
+        logger.info(
+            f"ever-eligible prefilter: {before_t:,} -> {bars['ticker'].n_unique():,} "
+            f"tickers (>= Rs {args.min_turnover_cr}cr median in some year, "
+            f">= {args.min_eligible_sessions} sessions that year)"
+        )
 
     # ── corporate actions ────────────────────────────────────────────────────
     from trader.data.sources.nse_bhavcopy import adjustment_ratios
