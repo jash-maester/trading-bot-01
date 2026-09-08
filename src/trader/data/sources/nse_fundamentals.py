@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Final
+from urllib.parse import quote
 
 import polars as pl
 from loguru import logger
@@ -268,7 +269,13 @@ class FinancialResultsSource:
         self.cache = _FileCache(Path(cache_root) / "results")
 
     def fetch_symbol(self, symbol: str) -> pl.DataFrame:
-        name = f"results_{symbol}_{self.period}.json"
+        # `&` is a query separator, so a raw `M&M` reaches NSE as symbol=M and
+        # comes back as an empty list -- a two-byte body, no error, no warning.
+        # Measured 2026-09-08: raw M&M returns 2 bytes, percent-encoded returns
+        # 81,896 and parses to 99 filings. Six universe members carry an
+        # ampersand (M&M, M&MFIN, J&KBANK, ARE&M, GVT&D, GMRP&UI) and all six
+        # were silently absent from the fundamentals until this was quoted.
+        name = f"results_{quote(symbol, safe='')}_{self.period}.json"
         if self.cache.is_bad(name):
             logger.debug(f"{name}: known-bad, skipped ({self.cache.bad_reason(name)})")
             return pl.DataFrame(schema=RESULTS_SCHEMA)
@@ -276,7 +283,7 @@ class FinancialResultsSource:
         if text is None:
             if self.offline:
                 return pl.DataFrame(schema=RESULTS_SCHEMA)
-            url = RESULTS_URL.format(symbol=symbol, period=self.period)
+            url = RESULTS_URL.format(symbol=quote(symbol, safe=""), period=self.period)
             text = self.client.get_text(url)
             self.cache.write(name, text, url=url)
         try:
@@ -330,6 +337,47 @@ XBRL_FIELDS: Final[dict[str, str]] = {
     "DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations": "eps_diluted",
     "PaidUpValueOfEquityShareCapital": "paid_up_equity",
     "FaceValueOfEquityShareCapital": "face_value",
+}
+
+#: The banking taxonomy, as a per-column fallback.
+#:
+#: Banks and small-finance banks file under a different element set: there is no
+#: ``RevenueFromOperations`` or ``ProfitLossForPeriod`` anywhere in the document.
+#: The parser reads them without error and returns a row per period with EVERY
+#: financial column null, which is worse than failing — a silently empty row
+#: joins fine and simply carries no information. 33 universe members file this
+#: way (HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK among them, i.e. several
+#: of the largest index weights) across 776 documents.
+#:
+#: Read as: column -> tags to try, in order, when the primary tag in
+#: ``XBRL_FIELDS`` is absent. Verified 2026-09-08 against AUBANK Q3 FY25
+#: (BANKING_117651_1360692_24012025062951.xml).
+#:
+#: ``revenue`` maps to ``InterestEarned`` rather than to total income, because
+#: the commercial ``RevenueFromOperations`` it stands beside likewise EXCLUDES
+#: other income. Using total income for a bank and operating revenue for a
+#: manufacturer would make the cross-sectional margin rank compare two
+#: different quantities.
+XBRL_BANKING_ALIASES: Final[dict[str, tuple[str, ...]]] = {
+    "revenue": ("InterestEarned",),
+    "total_expenses": ("ExpenditureExcludingProvisionsAndContingencies",),
+    "employee_cost": ("EmployeesCost",),
+    "finance_costs": ("InterestExpended",),
+    "other_expenses": ("OtherOperatingExpenses",),
+    "exceptional_items": ("ExceptionalItems",),
+    "pbt": ("ProfitLossFromOrdinaryActivitiesBeforeTax",),
+    "net_profit": ("ProfitLossForThePeriod", "ProfitLossFromOrdinaryActivitiesAfterTax"),
+    "net_profit_owners": (
+        "ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates",
+    ),
+    "eps_basic": (
+        "BasicEarningsPerShareAfterExtraordinaryItems",
+        "BasicEarningsPerShareBeforeExtraordinaryItems",
+    ),
+    "eps_diluted": (
+        "DilutedEarningsPerShareAfterExtraordinaryItems",
+        "DilutedEarningsPerShareBeforeExtraordinaryItems",
+    ),
 }
 
 XBRL_SCHEMA: Final[dict[str, pl.DataType]] = {
@@ -432,6 +480,16 @@ def parse_results_xbrl(xml_text: str, *, name: str = "<xbrl>") -> pl.DataFrame:
         }
         for tag, col in XBRL_FIELDS.items():
             row[col] = _num(facts.get(tag))
+        # Fall back to the banking taxonomy for any column the commercial one
+        # left empty. Fallback, not override: a filing that carries both keeps
+        # the commercial tag, so nothing already parsed changes value.
+        for col, alts in XBRL_BANKING_ALIASES.items():
+            if row.get(col) is None:
+                for tag in alts:
+                    v = _num(facts.get(tag))
+                    if v is not None:
+                        row[col] = v
+                        break
         rows.append(row)
 
     if not rows:

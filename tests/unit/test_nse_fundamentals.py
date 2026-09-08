@@ -8,7 +8,9 @@ rather than an error.
 from __future__ import annotations
 
 import json
+import tempfile
 from datetime import date, datetime
+from pathlib import Path
 
 import polars as pl
 import pytest
@@ -348,3 +350,140 @@ def test_a_real_xbrl_url_survives() -> None:
 def test_a_non_http_xbrl_value_is_rejected() -> None:
     df = parse_results(json.dumps([_filing(xbrl="NA")]), symbol="INFY")
     assert df.row(0, named=True)["xbrl_url"] is None
+
+
+def test_symbol_is_percent_encoded_in_the_url() -> None:
+    """`&` in a symbol is a query separator, not a character.
+
+    Measured against the live endpoint on 2026-09-08: `symbol=M&M` reaches NSE
+    as `symbol=M` and comes back as a two-byte empty list -- no error, no
+    warning, no filings. Percent-encoded it returns 81,896 bytes and 99
+    filings. Six universe members carry an ampersand (M&M, M&MFIN, J&KBANK,
+    ARE&M, GVT&D, GMRP&UI) and every one of them was silently missing from the
+    fundamentals because of this.
+    """
+    from trader.data.sources.nse_fundamentals import RESULTS_URL, FinancialResultsSource
+
+    class _Recorder:
+        def __init__(self) -> None:
+            self.urls: list[str] = []
+
+        def get_text(self, url: str) -> str:
+            self.urls.append(url)
+            return "[]"
+
+    rec = _Recorder()
+    src = FinancialResultsSource(
+        cache_root=Path(tempfile.mkdtemp()), client=rec, period="Quarterly"
+    )
+    src.fetch_symbol("M&M")
+    assert rec.urls, "no request was made"
+    url = rec.urls[0]
+    assert "symbol=M%26M" in url, f"symbol not encoded: {url}"
+    # The decisive property: exactly one `&` before `symbol`, and none inside
+    # its value, so the server cannot read a second parameter out of the name.
+    tail = url.split("symbol=", 1)[1]
+    assert not tail.split("&", 1)[0].endswith("M&M")
+    assert RESULTS_URL.count("{symbol}") == 1
+
+
+def test_ampersand_symbol_cache_file_is_distinct() -> None:
+    """Two symbols must not collide on one cache file.
+
+    Encoding the symbol for the URL and NOT for the filename would be worse
+    than the bug it fixes: `M&M` and `M%26M` would fetch correctly but share a
+    path with whatever else normalised to it.
+    """
+    from trader.data.sources.nse_fundamentals import FinancialResultsSource
+
+    class _Client:
+        def get_text(self, url: str) -> str:
+            return "[]"
+
+    root = Path(tempfile.mkdtemp())
+    src = FinancialResultsSource(cache_root=root, client=_Client(), period="Quarterly")
+    src.fetch_symbol("M&M")
+    src.fetch_symbol("MM")
+    names = {p.name for p in (root / "results").rglob("*.json")}
+    assert len(names) >= 2, f"cache collided: {names}"
+
+
+# ── XBRL: the banking taxonomy ───────────────────────────────────────────────
+
+_BANK_FIXTURE = "tests/fixtures/nse/results_xbrl_AUBANK_Q3FY25.xml"
+
+
+def _bank_xbrl() -> str:
+    return Path(_BANK_FIXTURE).read_text()
+
+
+def test_banking_filings_yield_figures_not_a_row_of_nulls() -> None:
+    """Banks file under a different element set, and the failure is silent.
+
+    There is no `RevenueFromOperations` or `ProfitLossForPeriod` anywhere in a
+    banking document. Before the alias map the parser read one without error
+    and returned a row per period with EVERY financial column null — which is
+    worse than raising, because an empty row joins fine and simply carries no
+    information into whatever consumes it. 33 universe members file this way,
+    including several of the largest index weights.
+    """
+    from trader.data.sources.nse_fundamentals import parse_results_xbrl, quarterly_only
+
+    r = quarterly_only(parse_results_xbrl(_bank_xbrl(), name="AUBANK Q3FY25")).row(
+        0, named=True
+    )
+    assert r["symbol"] == "AUBANK"
+    assert r["period_from"] == date(2024, 10, 1)
+    assert r["period_to"] == date(2024, 12, 31)
+    for col in ("revenue", "pbt", "net_profit", "eps_basic", "employee_cost",
+                "finance_costs", "paid_up_equity", "face_value"):
+        assert r[col] is not None, f"{col} is null on a banking filing"
+
+
+def test_banking_figures_are_internally_consistent() -> None:
+    """Cross-checks that catch a mis-mapped bank tag, which a null check cannot.
+
+    `InterestExpended` and `EmployeesCost` are both plausible landing spots for
+    a careless mapping, and swapping them would still pass a not-null test.
+    """
+    from trader.data.sources.nse_fundamentals import parse_results_xbrl, quarterly_only
+
+    r = quarterly_only(parse_results_xbrl(_bank_xbrl())).row(0, named=True)
+    assert r["revenue"] == pytest.approx(41_134_753_000.0)     # InterestEarned
+    assert r["finance_costs"] == pytest.approx(20_907_687_000.0)  # InterestExpended
+    assert r["employee_cost"] == pytest.approx(7_546_621_000.0)
+    assert r["pbt"] == pytest.approx(7_032_298_000.0)
+    assert r["net_profit"] == pytest.approx(5_284_463_000.0)
+    assert r["net_profit"] < r["pbt"], "post-tax profit exceeds pre-tax"
+    assert r["finance_costs"] < r["revenue"], "a bank paying out more than it earns"
+
+    # Shares from paid-up equity / face value must reproduce EPS, which is the
+    # end-to-end check: it ties the balance-sheet-ish pair to the P&L.
+    shares = r["paid_up_equity"] / r["face_value"]
+    assert shares == pytest.approx(744_230_000, rel=0.01)
+    assert r["net_profit"] / shares == pytest.approx(r["eps_basic"], rel=0.02)
+
+
+def test_commercial_tags_win_over_banking_aliases() -> None:
+    """The alias map is a fallback, never an override.
+
+    A filing carrying both taxonomies must keep the commercial value, so adding
+    bank support cannot silently change a number that already parsed.
+    """
+    from trader.data.sources.nse_fundamentals import parse_results_xbrl
+
+    doc = (
+        '<?xml version="1.0"?><xbrl xmlns="x">'
+        '<context id="OneD"><period><startDate>2024-10-01</startDate>'
+        "<endDate>2024-12-31</endDate></period></context>"
+        '<Symbol contextRef="OneD">TESTCO</Symbol>'
+        '<DateOfStartOfReportingPeriod contextRef="OneD">2024-10-01'
+        "</DateOfStartOfReportingPeriod>"
+        '<DateOfEndOfReportingPeriod contextRef="OneD">2024-12-31'
+        "</DateOfEndOfReportingPeriod>"
+        '<RevenueFromOperations contextRef="OneD">100</RevenueFromOperations>'
+        '<InterestEarned contextRef="OneD">999</InterestEarned>'
+        "</xbrl>"
+    )
+    r = parse_results_xbrl(doc).row(0, named=True)
+    assert r["revenue"] == pytest.approx(100.0), "the banking alias overrode a real tag"

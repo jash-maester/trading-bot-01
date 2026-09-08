@@ -58,12 +58,19 @@ else
 fi
 
 # ── Stage 2: R5 deterministic allocator grid ─────────────────────────────────
+# `++`, not `+`, on every allocator key. `+` means "append a key that does not
+# exist", and until 2026-09-07 none of these existed -- `cfg.allocator` was read
+# by run_allocator.py and populated by nothing. configs/allocator/default.yaml
+# now defines them, so `+` fails with "An item is already at
+# 'allocator.null_control'". `++` appends OR overrides and is correct either
+# way. `split`, `signal_tag` and `require_gate_pass` are still genuinely absent
+# from the struct, so those keep a single `+`.
 say "stage 2: allocator grid on ${SPLIT} (signal ${SIGNAL_TAG}, run ${TAG}, require_gate_pass=${REQUIRE_GATE}) ${EXTRA}"
 stamp "stage2 EXTRA=${EXTRA:-<none>}"
 # shellcheck disable=SC2086  # EXTRA is a deliberate word-split list of overrides
 if uv run python scripts/run_allocator.py data=kite_v1 \
       +split="$SPLIT" +signal_tag="$SIGNAL_TAG" +require_gate_pass="$REQUIRE_GATE" \
-      +allocator.null_control=true $EXTRA \
+      ++allocator.null_control=true $EXTRA \
       > "logs/${TAG}_allocator.log" 2>&1; then
     stamp "stage2 OK"
     say "stage 2 complete"

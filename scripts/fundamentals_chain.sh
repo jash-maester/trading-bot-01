@@ -37,7 +37,9 @@ set -a; [ -f .env ] && . ./.env; set +a
 # The grid is cut to monthly / 20d / K in {20,30}: the cadence and horizon the
 # standing comparison uses, so these rows sit directly beside the ones already
 # in MLflow. Every risk arm in configs/allocator/default.yaml runs regardless.
-GRID='+allocator.k_grid=[20,30] +allocator.freq_grid=[monthly] +allocator.horizon_grid=[20d]'
+# `++` because configs/allocator/default.yaml already defines these keys;
+# a single `+` means append-only and Hydra rejects it. See orchestrate.sh.
+GRID='++allocator.k_grid=[20,30] ++allocator.freq_grid=[monthly] ++allocator.horizon_grid=[20d]'
 
 run_stage() {   # run_stage <name> <logfile> <command...>
     local name="$1" logf="$2"; shift 2
