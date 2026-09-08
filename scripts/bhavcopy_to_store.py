@@ -56,10 +56,12 @@ def main() -> None:
                          "least once (see --min-turnover-cr)")
     ap.add_argument("--keep-all", dest="ever_eligible", action="store_false")
     ap.add_argument("--min-turnover-cr", type=float, default=5.0)
+    ap.add_argument("--actions", type=Path,
+                    default=Path("data/ext/corporate_actions.parquet"))
     ap.add_argument("--min-eligible-sessions", type=int, default=100)
     args = ap.parse_args()
 
-    from trader.data.sources.nse_bhavcopy import back_adjust
+    from trader.data.sources.nse_corporate_actions import back_adjust_with_actions
     from trader.data.storage import OhlcvStore
 
     keep = [s.strip() for s in args.series.split(",") if s.strip()]
@@ -128,14 +130,56 @@ def main() -> None:
         )
 
     # ── corporate actions ────────────────────────────────────────────────────
-    from trader.data.sources.nse_bhavcopy import adjustment_ratios
-
-    acts = adjustment_ratios(bars)
-    logger.info(
-        f"{acts.height:,} corporate action(s) detected from prev_close across "
-        f"{acts['ticker'].n_unique():,} ticker(s)"
+    # From NSE's own feed, NOT from prev_close. The prev_close route was tried
+    # and is wrong: it is the RAW previous close, so its ratio is 1.0 on every
+    # ex-date and the detector built on it found 9 actions in 16 years across
+    # 1,504 tickers while appearing to work. The feed finds 1,118.
+    if not args.actions.exists():
+        raise SystemExit(
+            f"{args.actions} does not exist. Prices would be written RAW and "
+            "every split would read as a crash (NESTLEIND -90.2%, HDFCBANK "
+            "-49.7%). Run scripts/fetch_corporate_actions.py first."
+        )
+    actions = pl.read_parquet(args.actions)
+    in_scope = actions.join(
+        bars.select("ticker").unique(), on="ticker", how="inner"
     )
-    adj = back_adjust(bars)
+    logger.info(
+        f"{actions.height:,} corporate action(s) loaded, {in_scope.height:,} on "
+        f"tickers in this store across {in_scope['ticker'].n_unique():,} name(s)"
+    )
+    if in_scope.is_empty():
+        raise SystemExit(
+            "no corporate action matches any ticker in these bars — a ticker "
+            "convention mismatch would look exactly like this, and writing raw "
+            "prices is the failure this check exists to prevent"
+        )
+    adj = back_adjust_with_actions(bars, in_scope)
+
+    # The check the last implementation lacked: a known split must come out as
+    # an ordinary daily move, not a crash.
+    from datetime import date as _date
+
+    for tk, ex in (("NESTLEIND.NS", _date(2024, 1, 5)),
+                   ("HDFCBANK.NS", _date(2019, 9, 19)),
+                   ("IRCTC.NS", _date(2021, 10, 28))):
+        w = adj.filter(pl.col("ticker") == tk).sort("date")
+        w = w.filter(
+            (pl.col("date") >= ex - __import__("datetime").timedelta(days=6))
+            & (pl.col("date") <= ex + __import__("datetime").timedelta(days=2))
+        )
+        if w.height < 2:
+            continue
+        c = w["close"].to_list()
+        step = min(c[i + 1] / c[i] - 1.0 for i in range(len(c) - 1))
+        status = "OK" if step > -0.25 else "STILL A CRASH"
+        logger.info(f"  {tk} around {ex}: worst adjusted step {step:+.1%}  {status}")
+        if step <= -0.25:
+            raise SystemExit(
+                f"{tk} still shows {step:.1%} across its known split — the "
+                "adjustment did not fire, and writing this store would put fake "
+                "crashes into every downstream backtest"
+            )
 
     # `compute_features` wants adj_close alongside close. These bars ARE
     # adjusted, so the two are the same series; writing both keeps the
@@ -191,7 +235,7 @@ def main() -> None:
     print(f"{'rows':<44}{out.height:>22,}")
     print(f"{'date range':<44}"
           f"{str(out['date'].min()) + '..' + str(out['date'].max()):>22}")
-    print(f"{'corporate actions applied':<44}{acts.height:>22,}")
+    print(f"{'corporate actions applied':<44}{in_scope.height:>22,}")
     print("-" * 66)
     print("\nBuild a panel on it with:\n"
           "  uv run python scripts/build_features.py data=bhav_v1")

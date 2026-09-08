@@ -272,40 +272,29 @@ def parse_sec_bhavdata_ohlcv(text: str, *, name: str = "<sec>") -> pl.DataFrame:
     return pl.DataFrame(out, schema=BHAVCOPY_SCHEMA)
 
 
-def adjustment_ratios(
+def price_discontinuities(
     bars: pl.DataFrame, *, tolerance: float = 0.005, max_gap_days: int = 7
 ) -> pl.DataFrame:
-    """Detect split/bonus adjustments from NSE's own ``prev_close``.
+    """Rows where ``prev_close`` disagrees with the previous session's close.
 
-    NSE publishes ``prev_close`` **already adjusted** for anything that happened
-    overnight. So for each ticker, on each session, ``prev_close / close.shift(1)``
-    is 1.0 on an ordinary day and the adjustment factor on the day a split,
-    bonus or consolidation took effect. That is a corporate-action feed for
-    free, stated by the exchange, on the day it applied.
+    **This is a data-integrity check, NOT a corporate-action detector.** It was
+    written as one, on the belief that NSE publishes ``prev_close`` already
+    adjusted for overnight actions. That belief was wrong — ``prev_close`` is
+    the RAW previous close, so on an ex-date it carries the pre-split level
+    unchanged and this ratio stays 1.0. Verified against NESTLEIND 2024-01-05,
+    HDFCBANK 2019-09-19 and IRCTC 2021-10-28, all of which show a 50-90% price
+    step and a ratio of exactly 1.0. Real adjustments come from
+    :mod:`trader.data.sources.nse_corporate_actions`.
 
-    This matters more than it sounds. `CLAUDE.md` records that ``auto_adjust``
-    handles splits and dividends but **not demergers**, which showed up as fake
-    catastrophic losses (NIITLTD −76.13%, MASTEK −66.00%). A demerger moves value
-    to a separate listed entity and NSE reflects it in ``prev_close`` exactly as
-    it does a split, so this detector catches the case that broke the old path.
+    What it still catches, and what it is kept for: a break in the chain. NSE's
+    ``prev_close`` refers to the security's previous SESSION, so a departure
+    from our previous ROW means our history is missing something — a suspension,
+    an archive gap, or an EQ/BE session filtered out. Over 23,693 contiguous
+    ticker-days the two agree in 23,693 of them, so a disagreement is a genuine
+    signal about the data rather than about the company.
 
-    ``tolerance`` is the band around 1.0 treated as an ordinary day; 0.5% is
-    wide enough to absorb rounding in NSE's published prices and far narrower
-    than any real action.
-
-    ``max_gap_days`` is the load-bearing one. The ratio compares NSE's stated
-    previous close against **our previous row**, and those are the same session
-    only when the history is contiguous. Across a gap — a suspension, a missing
-    archive day, a name filtered out and back — the comparison spans however
-    long the gap was and reports ordinary price movement as a corporate action.
-    Measured on a deliberately gappy sample: 2,070 of 2,072 detections landed on
-    the single date spanning a one-year hole, with ratios from 0.46 to 1.86,
-    against 2 detections on every other date combined. Feeding those into
-    :func:`back_adjust` would compound a year of returns into the adjustment
-    factor and silently rescale every price before the gap. Seven days covers a
-    weekend plus a holiday run; anything longer is not a next session.
-
-    Returns the rows where an adjustment fired, with the ratio.
+    ``max_gap_days`` suppresses rows whose previous entry is further back than a
+    weekend plus a holiday run, where the comparison spans a hole by definition.
     """
     need = {"date", "ticker", "close", "prev_close"}
     missing = need - set(bars.columns)
@@ -324,69 +313,6 @@ def adjustment_ratios(
         & (pl.col("_gap") <= max_gap_days)
     )
     return hits.select(["date", "ticker", "close", "prev_close", "ratio"])
-
-
-def back_adjust(
-    bars: pl.DataFrame, *, tolerance: float = 0.005, max_gap_days: int = 7
-) -> pl.DataFrame:
-    """Return ``bars`` with prices back-adjusted onto the latest scale.
-
-    Prices before an action are multiplied by the cumulative product of every
-    ratio at or after them, so the series is continuous and comparable with
-    Kite's ``auto_adjust=True`` bars. Volume is divided by the same factor, so
-    price × volume stays equal to turnover.
-
-    The adjustment is applied on the LATEST scale — the most recent bar keeps
-    its published price — because that is the convention Kite uses and mixing
-    conventions is exactly the failure this module exists to avoid.
-
-    ``max_gap_days`` is passed through to the same guard
-    :func:`adjustment_ratios` documents: a ratio measured across a hole in a
-    ticker's history is ordinary price movement, not an action, and compounding
-    one into the factor would rescale everything before it.
-    """
-    need = {"date", "ticker", "close", "prev_close"}
-    missing = need - set(bars.columns)
-    if missing:
-        raise ValueError(f"bars is missing {sorted(missing)}")
-
-    df = bars.sort(["ticker", "date"])
-    prior = pl.col("close").shift(1).over("ticker")
-    ratio = pl.col("prev_close") / prior
-    gap = (pl.col("date") - pl.col("date").shift(1).over("ticker")).dt.total_days()
-    clean = (
-        pl.when(
-            prior.is_null()
-            | ratio.is_null()
-            | ((ratio - 1.0).abs() <= tolerance)
-            | (gap > max_gap_days)
-        )
-        .then(1.0)
-        .otherwise(ratio)
-        .alias("_r")
-    )
-    df = df.with_columns(clean)
-    # Cumulative product of every ratio STRICTLY AFTER each row, per ticker.
-    # Reversing, taking a cumulative product, then reversing puts the factor for
-    # row i equal to the product over rows > i.
-    df = df.with_columns(
-        pl.col("_r")
-        .shift(-1)
-        .fill_null(1.0)
-        .reverse()
-        .cum_prod()
-        .reverse()
-        .over("ticker")
-        .alias("_factor")
-    )
-    price_cols = [c for c in ("open", "high", "low", "close", "last", "prev_close")
-                  if c in df.columns]
-    out = df.with_columns(
-        [(pl.col(c) * pl.col("_factor")).alias(c) for c in price_cols]
-        + ([(pl.col("volume") / pl.col("_factor")).alias("volume")]
-           if "volume" in df.columns else [])
-    )
-    return out.drop(["_r", "_factor"])
 
 
 def isin_map(bars: pl.DataFrame) -> pl.DataFrame:

@@ -18,12 +18,11 @@ import pytest
 from trader.data.sources.nse_bhavcopy import (
     BHAVCOPY_SCHEMA,
     BhavcopyParseError,
-    adjustment_ratios,
-    back_adjust,
     classic_url,
     isin_map,
     parse_classic_bhavcopy,
     parse_sec_bhavdata_ohlcv,
+    price_discontinuities,
     unzip_bhavcopy,
 )
 
@@ -122,91 +121,77 @@ def test_classic_url_shape() -> None:
     assert u.endswith("/2016/JAN/cm04JAN2016bhav.csv.zip")
 
 
-# ── corporate actions ────────────────────────────────────────────────────────
+# ── data continuity (NOT corporate actions — see the module docstring) ───────
 
 
-def _split_frame() -> pl.DataFrame:
-    """AAA does a 2:1 split overnight into day 3; BBB never acts."""
-    return pl.DataFrame(
-        {
-            "date": [date(2020, 1, d) for d in (1, 2, 3, 6)] * 2,
-            "ticker": ["AAA.NS"] * 4 + ["BBB.NS"] * 4,
-            #                       split here ↓
-            "close": [100.0, 102.0, 51.0, 52.0, 200.0, 201.0, 202.0, 203.0],
-            "prev_close": [99.0, 100.0, 51.0, 51.0, 199.0, 200.0, 201.0, 202.0],
-            "volume": [1000, 1000, 2000, 2000, 500, 500, 500, 500],
-            "open": [100.0, 102.0, 51.0, 52.0, 200.0, 201.0, 202.0, 203.0],
-        }
-    )
+def _gapped_frame() -> pl.DataFrame:
+    """One ticker with a year-long hole and no corporate action at all."""
+    return pl.DataFrame({
+        "date": [date(2024, 6, 3), date(2024, 6, 4), date(2025, 6, 2), date(2025, 6, 3)],
+        "ticker": ["G.NS"] * 4,
+        "close": [100.0, 101.0, 160.0, 161.0],
+        "prev_close": [99.0, 100.0, 159.0, 160.0],
+        "volume": [100, 100, 100, 100],
+    })
 
 
-def test_adjustment_ratios_finds_the_split_and_only_the_split() -> None:
-    hits = adjustment_ratios(_split_frame())
-    assert hits.height == 1, f"expected one action, got {hits.to_dicts()}"
-    r = hits.row(0, named=True)
-    assert r["ticker"] == "AAA.NS"
-    assert r["date"] == date(2020, 1, 3)
-    assert r["ratio"] == pytest.approx(0.5)
+def test_a_gap_in_history_is_not_reported_as_a_discontinuity() -> None:
+    """Ordinary price movement across a hole must not read as a break.
 
-
-def test_back_adjust_puts_history_on_the_current_scale() -> None:
-    """Pre-split prices are halved; the latest bar is untouched.
-
-    Adjusting on the LATEST scale is Kite's convention (`auto_adjust=True`), and
-    mixing conventions between two price sources is the failure this module
-    exists to prevent — so the most recent bar must keep its published price.
+    On a deliberately gappy sample, 2,070 of 2,072 detections landed on the one
+    date spanning a one-year hole, ratios 0.46 to 1.86.
     """
-    out = back_adjust(_split_frame()).sort(["ticker", "date"])
-    aaa = out.filter(pl.col("ticker") == "AAA.NS")
-    assert aaa["close"].to_list() == pytest.approx([50.0, 51.0, 51.0, 52.0])
-    assert aaa["open"].to_list() == pytest.approx([50.0, 51.0, 51.0, 52.0])
-    # The return across the split is now +2.0%, not the -50% a raw series shows.
-    c = aaa["close"].to_list()
-    assert c[2] / c[1] - 1.0 == pytest.approx(0.0, abs=1e-9)
-    assert c[1] / c[0] - 1.0 == pytest.approx(0.02)
+    assert price_discontinuities(_gapped_frame()).is_empty()
 
 
-def test_back_adjust_preserves_turnover_through_volume() -> None:
-    """price × volume must not move: halve the price, double the shares."""
-    raw = _split_frame()
-    out = back_adjust(raw).sort(["ticker", "date"])
-    a_raw = raw.filter(pl.col("ticker") == "AAA.NS").sort("date")
-    a_new = out.filter(pl.col("ticker") == "AAA.NS")
-    for i in range(a_raw.height):
-        assert (a_new["close"][i] * a_new["volume"][i]) == pytest.approx(
-            a_raw["close"][i] * a_raw["volume"][i]
-        )
+def test_a_single_skipped_session_IS_reported() -> None:
+    """The case the gap guard cannot see, and the reason the EQ/BE dedupe matters.
+
+    Real case, AMBICAAGAR 2024-05: EQ, then BE, then EQ. Keeping only the EQ
+    rows skips one BE session, leaving a two-day hole that is well inside
+    `max_gap_days` — so only the dedupe stands between that and a stale
+    comparison. Verified on the real bars: EQ+BE deduped, all 23,693 ratios in
+    that window are exactly 1.0.
+    """
+    rows = [
+        (date(2024, 5, 20), "EQ", 100.0, 99.0),
+        (date(2024, 5, 21), "BE", 90.0, 100.0),
+        (date(2024, 5, 22), "EQ", 91.0, 90.0),
+    ]
+    full = pl.DataFrame({
+        "date": [r[0] for r in rows],
+        "ticker": ["X.NS"] * len(rows),
+        "series": [r[1] for r in rows],
+        "close": [r[2] for r in rows],
+        "prev_close": [r[3] for r in rows],
+    })
+    assert price_discontinuities(full).is_empty(), "the contiguous chain fired"
+
+    eq_only = full.filter(pl.col("series") == "EQ")
+    hit = price_discontinuities(eq_only)
+    assert hit.height == 1
+    assert hit.row(0, named=True)["ratio"] == pytest.approx(0.9)
 
 
-def test_back_adjust_does_not_leak_across_tickers() -> None:
-    """AAA's split must not touch BBB — the classic `.over()` mistake."""
-    out = back_adjust(_split_frame())
-    bbb = out.filter(pl.col("ticker") == "BBB.NS").sort("date")
-    assert bbb["close"].to_list() == pytest.approx([200.0, 201.0, 202.0, 203.0])
-    assert bbb["volume"].to_list() == pytest.approx([500, 500, 500, 500])
+def test_a_known_split_produces_NO_discontinuity() -> None:
+    """The measurement that exposed the original error.
 
-
-def test_back_adjust_is_a_no_op_without_actions() -> None:
-    df = _split_frame().filter(pl.col("ticker") == "BBB.NS")
-    out = back_adjust(df).sort("date")
-    assert out["close"].to_list() == pytest.approx(df.sort("date")["close"].to_list())
-
-
-def test_back_adjust_compounds_two_actions() -> None:
-    """Two splits must multiply, not overwrite each other."""
-    df = pl.DataFrame(
-        {
-            "date": [date(2020, 1, d) for d in (1, 2, 3, 6)],
-            "ticker": ["AAA.NS"] * 4,
-            "close": [100.0, 50.0, 25.0, 26.0],
-            "prev_close": [99.0, 50.0, 25.0, 25.0],
-            "volume": [100, 200, 400, 400],
-        }
+    NESTLEIND fell from 27,116.40 to 2,666.40 on its 1:10 ex-date, and
+    `prev_close` on that row is 27,116.40 — the pre-split level, carried
+    forward untouched. So the ratio is exactly 1.0 and this function is blind
+    to it BY DESIGN, which is why adjustment reads NSE's corporate-actions feed
+    instead.
+    """
+    df = pl.DataFrame({
+        "date": [date(2024, 1, 4), date(2024, 1, 5)],
+        "ticker": ["NESTLEIND.NS"] * 2,
+        "close": [27116.40, 2666.40],
+        "prev_close": [26635.20, 27116.40],
+    })
+    assert price_discontinuities(df).is_empty(), (
+        "if this ever fires, prev_close semantics have changed and the "
+        "corporate-actions path should be re-examined"
     )
-    out = back_adjust(df).sort("date")
-    # Day 1 sits behind both halvings: 100 * 0.5 * 0.5 = 25.
-    assert out["close"].to_list() == pytest.approx([25.0, 25.0, 25.0, 26.0])
-    assert out["volume"].to_list() == pytest.approx([400, 400, 400, 400])
 
 
 # ── identity ─────────────────────────────────────────────────────────────────
@@ -282,94 +267,6 @@ def _gapped_frame() -> pl.DataFrame:
         "volume": [100, 100, 100, 100],
     })
 
-
-def test_a_gap_in_history_is_not_a_corporate_action() -> None:
-    """Ordinary price movement across a hole must not read as a split.
-
-    Measured on a deliberately gappy sample: 2,070 of 2,072 detections landed
-    on the single date spanning a one-year hole, ratios 0.46 to 1.86, against 2
-    on every other date combined. Compounding those into the adjustment factor
-    would rescale every price before the gap, silently.
-    """
-    hits = adjustment_ratios(_gapped_frame())
-    assert hits.is_empty(), f"gap reported as an action: {hits.to_dicts()}"
-
-
-def test_back_adjust_leaves_a_gapped_series_alone() -> None:
-    df = _gapped_frame()
-    out = back_adjust(df).sort("date")
-    assert out["close"].to_list() == pytest.approx(df.sort("date")["close"].to_list())
-    assert out["volume"].to_list() == pytest.approx(df.sort("date")["volume"].to_list())
-
-
-def test_a_real_action_next_to_a_gap_still_fires() -> None:
-    """The guard must not swallow a genuine action on a contiguous pair."""
-    df = pl.DataFrame({
-        "date": [date(2024, 6, 3), date(2025, 6, 2), date(2025, 6, 3)],
-        "ticker": ["G.NS"] * 3,
-        #                       gap ↑            split ↑
-        "close": [100.0, 160.0, 80.0],
-        "prev_close": [99.0, 159.0, 80.0],
-        "volume": [100, 100, 200],
-    })
-    hits = adjustment_ratios(df)
-    assert hits.height == 1
-    r = hits.row(0, named=True)
-    assert r["date"] == date(2025, 6, 3)
-    assert r["ratio"] == pytest.approx(0.5)
-    out = back_adjust(df).sort("date")
-    # Only the two rows at or before the split are halved; the gap contributes
-    # nothing, so the first row is 100 * 0.5 = 50, not 100 * 0.5 * (a year).
-    assert out["close"].to_list() == pytest.approx([50.0, 80.0, 80.0])
-
-
-def test_max_gap_days_is_tunable() -> None:
-    """A caller with a genuinely sparse series can widen the window."""
-    df = _gapped_frame()
-    assert adjustment_ratios(df, max_gap_days=400).height > 0
-
-
-def test_a_series_switch_must_not_look_like_a_corporate_action() -> None:
-    """A name moving EQ -> BE -> EQ still has a contiguous prev_close chain.
-
-    Real case, AMBICAAGAR over 2024-05-21..06-05: EQ for four sessions, BE for
-    two, then EQ again. Verified on the real bars that with EQ+BE deduped
-    correctly, all 23,693 ratios in that window are EXACTLY 1.0.
-
-    Keeping only the EQ rows skips the BE sessions, so the previous close
-    compared against is stale. Where the skipped run is long the `max_gap_days`
-    guard happens to catch it; where it is a SINGLE session it does not, and the
-    stale comparison is reported as a corporate action. So the EQ/BE dedupe is
-    load-bearing in its own right and not made redundant by the gap guard —
-    which is the case this test pins.
-    """
-    def frame(rows: list[tuple[date, str, float, float]]) -> pl.DataFrame:
-        return pl.DataFrame({
-            "date": [r[0] for r in rows],
-            "ticker": ["X.NS"] * len(rows),
-            "series": [r[1] for r in rows],
-            "close": [r[2] for r in rows],
-            "prev_close": [r[3] for r in rows],
-        })
-
-    # One BE session in the middle of an EQ run: Mon, Tue(BE), Wed.
-    rows = [
-        (date(2024, 5, 20), "EQ", 100.0, 99.0),
-        (date(2024, 5, 21), "BE", 90.0, 100.0),
-        (date(2024, 5, 22), "EQ", 91.0, 90.0),
-    ]
-    full = frame(rows)
-    assert adjustment_ratios(full).is_empty(), "the contiguous chain fired"
-
-    # Drop the single BE session. The remaining gap is two days, well inside
-    # max_gap_days, so the guard does NOT save us — only the dedupe would.
-    eq_only = full.filter(pl.col("series") == "EQ")
-    spurious = adjustment_ratios(eq_only)
-    assert spurious.height == 1, (
-        "skipping one BE session should manufacture a false action; the gap "
-        "guard cannot see a two-day hole"
-    )
-    assert spurious.row(0, named=True)["ratio"] == pytest.approx(0.9)
 
 
 def test_a_two_digit_year_timestamp_parses() -> None:
