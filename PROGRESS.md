@@ -1,6 +1,6 @@
 # PROGRESS
 
-**Last updated:** 2026-09-08 by session 3
+**Last updated:** 2026-09-08 by session 3 (survivorship rebuild)
 **Plan:** `09_revamp_and_audit.md` (process) · `10_architecture_revamp.md` (architecture)
 **Rules:** `CLAUDE.md`
 
@@ -28,26 +28,35 @@ Dependency order:
 | A3 — reconcile specs | **PASS** | Every spec carries a `## Status` block + verifying commit | `02/03/05/08_*.md` | 2 |
 | A4 — quarantine (optional) | DEFERRED to before R6 | Untrained code moved to `experimental/`, tests still green | `experimental/*/README.md` | — |
 | A5 — standing rules | **DONE** | `CLAUDE.md` exists with the five rules | `CLAUDE.md` | 1 |
-| R1 — one panel, one truth | **PARTIAL** | Deterministic SHA256; every feature nonzero variance; purge ≥ lookback; point-in-time universe | panels rebuilt at 645 tickers; **point-in-time universe still open** | 3 |
-| R2 — honest baselines | **PARTIAL** | 5 baselines × 3 frequencies × 4 benchmarks, net of cost **and tax** | All 5 baselines run at monthly + weekly via `scripts/run_baselines.py`, after tax, MLflow `baselines`. **`MomentumTopK` beats `EqualWeightRebalanced` on CAGR at monthly (0.273 vs 0.257)** — see `audit/R5_GATE.md`. Daily cadence and the 4-benchmark leg are still outstanding. | 3 |
+| R1 — one panel, one truth | **PARTIAL → point-in-time panel BUILT** | Deterministic SHA256; every feature nonzero variance; purge ≥ lookback; point-in-time universe | `data/panels_bhav`: 4,138 days × 1,504 tickers from the full-market bhavcopy, back-adjusted from NSE's corporate-actions feed, eligibility decided strictly before each date. `audit/S1_SURVIVORSHIP.md`. The Kite panel (`data/panels_kite`, 645 fixed names) remains what every pre-2026-09-08 number was measured on. | 3 |
+| R2 — honest baselines | **PARTIAL, and re-measured** | 5 baselines × 3 frequencies × 4 benchmarks, net of cost **and tax** | All 5 run at monthly + weekly, after tax, MLflow `baselines`. On the FIXED universe `MomentumTopK` wins at 0.273 vs equal-weight's 0.257. On the POINT-IN-TIME universe it collapses to **−0.002** and `equal_weight_frozen` (0.137) is strongest — `audit/S1_SURVIVORSHIP.md`. Daily cadence and the 4-benchmark leg still outstanding. | 3 |
 | R3 — kill the compute bug | NOT_STARTED | 2M steps < 2h on the 4060, **conditional on encoder caching** | timed run + run ID | — |
 | R4 — supervised cross-sectional | **PASS** (r4_v2) | Window-level: mean of per-window OOS rank IC > 0.02, window t > t_crit(95%), >= 75% windows positive (`12_gate_decision.md`) | `data/signal/r4_v2/gate.json`: 5d +0.0392 t 7.50, 20d +0.0437 t 5.31, 8/8 windows positive | 2026-09-06 |
-| R5 — deterministic allocator | **FAIL** | Beats best R2 baseline net of cost+tax, **paired bootstrap CI excluding zero** | Against the BEST R2 baseline (`MomentumTopK`, monthly): **1 arm of 8** clears the interval — K=20 no-stop, +0.1060/yr, CI [+0.0039, +0.2089], t 2.02. Every stopped arm and every K=30 arm fails. Against `equal_weight` it is 8 of 8, but equal-weight is not the best baseline and itself loses to momentum. `audit/R5_GATE.md`. | 3 |
+| R5 — deterministic allocator | **FAIL on the fixed universe; UNMEASURED on the real one** | Beats best R2 baseline net of cost+tax, **paired bootstrap CI excluding zero** | Fixed universe: 1 arm of 8 clears against `MomentumTopK` (K=20 no-stop, +0.1060/yr, CI [+0.0039, +0.2089], t 2.02); 8 of 8 against equal-weight. **That bar was an artefact** — momentum's 0.273 was survivorship. Re-running against the point-in-time universe is Phase 3 and has not happened. `audit/R5_GATE.md`, `audit/S1_SURVIVORSHIP.md`. | 3 |
 | R6 — reinstate RL | **RUN — FAIL** | Beats R5's allocator | Loses out of sample. Diagnosed as 17 policy parameters against ~4 independent 2-year windows. | 3 |
 | R7 — regime conditioning | NOT_STARTED | `corr(val,test)` CI over ≥8 windows excludes zero, then Phase 1 A/B | walk-forward summary | — |
 
-**Current unit: the point-in-time universe rebuild.** It is now the most
-load-bearing open item: momentum-top-K is the baseline most flattered by a
-survivorship-selected universe, so the bar R5 has to clear may itself be
-inflated. `scripts/fetch_bhavcopy.py` is backfilling the full market from 2010. A0–A3
-pass. A4 remains deferred (large refactor, no new information, and
-`heads.py`/`encoders.py` mix live and quarantined code so it is not a clean
-directory move).
+## The survivorship rebuild — phase ledger
 
-**Runs have been launched; this table was stale until 2026-09-08 and said
-otherwise.** B1–B7 landed, panels were rebuilt at the full universe, r4_v2
-cleared the window-level gate, and the allocator has been measured in sample and
-on an unseen 2025-26 holdout after tax.
+Started 2026-09-08 after measuring that the 504-name universe came from a 2026
+instrument dump. `audit/S1_SURVIVORSHIP.md` has the numbers.
+
+| # | Phase | Status | What it settles |
+|---|---|---|---|
+| — | Full-market bhavcopy 2010–2026 | **DONE** | 8.16M rows, 4,337 EQ/BE symbols, 0 failures |
+| — | Corporate actions | **DONE** | 1,118 actions; 3 known splits verified end to end |
+| 1 | Baselines on the PIT universe | **DONE** | Momentum-top-K: CAGR +0.273 → **−0.002** |
+| 2 | Retrain R4 on the PIT universe | **RUNNING** | Whether any signal survives a real universe |
+| 3 | R5 allocator + gate on PIT | armed, auto-fires after 2 | Does the edge survive? |
+| 4 | Holdout 2025–26 on PIT | not started | Unseen-data confirmation |
+| 5 | Paper-trading parity | not started | Backtest matches the broker tick-for-tick |
+| 6 | Live readiness | not started | Auth, daily job, monitoring, kill-switch |
+
+**NOTHING IS TRADEABLE YET.** Every number in the R4/R5 rows above was measured
+on the fixed 504-name universe, and Phase 1 showed roughly 12 points of a ~0.26
+CAGR long-only backtest on that universe was the universe itself. A model
+trained on the point-in-time panel is a *different model* and does not exist
+until Phase 2 finishes.
 
 **Where R5 stands after 2026-09-08:**
 
