@@ -111,18 +111,47 @@ paper broker:
 This rules out the comfortable explanation. The numbers above describe a system
 that could actually be run; the strategy simply does not clear its bar yet.
 
-## 6. What would settle it
+## 6. The tax drag, isolated
+
+`apply_tax=true` had been on for every number above and the term had never been
+separated. Identical arms, identical seed, `oos_r4_pit`:
+
+| arm | with tax | without tax | drag |
+|---|---|---|---|
+| equal_weight | 0.119 | 0.126 | 0.7pp |
+| allocator, band 0.000 | 0.105 | 0.124 | **1.9pp** |
+| allocator, band 0.010 | 0.157 | 0.163 | **0.6pp** |
+| volstop, band 0.010 | 0.151 | 0.168 | 1.7pp |
+
+At band 0 the allocator pays 1.9pp/yr against equal-weight's 0.7pp — a 1.2pp
+penalty purely for churning, since STCG at 20% + cess applies to essentially
+everything a monthly book realises. **The 1% band cuts it to 0.6pp, below
+equal-weight's own.**
+
+So the band was never mainly about the flat demat fee. It cut three things at
+once — the ₹15.34 per scrip, 0.1% STT on both legs, and the tax churn — and the
+last of those was the largest single term.
+
+**This closes the cost question.** The edge is +0.0374 with tax and +0.0370
+without: identical. There is no tax overhang left to recover, and at band 0.010
+the strategy is *more* tax-efficient than holding everything equally. What
+remains between +3.2%/yr and a passing gate is not cost.
+
+## 7. What would settle it
 
 Not another sweep of the same space — that is how a t of 1.98 becomes a t of
 2.1 by accident. The honest options, in order of what they would actually
 resolve:
 
-* **Isolate the tax drag.** `apply_tax=true` is on throughout, and STCG at 20%
-  on monthly turnover is a large and completely uninvestigated term. If the
-  edge is 3%/yr gross of tax and tax costs 2%, that is a different problem from
-  a 3%/yr net edge.
-* **Longer holding.** Monthly is the shortest cadence tested here. Quarterly
-  would cut both turnover and the STCG/LTCG boundary at once.
+* ~~**Isolate the tax drag.**~~ Done — §6. It is 0.6pp at band 0.010, below
+  equal-weight's 0.7pp, and the edge is the same with tax and without. Cost is
+  no longer the question.
+* **Longer holding.** Quarterly cuts turnover further and crosses the
+  twelve-month LTCG boundary. Worth measuring, but §6 caps what it can win:
+  there is only 0.6pp of tax left and equal-weight pays 0.7pp, so the relative
+  gain available is near zero. Recorded before the run: I expect no material
+  improvement, and possibly harm, since a 20-day-horizon signal traded four
+  times a year decays well inside the holding period.
 * **More span, not more arms.** The in-sample window is 7.9 years and the
   bhavcopy reaches back to 2010; extending the walk-forward earlier adds
   independent windows, which is what a window-level t-test actually needs.
