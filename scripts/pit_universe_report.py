@@ -1,0 +1,117 @@
+#!/usr/bin/env python
+"""How much of the investable universe does the fixed 504-name list actually hold?
+
+The number that motivated the whole rebuild, made reproducible rather than
+quoted (`CLAUDE.md` rule 3):
+
+> of the 605 names carrying at least ₹5 crore of median daily turnover in 2021,
+> the 504-name universe contains 292 — 48.3% — and 55 had stopped trading by 2026
+
+    uv run python scripts/pit_universe_report.py
+    uv run python scripts/pit_universe_report.py --max-names 504
+
+Reports coverage at every month-end across the bars available, and splits the
+missing names into the two mechanisms — `vanished` (stopped trading, and so
+absent from any list drawn today) and `omitted` (still trades, simply not
+selected) — because only the second is fixable by widening a ticker list, and
+reporting them together overstates how much widening would help.
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import date
+from pathlib import Path
+
+import polars as pl
+from loguru import logger
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--bars", type=Path, default=Path("data/ext/bhavcopy.parquet"))
+    ap.add_argument("--min-turnover-cr", type=float, default=5.0)
+    ap.add_argument("--lookback-days", type=int, default=365)
+    ap.add_argument("--min-sessions", type=int, default=100)
+    ap.add_argument("--max-names", type=int, default=0, help="0 = no cap")
+    ap.add_argument("--every-months", type=int, default=6)
+    args = ap.parse_args()
+
+    from trader.data.pit_universe import (
+        LiquidityRule,
+        coverage_report,
+        survivorship_gap,
+    )
+    from trader.data.universe import active_tickers
+
+    rule = LiquidityRule(
+        min_median_turnover=args.min_turnover_cr * 1e7,
+        lookback_days=args.lookback_days,
+        min_sessions=args.min_sessions,
+        max_names=args.max_names or None,
+    )
+    logger.info(f"rule: {rule.describe()}")
+
+    bars = pl.read_parquet(
+        args.bars, columns=["date", "ticker", "series", "close", "turnover"]
+    )
+    lo, hi = bars["date"].min(), bars["date"].max()
+    logger.info(f"{bars.height:,} rows, {bars['ticker'].n_unique():,} tickers, {lo}..{hi}")
+
+    # Month-ends, every N months, from one lookback after the data starts.
+    assert isinstance(lo, date) and isinstance(hi, date)
+    start_year = lo.year + 1
+    dates = [
+        date(y, m, 1)
+        for y in range(start_year, hi.year + 1)
+        for m in range(1, 13, max(args.every_months, 1))
+        if date(y, m, 1) <= hi
+    ]
+    if not dates:
+        raise SystemExit("no evaluation dates inside the bar range")
+
+    universe = active_tickers()
+    rep = coverage_report(bars, dates, universe, rule)
+
+    print(f"\n{'date':<14}{'eligible':>10}{'in our 504':>13}{'coverage':>11}{'missing':>10}")
+    print("-" * 58)
+    for r in rep.iter_rows(named=True):
+        print(f"{str(r['date']):<14}{r['n_eligible']:>10,}{r['n_covered']:>13,}"
+              f"{r['coverage']:>10.1%}{r['n_missing']:>10,}")
+    print("-" * 58)
+    fin = rep.filter(pl.col("n_eligible") > 0)
+    if fin.height:
+        print(f"{'mean':<14}{fin['n_eligible'].mean():>10,.0f}"
+              f"{fin['n_covered'].mean():>13,.0f}{fin['coverage'].mean():>10.1%}"
+              f"{fin['n_missing'].mean():>10,.0f}")
+
+    # The split that decides what widening a list can and cannot fix.
+    probe = dates[len(dates) // 2]
+    gap = survivorship_gap(bars, probe, universe, rule, still_trading_after=hi)
+    if gap.is_empty():
+        print(f"\nNo gap at {probe}.")
+    else:
+        counts = gap.group_by("reason").len().sort("reason")
+        print(f"\nAt {probe}, the {gap.height} eligible names our universe misses "
+              f"split as:")
+        for r in counts.iter_rows(named=True):
+            print(f"  {r['reason']:<12}{r['len']:>5}")
+        print("\n  vanished = stopped trading, so absent from any list drawn today;")
+        print("             widening a 2026 ticker list cannot recover these.")
+        print("  omitted  = still trades and was simply not selected;")
+        print("             widening the list fixes exactly these.")
+        for reason in ("vanished", "omitted"):
+            sub = gap.filter(pl.col("reason") == reason)
+            if sub.height:
+                names = ", ".join(t.removesuffix(".NS") for t in sub["ticker"].to_list()[:12])
+                print(f"\n  {reason} e.g.: {names}")
+
+    n_elig = int(rep["n_eligible"].max() or 0)
+    print(f"\nOur universe is {len(universe)} names. The point-in-time universe "
+          f"peaks at {n_elig:,}.")
+    print("A coverage below 100% is names that were liquid and tradeable on the "
+          "date and\nare simply absent — the selection half of survivorship, "
+          "which `listing.py`\nstates is not prevented.")
+
+
+if __name__ == "__main__":
+    main()

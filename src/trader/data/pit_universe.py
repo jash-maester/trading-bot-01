@@ -66,6 +66,21 @@ class LiquidityRule:
     #: Cash-market series. EQ is normal rolling settlement; BE is
     #: trade-to-trade. Everything else is a different instrument.
     series: tuple[str, ...] = ("EQ", "BE")
+    #: Keep only the N most liquid names that clear the bar, by trailing median
+    #: turnover. ``None`` keeps all of them.
+    #:
+    #: This is what makes a point-in-time universe affordable to MODEL, not just
+    #: to measure. The eligible set drifts between roughly 600 and 750 names,
+    #: and a variable-width universe means a variable-width action space; worse,
+    #: 750 names against the 504/L=30/mb=64 configuration measured on an 8 GiB
+    #: card would not fit — cost scales linearly in ticker count (`CLAUDE.md`,
+    #: Compute).
+    #:
+    #: Capping by liquidity is also the more honest rule. "Every name above a
+    #: turnover floor" is not how anyone selects a book; "the most liquid N"
+    #: is, and it keeps the width constant so a rebuilt panel is directly
+    #: comparable with the fixed-504 one it is being tested against.
+    max_names: int | None = None
 
     def __post_init__(self) -> None:
         if self.min_median_turnover < 0:
@@ -79,12 +94,15 @@ class LiquidityRule:
             )
         if not self.series:
             raise ValueError("series must name at least one cash-market series")
+        if self.max_names is not None and self.max_names < 1:
+            raise ValueError(f"max_names must be >= 1 when set, got {self.max_names}")
 
     def describe(self) -> str:
+        cap = f", top {self.max_names} by turnover" if self.max_names else ""
         return (
             f"median turnover >= Rs {self.min_median_turnover:,.0f} over "
             f"{self.lookback_days}d, >= {self.min_sessions} sessions, "
-            f"close >= Rs {self.min_price:g}, series {'/'.join(self.series)}"
+            f"close >= Rs {self.min_price:g}, series {'/'.join(self.series)}{cap}"
         )
 
 
@@ -131,9 +149,16 @@ def eligible_on(
             & (pl.col("sessions") >= r.min_sessions)
             & (pl.col("last_close") >= r.min_price)
         )
-        .select("ticker")
+        .select(["ticker", "med_turnover"])
         .collect()
     )
+    if r.max_names is not None and agg.height > r.max_names:
+        # Ties broken by ticker so the selection is deterministic: two names on
+        # identical turnover must not swap places between runs and change the
+        # panel hash.
+        agg = agg.sort(["med_turnover", "ticker"], descending=[True, False]).head(
+            r.max_names
+        )
     return sorted(agg["ticker"].to_list())
 
 

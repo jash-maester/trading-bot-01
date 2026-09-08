@@ -175,3 +175,48 @@ def test_rule_describes_itself() -> None:
     """The bar must be quotable in an artefact, not a hidden constant."""
     d = LiquidityRule().describe()
     assert "50,000,000" in d and "365d" in d and "EQ/BE" in d
+
+
+def test_max_names_keeps_the_most_liquid() -> None:
+    """A fixed width is what makes a point-in-time universe affordable to model.
+
+    The eligible set drifts between ~600 and ~750 names; a variable-width
+    universe means a variable-width action space, and 750 against the
+    504/L=30/mb=64 configuration would not fit an 8 GiB card. Capping by
+    liquidity keeps the width constant AND is the more honest rule — "the most
+    liquid N" is how a book is selected; "everything above a floor" is not.
+    """
+    bars = _bars({"BIG.NS": 9e8, "MID.NS": 5e8, "SMALL.NS": 2e8})
+    rule = LiquidityRule(min_median_turnover=1e7, min_sessions=10, max_names=2)
+    assert eligible_on(bars, date(2020, 6, 1), rule) == ["BIG.NS", "MID.NS"]
+
+
+def test_max_names_larger_than_the_eligible_set_is_a_no_op() -> None:
+    bars = _bars({"A.NS": 9e8, "B.NS": 5e8})
+    rule = LiquidityRule(min_median_turnover=1e7, min_sessions=10, max_names=50)
+    assert eligible_on(bars, date(2020, 6, 1), rule) == ["A.NS", "B.NS"]
+
+
+def test_max_names_ties_break_deterministically() -> None:
+    """Two names on identical turnover must not swap between runs.
+
+    The panel takes its column order from this list, so a non-deterministic tie
+    means a non-deterministic panel hash — and R1's gate is a deterministic
+    SHA256.
+    """
+    bars = _bars({"ZED.NS": 5e8, "ALPHA.NS": 5e8, "MID.NS": 5e8})
+    rule = LiquidityRule(min_median_turnover=1e7, min_sessions=10, max_names=2)
+    first = eligible_on(bars, date(2020, 6, 1), rule)
+    for _ in range(5):
+        assert eligible_on(bars, date(2020, 6, 1), rule) == first
+    assert first == ["ALPHA.NS", "MID.NS"], "ties not broken by ticker"
+
+
+def test_zero_max_names_is_refused() -> None:
+    with pytest.raises(ValueError, match="max_names"):
+        LiquidityRule(max_names=0)
+
+
+def test_describe_states_the_cap() -> None:
+    assert "top 504 by turnover" in LiquidityRule(max_names=504).describe()
+    assert "top" not in LiquidityRule().describe()
