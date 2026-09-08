@@ -108,3 +108,46 @@ def test_a_baseline_name_must_match_the_whole_arm_not_a_prefix() -> None:
     )
     assert match("equal_weight_frozen") == ["nav_equal_weight_frozen_monthly_oos_pit"]
     assert match("nonsense") == []
+
+
+def test_a_cadence_qualified_baseline_selects_that_cadence() -> None:
+    """`equal_weight_monthly` must pick the monthly arm, not fail.
+
+    Extracting the arm name at the cadence token fixed one bug and created
+    another: a caller passing `equal_weight_monthly` then matched nothing,
+    because the arm name is `equal_weight`. Naming the cadence is the only way
+    to choose between two cadences of the same strategy, so both forms have to
+    work.
+    """
+    cadences = ("daily", "weekly", "monthly", "quarterly")
+    stems = [
+        "nav_equal_weight_monthly_oos",
+        "nav_equal_weight_quarterly_oos",
+        "nav_equal_weight_frozen_monthly_oos",
+    ]
+
+    def arm(stem: str) -> str:
+        parts = stem.removeprefix("nav_").split("_")
+        for i, t in enumerate(parts):
+            if t in cadences:
+                return "_".join(parts[:i])
+        return "_".join(parts)
+
+    def cad(stem: str) -> str:
+        for t in stem.removeprefix("nav_").split("_"):
+            if t in cadences:
+                return t
+        return ""
+
+    def match(name: str) -> list[str]:
+        a, c = name, ""
+        parts = name.split("_")
+        if parts[-1] in cadences:
+            a, c = "_".join(parts[:-1]), parts[-1]
+        return [s for s in stems if arm(s) == a and (not c or cad(s) == c)]
+
+    assert match("equal_weight_monthly") == ["nav_equal_weight_monthly_oos"]
+    assert match("equal_weight_quarterly") == ["nav_equal_weight_quarterly_oos"]
+    assert match("equal_weight_frozen_monthly") == ["nav_equal_weight_frozen_monthly_oos"]
+    # Unqualified still selects every cadence of that arm, and not the frozen one.
+    assert len(match("equal_weight")) == 2

@@ -85,17 +85,35 @@ def main() -> None:
                 return "_".join(parts[:i])
         return "_".join(parts)
 
+    def _cadence(stem: str) -> str:
+        for tok in stem.removeprefix("nav_").split("_"):
+            if tok in _CADENCES:
+                return tok
+        return ""
+
     def _match(name: str) -> list[Path]:
-        """Files whose ARM NAME is exactly `name`.
+        """Files whose ARM NAME is exactly `name`, optionally cadence-qualified.
 
         Substring matching is wrong here and quietly gave the wrong answer:
         `--baseline equal_weight` also matched `equal_weight_frozen`, so a
         Phase 3 run that asked for two different baselines tested the same one
         twice and printed both as though they differed. Prefix matching on `_`
         does not fix it either — `equal_weight_frozen_monthly` genuinely starts
-        with `equal_weight_` — so the arm name has to be extracted first.
+        with `equal_weight_` — so the arm name is extracted at the cadence token.
+
+        A caller may also name the cadence, `equal_weight_monthly`, which is the
+        only way to choose between two cadences of the same strategy. Both forms
+        work; requiring one of them broke a caller that used the other.
         """
-        return [f for f in files if _arm_name(f.stem) == name]
+        want_arm, want_cad = name, ""
+        parts = name.split("_")
+        if parts and parts[-1] in _CADENCES:
+            want_arm, want_cad = "_".join(parts[:-1]), parts[-1]
+        return [
+            f for f in files
+            if _arm_name(f.stem) == want_arm
+            and (not want_cad or _cadence(f.stem) == want_cad)
+        ]
 
     wanted = args.baseline or "equal_weight"
     base_files = _match(wanted)
