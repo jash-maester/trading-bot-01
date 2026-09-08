@@ -172,11 +172,24 @@ def main() -> None:
                         logger.warning(f"{name}: unparseable sec, marked bad — {exc}")
 
         if frame is None:
+            # NOT marked done. A day that yielded nothing may have failed for a
+            # reason that is fixed later -- a bad guard, a transient 5xx, a
+            # layout the parser did not yet handle -- and marking it done makes
+            # that failure PERMANENT across every future run. Exactly that
+            # turned a span extension into a no-op twice: the first run skipped
+            # 2005-2010 because of a date floor, recorded all 1,239 days as
+            # done, and the second run then skipped them again in 0.0 minutes
+            # having fixed the floor.
+            #
+            # A genuinely absent date costs two requests per run to rediscover.
+            # A permanently-lost year costs the experiment. Bodies that are
+            # present but unparseable are handled by `.bad` markers, which ARE
+            # permanent and are the right tool for that case.
             failed += 1
             logger.warning(f"{day}: NEITHER archive yielded a bhavcopy")
         else:
             frames.append(frame)
-        done.add(key)
+            done.add(key)
 
         if i % args.flush_every == 0:
             flush()
@@ -197,6 +210,19 @@ def main() -> None:
     )
     if df.is_empty():
         raise SystemExit("no bhavcopy rows fetched")
+    # Did the run actually deliver the span it was asked for? `failed` alone
+    # cannot answer that: a resume where every date is already marked done
+    # reports 0 fetched, 0 cached and 0 failed, and looks like a success.
+    got_lo = df["date"].min()
+    if got_lo is not None and (got_lo - lo).days > 30:
+        logger.error(
+            f"asked for {lo} onward and the output starts {got_lo} — "
+            f"{(got_lo - lo).days} days short. The archive did not serve the "
+            "earlier span, or the checkpoint skipped it. Refusing to report a "
+            "wider span than was fetched, because everything downstream would "
+            "then be rebuilt on the same data and look fine."
+        )
+        raise SystemExit(1)
     if failed > total * 0.25:
         logger.error(
             f"{failed:,} of {total:,} sessions ({failed / max(total, 1):.0%}) "
