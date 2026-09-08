@@ -460,6 +460,11 @@ def main(cfg: DictConfig) -> None:
 
     orig_cwd = Path(hydra.utils.get_original_cwd())
     panels_root = resolve_panels_root(cfg, orig_cwd)
+    # NOTE for the point-in-time rebuild: this is the fixed 504-name list, so
+    # running this script against data/panels_bhav would measure the OLD
+    # universe on the new bars and look entirely normal doing it.
+    # `scripts/run_baselines.py` grew `baselines.universe_from_panel` for
+    # exactly this; the allocator needs the same before Phase 2.
     universe = active_tickers()
     seed = int(cfg.get("seed", 42))
 

@@ -91,6 +91,7 @@ say "stage 6: R2 baselines on the point-in-time universe"
 if uv run python scripts/run_baselines.py data=bhav_v1 \
       +split=oos_pit +apply_tax=true \
       '++baselines.freq_grid=[monthly]' \
+      '++baselines.universe_from_panel=true' \
       '++baselines.nav_dir=audit/navs_pit' \
       > "logs/${TAG}_baselines.log" 2>&1; then
     stamp "stage6 OK"

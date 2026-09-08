@@ -82,7 +82,24 @@ def main(cfg: DictConfig) -> None:
     momentum_k = int(bcfg.get("momentum_k", 20))
     nav_dir = bcfg.get("nav_dir", None)
 
-    universe = active_tickers()
+    # WHERE THE UNIVERSE COMES FROM, and why this is not a detail.
+    #
+    # The env is built over `universe`, so it can only ever see those columns.
+    # Pointing this script at the point-in-time panel while taking the universe
+    # from `active_tickers()` would run every baseline over the SAME fixed 504
+    # names the rebuild exists to escape — and print a table that looks
+    # entirely normal while measuring nothing new.
+    #
+    # Default stays `active_tickers()` so every number already recorded against
+    # the Kite panels reproduces exactly.
+    if bool(bcfg.get("universe_from_panel", False)):
+        universe = sorted(
+            pl.read_parquet(panel_path, columns=["ticker"])["ticker"].unique().to_list()
+        )
+        logger.info(f"universe from {panel_path}: {len(universe):,} tickers")
+    else:
+        universe = active_tickers()
+        logger.info(f"universe from active_tickers(): {len(universe):,} tickers")
     lookback = int(cfg.env.lookback_days)
     dates = sorted(pl.read_parquet(panel_path, columns=["date"])["date"].unique().to_list())
     episode_length = len(dates) - lookback - 1
