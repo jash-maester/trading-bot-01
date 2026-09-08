@@ -143,9 +143,17 @@ table printed before 2026-09-08 does not. Fixed in
 
 ## The other reason this is not a PASS
 
-**The universe is not point-in-time.** Measured 2026-09-08: of the 605 names
-carrying ≥₹5 crore of median daily turnover in 2021, this universe contains
-**292 — 48.3%** — and 55 of those 605 had stopped trading by 2026.
+**The universe is not point-in-time.** Measured 2026-09-08 by
+`scripts/pit_universe_report.py`: of the names clearing ≥₹5 crore of median
+daily turnover, the 645 panelled names cover only **60.0%** on average over
+2011–2020, and at 2016-01-01 twenty-seven of the ninety-nine missing had stopped
+trading altogether — ABIRLANUVO, ALBK, ANDHRABANK, AMTEKAUTO, CAIRN, FRL. No
+list drawn today can contain those.
+
+*(An earlier version of this document quoted 48.3%. That compared against
+`active_tickers()`, roughly ten points of which is `INACTIVE_SECTORS` holding
+out five sectors to cap the observation width — a compute decision, not
+survivorship. 60.0% against `all_tickers()` is the honest measure.)*
 
 That second point does **not** invalidate the interval above, and the distinction
 matters. This is a *paired* test: both arms trade the same universe on the same
