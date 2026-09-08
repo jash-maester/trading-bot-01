@@ -30,10 +30,12 @@ say "R4 walk-forward on the point-in-time universe"
 #                  two of which test on 2024-07..2026-06. That is the 2025+
 #                  holdout Phase 4 depends on, consumed as training evidence.
 #                  train_signal.py documents this exact trap.
-#   data_start     the panel opens 2010-01-04; pinning it keeps window
-#                  boundaries identical to r4_v2's.
+#   data_start     the panel opens 2010-01-04, and the bound must be INSIDE
+#                  the panel span -- 2010-01-01 is refused, correctly, since a
+#                  walk-forward cannot start before its data. r4_v2 used
+#                  2010-01-01 because its panel opened in 2005.
 if uv run python scripts/train_signal.py data=bhav_v1 train=r4_pit model=signal \
-     walk.n_windows=12 walk.data_start=2010-01-01 walk.data_end=2024-12-31 \
+     walk.n_windows=12 walk.data_start=2010-01-04 walk.data_end=2024-12-31 \
      > "logs/${TAG}_train.log" 2>&1; then
     stamp "train OK"
     grep -E "R4 GATE|horizon|universe:" "logs/${TAG}_train.log" | tail -20
