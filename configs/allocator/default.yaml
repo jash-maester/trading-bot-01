@@ -19,15 +19,31 @@ max_sector_weight: 0.25
 turnover_budget: 0.30
 cash_floor: 0.0
 vol_lookback: 20
+# 0.0 is the historical default and is NOT the value any evidence supports.
+# The 0.010 band is the single most replicated result in this project: best of
+# {0.0, 0.005, 0.010} in all EIGHT span x K x cadence cells tested, in sample
+# and on the holdout, with a measured mechanism -- scrips sold per rebalance
+# 77.8 -> 8.1 and tax drag 1.9pp -> 0.6pp, below equal-weight's own 0.7pp.
+# audit/S2_ALLOCATOR_ON_PIT.md section 3, audit/R5_VERDICT_PIT.md section 2.
+# Left at 0.0 only so historical runs reproduce; new work should set 0.010.
 no_trade_band: 0.0
 
 # ── risk overlays (trader/allocator/risk.py) ─────────────────────────────────
 # The standing comparison set: every run reports all of these, so a result is
 # never quoted without its risk-controlled counterparts beside it.
 #
-# Measured twice — in sample 2016-24 and on the unseen 2025-26 holdout — and the
-# ORDERING held both times: a tighter stop buys Sharpe and drawdown with return,
-# monotonically. Holdout at Rs 1 lakh, after tax and every Zerodha charge:
+# WARNING — every absolute number in this comment block was measured on the
+# FIXED 504-name universe, which came from a 2026 instrument dump and is
+# survivorship-selected. audit/S1_SURVIVORSHIP.md: on a point-in-time universe
+# momentum-top-K falls from CAGR +0.273 to -0.002 and equal-weight from 0.257 to
+# 0.119. Treat the CAGR and Sharpe levels below as INVALID; roughly 12 points of
+# them were the universe. The ORDERING is what survived re-measurement and is
+# the only reason these tables are kept.
+#
+# Measured twice — in sample 2016-24 and on the then-unseen 2025-26 holdout —
+# and the ordering held both times: a tighter stop buys Sharpe and drawdown with
+# return, monotonically. Holdout at Rs 1 lakh, after tax and every Zerodha
+# charge, ON THE FIXED UNIVERSE:
 #     none      Sharpe 1.720  CAGR 0.304  MDD -0.133
 #     stop 15%  Sharpe 2.013  CAGR 0.251  MDD -0.087
 #     stop 10%  Sharpe 2.093  CAGR 0.222  MDD -0.080
@@ -39,8 +55,9 @@ no_trade_band: 0.0
 # `vol_mult` arms scale the threshold by each NAME's own volatility instead of
 # applying one number to a utility and a small-cap alike. See
 # `RiskParams.stop_vol_mult`.
-# Swept on the unseen holdout at Rs 1 lakh, after tax and every charge
-# (audit/r4_v2/stop_sweep.log). The fixed arms are monotone in the threshold —
+# Swept on the then-unseen holdout at Rs 1 lakh, after tax and every charge
+# (audit/r4_v2/stop_sweep.log) — again on the FIXED universe, so read the
+# ordering and not the levels. The fixed arms are monotone in the threshold —
 # tighter buys Sharpe and drawdown with return — and the volatility-scaled arm
 # sits off that line, which is the point of it:
 #     none     Sharpe 1.720  CAGR 0.304  MDD -0.133
