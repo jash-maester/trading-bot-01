@@ -1,8 +1,30 @@
 # Forward paper trading: pre-registration
 
-**Status: REGISTERED, not yet started.** Nothing below may be changed once the
-first rebalance executes. If any of it changes, the clock resets to zero and
-this document is superseded by a new one with a new start date.
+**Status: WITHDRAWN 2026-09-09, before any forward data existed.**
+
+The configuration frozen below is model-based, and the matched null control
+(`audit/S4_NULL_CONTROL.md`) refutes it: against a **random** signal running
+identical machinery — same universe, same K=30, same 1% band, same stop, same
+costs and tax — R4's signal wins 8 of 8 matched pairs in sample and loses
+**13 of 15 out of sample** (sign test p ≈ 0.004). The signal's apparent
++0.0431/yr over equal-weight is ~+0.0261 machinery and only ~+0.017 signal, and
+the +0.017 does not survive.
+
+Withdrawing costs nothing, because no forward data has been collected. That is
+the entire point of pre-registering before starting rather than after: this
+document did its job by being falsifiable before the clock started, not after
+four years of trading a rule that a coin flip reproduces.
+
+**What survives is a risk result with no model in it** — a 30-name book with a
+1% band and a volatility stop had Sharpe 0.307 against equal-weight's 0.151 and
+a −0.061 drawdown against −0.137 on the unseen holdout, at the same return.
+Whether *that* is worth forward-testing, and with what selection rule in place
+of the model, is an open decision recorded at the end of this document.
+
+Everything below is retained unaltered as the record of what was frozen and
+why. It is not a live proposal.
+
+---
 
 Written 2026-09-09, before any forward data exists.
 
@@ -152,3 +174,42 @@ for the first time by a method that could have produced one.
 Configuration frozen: 2026-09-09.
 First rebalance: **not yet executed** — pending the training box, which holds
 the model artefact and the point-in-time panel.
+
+---
+
+# Withdrawal note and the open decision
+
+## Why it was withdrawn
+
+`audit/S4_NULL_CONTROL.md`. The control that should have run alongside every
+allocator result was broken — it used `band_grid[0]` (0.0) and no risk overlay
+against arms carrying band 0.010 and a stop, and wrote no NAV — so every risk
+comparison before 2026-09-09 was uncontrolled. Repaired and re-run, it shows
+the signal's advantage over random selection is in-sample only.
+
+## What the evidence now supports
+
+1. **No signal-driven edge is demonstrated.** R4's rank IC is real and passes
+   its gate, but does not convert into portfolio value once concentration, the
+   band and the stop are controlled for. A model with *higher* holdout IC
+   (+0.0459 vs +0.0338) produced the *worse* portfolio, so the gate metric is
+   not measuring what the allocator consumes.
+2. **A portfolio-construction effect does survive**, out of sample, with a
+   random signal: ~30 names instead of ~350, a 1% no-trade band and a
+   volatility-scaled stop roughly halve drawdown at unchanged return.
+
+## The open decision — for the user, not for me
+
+"Random selection" is not something anyone would run live. Replacing it
+requires a selection rule, and every candidate is now untested:
+
+| option | what it would test | honest status |
+|---|---|---|
+| **A.** Forward-test the risk rule with a defensible non-model selection (e.g. top-30 by median turnover) | Does the drawdown halving hold live? | The rule is supported; *this specific selection* has never been measured |
+| **B.** Forward-test nothing; treat the project as concluded | — | Defensible. Nothing has demonstrated alpha |
+| **C.** Fix the gate metric first — score the signal on top-K forward return rather than full-cross-section IC — and only then reconsider | Whether a signal selected for what the allocator actually consumes does better | Real work, and it re-opens the search this project has repeatedly been burned by |
+
+Option A must not silently become "pick the selection rule that backtests best"
+— that is the search which produced four reversals. If A is chosen, the
+selection rule is to be fixed on stated reasoning **before** it is measured,
+and a new pre-registration written with a new start date.
