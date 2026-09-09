@@ -149,7 +149,7 @@ full-report:
 # PowerShell, which mangles rsync's server-side argv — so rsync is invoked through
 # WSL via --rsync-path. Note `wsl.exe`, not bare `wsl`: PowerShell resolves the
 # former and fails on the latter. The path is the WSL view of D:\trading-bot-01.
-SERVER     ?= jashm@192.168.1.7
+SERVER     ?= jashm@jashtuf.tail6c36a.ts.net
 REMOTE_DIR ?= /mnt/d/trading-bot-01
 RSYNC_PATH ?= wsl.exe rsync
 SSH        ?= ssh -o BatchMode=yes

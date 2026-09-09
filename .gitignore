@@ -93,3 +93,16 @@ backups/
 # section 2). Cloned by scripts/kronos_smoke.py's instructions, not ours to
 # version.
 /vendor/
+
+# Training artefacts mirrored down from the box (2026-09-09). These are DATA:
+# a Windows update took the box offline while it held the only copy of every
+# point-in-time artefact, so they are now copied locally for redundancy -- but
+# they must not enter git. `.git` is already 1.2 GB because r4_v1's checkpoints
+# and its embeddings.npy were committed once; those stay tracked (ignoring does
+# not untrack) but nothing new joins them.
+data/ext/
+data/bhav_ohlcv/
+data/panels_bhav/
+data/signal/r4_pit*/
+*.npy
+*.pt

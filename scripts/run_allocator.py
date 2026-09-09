@@ -699,49 +699,78 @@ def main(cfg: DictConfig) -> None:
                 mlflow.log_metric(f"qs/{split}/{name}", value)
 
         if bool(alloc_cfg.get("null_control", False)):
+            # The control must run the SAME machinery as the arms it controls.
+            # Until 2026-09-09 it ran one arm at band_grid[0] with NO risk
+            # overlay, while every real arm carried a band and a stop -- so the
+            # comparison priced the signal PLUS the band PLUS the stop against
+            # nothing, and the risk numbers in audit/navs_long had no matched
+            # control at all. It now sweeps the same risk_grid x band_grid.
             nk = k_grid[len(k_grid) // 2]
-            nband = band_grid[0]
-            env = PanelTradingEnv(rebalance_schedule=schedule, **env_base)
-            n_navs, n_turns, n_diag = _run_allocator(
-                env,
-                # Masked to the real signal's support so the control arm and
-                # the arm it controls face the same candidate set each day.
-                _null_signal(
-                    (len(dates), len(universe)), seed,
-                    support=r_hat_all[horizon_grid[0]],
-                ),
-                vol_all,
-                # The control gets the FIRST band of the grid, not band 0: it
-                # controls for the machinery, so it must run the same machinery.
-                AllocatorParams(k=nk, no_trade_band=nband, vol_lookback=vol_lookback),
-                seed,
-            )
-            nm = compute_episode_metrics(n_navs, n_turns)
-            lines.append(
-                f"{'null_signal (control)':<26}{nk:>4}{nband:>7.3f}{freq:>9}{'-':>5}"
-                f"{nm.sharpe:>9.3f}{nm.cagr:>9.3f}{nm.max_drawdown:>9.3f}"
-                f"{nm.turnover_ann:>9.3f}"
-                f"{n_diag['scrip_sell_days_per_rebalance']:>10.1f}"
-                f"{n_diag['dp_charges_paid']:>11,.0f}{nm.cagr - bl.cagr:>+14.4f}"
-            )
-            with mlflow.start_run(run_name=f"null_signal_k{nk}_b{nband}_{freq}_{split}"):
-                mlflow.log_params(
-                    {"strategy": "null_signal", "k": nk, "freq": freq,
-                     "no_trade_band": nband,
-                     "split": split, "signal_tag": tag, "seed": seed,
-                     "universe_size": len(universe),
-                     "universe_effective": n_effective,
-                     "initial_cash": capital, "min_trade_value": min_trade_value,
-                     "max_supportable_k": supported_k,
-                     "signal_gate_verdict": gate_verdict}
-                )
-                mlflow.log_metrics(
-                    {f"{split}/sharpe": nm.sharpe, f"{split}/cagr": nm.cagr,
-                     f"{split}/max_drawdown": nm.max_drawdown,
-                     f"{split}/turnover_ann": nm.turnover_ann,
-                     f"{split}/cagr_minus_equal_weight": nm.cagr - bl.cagr,
-                     **{f"{split}/{n}": v for n, v in n_diag.items()}}
-                )
+            nhor = horizon_grid[0]
+            for nrisk in risk_grid:
+                for nband in band_grid:
+                    nrisk_name = str(nrisk.get("name", "none"))
+                    nrisk_kw = {k2: v for k2, v in nrisk.items() if k2 != "name"}
+                    noverlay = (
+                        RiskOverlay(RiskParams(**nrisk_kw), len(universe))
+                        if nrisk_kw
+                        else None
+                    )
+                    env = PanelTradingEnv(rebalance_schedule=schedule, **env_base)
+                    n_navs, n_turns, n_diag = _run_allocator(
+                        env,
+                        # Masked to the real signal's support so the control arm
+                        # and the arm it controls face the same candidate set.
+                        _null_signal(
+                            (len(dates), len(universe)), seed,
+                            support=r_hat_all[nhor],
+                        ),
+                        vol_all,
+                        AllocatorParams(
+                            k=nk, no_trade_band=nband, vol_lookback=vol_lookback
+                        ),
+                        seed,
+                        risk=noverlay,
+                    )
+                    nm = compute_episode_metrics(n_navs, n_turns)
+                    if nav_dir:
+                        _write_navs(
+                            nav_dir,
+                            f"null_signal_k{nk}_b{nband}_r{nrisk_name}"
+                            f"_{freq}_{nhor}_{split}",
+                            n_navs, dates[lookback:],
+                        )
+                    lines.append(
+                        f"{'null/' + nrisk_name + ' (control)':<26}{nk:>4}"
+                        f"{nband:>7.3f}{freq:>9}{'-':>5}"
+                        f"{nm.sharpe:>9.3f}{nm.cagr:>9.3f}{nm.max_drawdown:>9.3f}"
+                        f"{nm.turnover_ann:>9.3f}"
+                        f"{n_diag['scrip_sell_days_per_rebalance']:>10.1f}"
+                        f"{n_diag['dp_charges_paid']:>11,.0f}"
+                        f"{nm.cagr - bl.cagr:>+14.4f}"
+                    )
+                    with mlflow.start_run(
+                        run_name=f"null_signal_k{nk}_b{nband}_r{nrisk_name}"
+                                 f"_{freq}_{split}"
+                    ):
+                        mlflow.log_params(
+                            {"strategy": "null_signal", "k": nk, "freq": freq,
+                             "no_trade_band": nband, "risk_arm": nrisk_name,
+                             "split": split, "signal_tag": tag, "seed": seed,
+                             "universe_size": len(universe),
+                             "universe_effective": n_effective,
+                             "initial_cash": capital,
+                             "min_trade_value": min_trade_value,
+                             "max_supportable_k": supported_k,
+                             "signal_gate_verdict": gate_verdict}
+                        )
+                        mlflow.log_metrics(
+                            {f"{split}/sharpe": nm.sharpe, f"{split}/cagr": nm.cagr,
+                             f"{split}/max_drawdown": nm.max_drawdown,
+                             f"{split}/turnover_ann": nm.turnover_ann,
+                             f"{split}/cagr_minus_equal_weight": nm.cagr - bl.cagr,
+                             **{f"{split}/{n}": v for n, v in n_diag.items()}}
+                        )
 
         for horizon in horizon_grid:
             for k in k_grid:
