@@ -45,7 +45,14 @@ LAST=$(maxdate data/ext/bhavcopy.parquet)
 FROM=$(nextday "$LAST")
 uv run python scripts/fetch_bhavcopy.py --calendar weekdays --from "$FROM" --to "$TODAY" --sleep 0.6 \
     > "$LOGS/fetch_$TODAY.log" 2>&1 || fail "fetch_bhavcopy"
-uv run python scripts/fetch_nse_index.py --from "$FROM" --to "$TODAY" \
+# The index has its OWN last date. NSE publishes the bhavcopy and the index
+# file at different times, so after a run that fetched one but not the other,
+# deriving both ranges from the bhavcopy would ask for the index from a date
+# past the one it is missing -- and the dead-beta gate below would then fail
+# on every run forever. Seen 2026-09-10 17:31 IST: bhavcopy out, index not.
+IDX_LAST=$(uv run python -c "from datetime import datetime;from trader.data.storage import OhlcvStore;print(str(OhlcvStore('data/kite_ohlcv').load(tickers=['^NSEI'],start=datetime(2026,1,1))['date'].max())[:10])")
+IDX_FROM=$(nextday "$IDX_LAST")
+uv run python scripts/fetch_nse_index.py --from "$IDX_FROM" --to "$TODAY" \
     > "$LOGS/index_$TODAY.log" 2>&1 || fail "fetch_nse_index"
 DATA_DATE=$(maxdate data/ext/bhavcopy.parquet)
 IDX_DATE=$(uv run python -c "from datetime import datetime;from trader.data.storage import OhlcvStore;print(str(OhlcvStore('data/kite_ohlcv').load(tickers=['^NSEI'],start=datetime(2026,1,1))['date'].max())[:10])")
