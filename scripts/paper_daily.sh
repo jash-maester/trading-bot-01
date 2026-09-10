@@ -18,7 +18,7 @@
 # it is append-only.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"   # scheduler-independent: cron and launchd both start minimal
 set -a; [ -f .env ] && . ./.env; set +a
 
 # ── FROZEN (audit/P2) ────────────────────────────────────────────────────────

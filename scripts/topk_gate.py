@@ -81,7 +81,7 @@ def _grid_from_predictions(
     return g
 
 
-def _window_values(g, fwd, mask, dates, d_idx, windows, k, h, cost_rt, min_days):
+def _window_values(g, fwd, mask, dates, d_idx, windows, k, h, cost_rt, min_days, which="top"):
     """Per-window mean of (top-K excess - cost) on stride-h dates."""
     out: dict[str, float] = {}
     for name, ts, te in windows:
@@ -94,7 +94,8 @@ def _window_values(g, fwd, mask, dates, d_idx, windows, k, h, cost_rt, min_days)
             if int(v.sum()) < k + 5:
                 continue
             idx = np.flatnonzero(v)
-            top = set(idx[np.argsort(g[i][idx])[-k:]].tolist())
+            order = np.argsort(g[i][idx])
+            top = set(idx[order[-k:] if which == "top" else order[:k]].tolist())
             excess = float(fwd[i][list(top)].mean() - fwd[i][idx].mean())
             turn = 1.0 if prev is None else len(top - prev) / k
             vals.append(excess - turn * cost_rt)
@@ -115,6 +116,11 @@ def main() -> None:
     ap.add_argument("--cost-bps", type=float, default=23.0, help="round-trip cost proxy, bps")
     ap.add_argument("--min-days", type=int, default=30)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--which", choices=("top", "bottom"), default="top",
+                    help="score the K highest-scored names (what a long-only book buys) or the "
+                         "K lowest (what it would short). If the signal's information lives in "
+                         "the bottom tail, a long-only top-K captures none of it -- the mechanism "
+                         "that reconciles a passing rank-IC gate with zero top-K return.")
     a = ap.parse_args()
 
     sdir = a.signal_root / a.signal
@@ -139,13 +145,13 @@ def main() -> None:
                 f"[{len(tens.dates)}x{len(tickers)}] grid populated")
     cost = a.cost_bps / 1e4
 
-    sig = _window_values(g, fwd, mask, tens.dates, d_idx, windows, a.k, h, cost, a.min_days)
+    sig = _window_values(g, fwd, mask, tens.dates, d_idx, windows, a.k, h, cost, a.min_days, a.which)
     rng_grids = []
     for s in range(a.n_null):
         noise = np.random.default_rng(a.seed + s).normal(0.0, 0.02, g.shape)
         rng_grids.append(np.where(np.isfinite(g), noise, np.nan))
-    nulls = [_window_values(n, fwd, mask, tens.dates, d_idx, windows, a.k, h, cost, a.min_days)
-             for n in rng_grids]
+    nulls = [_window_values(n, fwd, mask, tens.dates, d_idx, windows, a.k, h, cost, a.min_days,
+                            a.which) for n in rng_grids]
 
     names = [w for w in sig if all(w in n for n in nulls)]
     if len(names) < 3:
@@ -164,7 +170,8 @@ def main() -> None:
     verdict = "PASS" if (sv.mean() > 0 and t_sig > crit and pos >= 0.75 * len(names)
                          and diff.mean() > 0 and t_diff > crit) else "FAIL"
 
-    print(f"\nTop-{a.k} gate, {h}d, {a.signal}, cost proxy {a.cost_bps:.0f} bps round trip")
+    print(f"\n{a.which.capitalize()}-{a.k} gate, {h}d, {a.signal}, "
+          f"cost proxy {a.cost_bps:.0f} bps round trip")
     print(f"{'window':<8}{'signal':>12}{'null mean':>12}{'diff':>12}"
           f"{'null min':>10}{'null max':>10}")
     print("-" * 64)
@@ -177,17 +184,22 @@ def main() -> None:
           f"{pos}/{len(names)} windows > 0")
     print(f"  vs {a.n_null} random books: paired diff {diff.mean():+.5f}, t {t_diff:.2f}, "
           f"rank {rank}/{a.n_null + 1} on the window mean")
-    print(f"\n  TOP-K GATE: {verdict}")
+    if a.which == "bottom":
+        verdict = ("SHORT-LEG INFORMATION" if (sv.mean() < 0 and t_sig < -crit and diff.mean() < 0)
+                   else "no short-leg information")
+    print(f"\n  {a.which.upper()}-K GATE: {verdict}")
 
-    out = {"gate": "topk-forward-return/v1", "signal": a.signal, "k": a.k, "horizon": h,
+    out = {"gate": "topk-forward-return/v1", "which": a.which, "signal": a.signal, "k": a.k,
+           "horizon": h,
            "cost_bps_roundtrip": a.cost_bps, "n_windows": len(names), "windows": names,
            "signal_per_window": [float(x) for x in sv],
            "null_mean_per_window": [float(x) for x in nmean],
            "mean": float(sv.mean()), "t": t_sig, "t_crit": crit, "positive": pos,
            "diff_vs_null_mean": float(diff.mean()), "t_diff": t_diff, "rank_vs_null": rank,
            "n_null": a.n_null, "verdict": verdict}
-    (sdir / "topk_gate.json").write_text(json.dumps(out, indent=2))
-    logger.info(f"wrote {sdir/'topk_gate.json'}")
+    name = f"{a.which}k_gate.json"
+    (sdir / name).write_text(json.dumps(out, indent=2))
+    logger.info(f"wrote {sdir / name}")
 
 
 if __name__ == "__main__":
