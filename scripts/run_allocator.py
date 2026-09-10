@@ -406,30 +406,6 @@ def _read_gate(signal_dir: Path) -> tuple[str, str]:
     return verdict, detail
 
 
-def _null_signal(
-    shape: tuple[int, int], seed: int, support: np.ndarray | None = None
-) -> np.ndarray:
-    """Seeded white noise with the shape of a signal — the control arm.
-
-    Deliberately not "no trading": a null *signal* still ranks, still picks K
-    names and still pays the cadence's turnover bill, so it prices the cadence
-    with the selection held at zero information.
-
-    ``support`` masks the noise to the *real* signal's finite cells.  R4's
-    predictions are OOS-only and tradeable-only, so they are NaN over much of
-    the [T, N] grid (measured 28.4% populated against the real val panel).
-    Dense noise would hand the control arm a candidate set the arm it controls
-    never sees — a bigger, differently-shaped universe on every date — and the
-    comparison would price the universe, not the signal.
-    """
-    import numpy as np
-
-    out = np.random.default_rng(seed).normal(0.0, 0.02, shape)
-    if support is not None:
-        out = np.where(np.isfinite(support), out, np.nan)
-    return out
-
-
 def _run_baseline(
     env: PanelTradingEnv, seed: int
 ) -> tuple[list[float], list[float], dict[str, float]]:
@@ -715,7 +691,7 @@ def main(cfg: DictConfig) -> None:
             for nseed in null_seeds:
               # One grid per seed, cell-stable under panel growth, masked to the
               # real signal's support so the control faces the same candidates.
-              null_grid = stable_null_signal(dates, universe, nseed, support=r_hat_all[nhor])
+              null_grid = stablestable_null_signal(dates, universe, nseed, support=r_hat_all[nhor])
               for nrisk in risk_grid:
                 for nband in band_grid:
                       nrisk_name = str(nrisk.get("name", "none"))

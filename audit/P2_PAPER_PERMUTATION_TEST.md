@@ -71,8 +71,8 @@ any scored data existed:
 |---|---|
 | signal / volstop | +0.0165 |
 | equal_weight, monthly | +0.0127 |
-| null / volstop × 20 | mean **+0.0384** (run of record; pre-run estimate was +0.0393 — see note) |
-| **signal rank among 21** | **17** |
+| null / volstop × 20 | mean **+0.0423** (run of record after restart 1; earlier +0.0393 / +0.0384 — see notes) |
+| **signal rank among 21** | **16** |
 
 *Note, 2026-09-10 11:05 UTC.* The pre-run estimate was computed on a store
 built with 1,118 corporate actions. The first run of `paper_daily.sh`
@@ -158,7 +158,41 @@ outside the annual rule; rewriting any line of `record.jsonl`.
 ## Signatures
 
 Frozen: 2026-09-10.
-Warm-up baseline recorded: 2026-09-10, run `2026-09-10T11:05:43Z`
-(`audit/paper/record.jsonl` line 1, date 2026-09-09).
-First scored session: **pending** — the first NSE session after 2026-09-09,
-filled by the run that records it.
+## Restart 1 — 2026-09-10, on the first scored session
+
+**Cause.** The first scored run's determinism check reported **80 of 85 books
+diverged** from the previous snapshot, max 12.3% — the 80 random books; the
+four signal books and equal-weight reproduced to 1e-11. The random scores were
+one seeded draw over a `[T, N]` grid, and `T` grows by one every session, so
+every run re-rolled the random books' *entire history*: a different
+portfolio, band state and stop state each day. The warm-up rank moved 17 → 13
+with the signal untouched. That is not the persistent null this document
+describes, and the test would have been scoring the signal against 20
+different random books every day.
+
+**Fix.** `trader.allocator.null_signal.stable_null_signal`: each random score
+is a function of `(seed, ticker, calendar day since 2020-01-01)`, so appending
+a session, adding a ticker or moving the panel start leaves every other cell
+identical (unit-tested, commit `59dec15`). Historical `S4`/`S5` controls are
+unaffected — within one run the old grid was fixed.
+
+**Clock reset, per the abandonment clause (4).** `record.jsonl` (two lines:
+2026-09-09, 2026-09-10 under unstable nulls) archived as
+`record.jsonl.restart1`; snapshots archived as `snapshots.restart1`. The new
+record begins at **2026-09-10**, the first scored session, written by run
+`2026-09-10T12:39:20Z`. The signal book's NAV on 2026-09-10 matches the
+archived run to 3.3e-11 — its path never depended on the nulls.
+
+**What changed, what did not.** Warm-up baseline re-stated above under
+persistent nulls: signal +0.0165 (unchanged), null mean +0.0423, **rank 16 of
+21**. Day-1 scored rank 8 of 21 — one session, reported here because the
+record is public, and acted on by nobody. From the next run the determinism
+check compares against a snapshot whose random books are the same books, and
+"0 of 85 diverged" finally means what it says.
+
+## Signatures
+
+Frozen: 2026-09-10.
+Warm-up baseline recorded: 2026-09-10, run `2026-09-10T11:05:43Z`; re-stated
+after restart 1 by run `2026-09-10T12:39:20Z`.
+First scored session: **2026-09-10**, `audit/paper/record.jsonl` line 1.
