@@ -81,7 +81,8 @@ def _grid_from_predictions(
     return g
 
 
-def _window_values(g, fwd, mask, dates, d_idx, windows, k, h, cost_rt, min_days, which="top"):
+def _window_values(g, fwd, mask, dates, d_idx, windows, k, h, cost_rt, min_days,
+                   which="top"):
     """Per-window mean of (top-K excess - cost) on stride-h dates."""
     out: dict[str, float] = {}
     for name, ts, te in windows:
@@ -145,7 +146,8 @@ def main() -> None:
                 f"[{len(tens.dates)}x{len(tickers)}] grid populated")
     cost = a.cost_bps / 1e4
 
-    sig = _window_values(g, fwd, mask, tens.dates, d_idx, windows, a.k, h, cost, a.min_days, a.which)
+    sig = _window_values(g, fwd, mask, tens.dates, d_idx, windows, a.k, h, cost,
+        a.min_days, a.which)
     rng_grids = []
     for s in range(a.n_null):
         noise = np.random.default_rng(a.seed + s).normal(0.0, 0.02, g.shape)
