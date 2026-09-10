@@ -711,7 +711,11 @@ def main(cfg: DictConfig) -> None:
             # (audit/P2) needs a DISTRIBUTION of them. `null_seeds` lists the
             # seeds; default is the run seed alone, so nothing historical moves.
             null_seeds = [int(x) for x in alloc_cfg.get("null_seeds", [seed])]
+            from trader.allocator.null_signal import stable_null_signal  # noqa: PLC0415
             for nseed in null_seeds:
+              # One grid per seed, cell-stable under panel growth, masked to the
+              # real signal's support so the control faces the same candidates.
+              null_grid = stable_null_signal(dates, universe, nseed, support=r_hat_all[nhor])
               for nrisk in risk_grid:
                 for nband in band_grid:
                       nrisk_name = str(nrisk.get("name", "none"))
@@ -724,12 +728,7 @@ def main(cfg: DictConfig) -> None:
                       env = PanelTradingEnv(rebalance_schedule=schedule, **env_base)
                       n_navs, n_turns, n_diag = _run_allocator(
                           env,
-                          # Masked to the real signal's support so the control arm
-                          # and the arm it controls face the same candidate set.
-                          _null_signal(
-                              (len(dates), len(universe)), nseed,
-                              support=r_hat_all[nhor],
-                          ),
+                          null_grid,
                           vol_all,
                           AllocatorParams(
                               k=nk, no_trade_band=nband, vol_lookback=vol_lookback
