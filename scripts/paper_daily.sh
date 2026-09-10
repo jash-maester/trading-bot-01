@@ -30,7 +30,8 @@ NULL_SEEDS="[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]"
 # ─────────────────────────────────────────────────────────────────────────────
 PAPER=audit/paper; LATEST=$PAPER/latest; SNAPS=$PAPER/snapshots; RECORD=$PAPER/record.jsonl
 LOGS=logs/paper; mkdir -p "$LOGS" "$SNAPS"
-TODAY=$(date -u +%F); STATUS="$LOGS/$TODAY.status"; : > "$STATUS"
+TODAY=$(date -u +%F); STATUS="$LOGS/$TODAY.status"
+echo "=== run $(date -u +%FT%TZ) ===" >> "$STATUS"    # append: two attempts a day share the file
 stamp(){ echo "$(date -u +%FT%TZ) $*" | tee -a "$STATUS"; }
 fail(){ stamp "FAIL $*"; [ -n "${MW:-}" ] && kill "$MW" 2>/dev/null; exit 1; }
 maxdate(){ uv run python -c "import polars as pl;print(pl.scan_parquet('$1').select(pl.col('date').max()).collect().item())"; }
