@@ -106,3 +106,10 @@ data/panels_bhav/
 data/signal/r4_pit*/
 *.npy
 *.pt
+
+# Forward paper loop: replay outputs and daily snapshots are data (parquet is
+# ignored already; summary.json and any sidecar must not sneak in either).
+# audit/paper/record.jsonl is the append-only record and IS tracked.
+audit/paper/latest/
+audit/paper/snapshots/
+logs/

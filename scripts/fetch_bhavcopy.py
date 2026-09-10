@@ -34,7 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import polars as pl
@@ -53,6 +53,12 @@ def main() -> None:
     ap.add_argument("--flush-every", type=int, default=100)
     ap.add_argument("--sleep", type=float, default=0.4)
     ap.add_argument("--restart", action="store_true")
+    ap.add_argument("--calendar", choices=("panel", "weekdays"), default="panel",
+                    help="where sessions come from. 'panel': the reference panel's "
+                         "dates -- cannot see past its last date, so a forward loop "
+                         "finds nothing to fetch. 'weekdays': every weekday in "
+                         "[from, to]; a 404 is a holiday or an unpublished day and "
+                         "is never marked done, so the next run retries it.")
     args = ap.parse_args()
 
     from trader.data.sources.nse_bhavcopy import (
@@ -70,13 +76,26 @@ def main() -> None:
     )
 
     lo = date.fromisoformat(args.start)
-    hi = date.fromisoformat(args.end) if args.end else date(2100, 1, 1)
-    sessions = [
-        d for d in sorted(
-            pl.read_parquet(args.panel, columns=["date"])["date"].unique().to_list()
+    if args.calendar == "weekdays":
+        hi = date.fromisoformat(args.end) if args.end else date.today()
+        sessions, d = [], lo
+        while d <= hi:
+            if d.weekday() < 5:
+                sessions.append(d)
+            d += timedelta(days=1)
+    else:
+        hi = date.fromisoformat(args.end) if args.end else date(2100, 1, 1)
+        sessions = [
+            d for d in sorted(
+                pl.read_parquet(args.panel, columns=["date"])["date"].unique().to_list()
+            )
+            if lo <= d <= hi
+        ]
+    if not sessions:
+        raise SystemExit(
+            f"no sessions in [{lo}, {hi}] from calendar={args.calendar!r}; "
+            f"for a span past the reference panel use --calendar weekdays"
         )
-        if lo <= d <= hi
-    ]
     if args.limit:
         sessions = sessions[: args.limit]
     total = len(sessions)
