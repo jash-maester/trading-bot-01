@@ -92,6 +92,13 @@ def main() -> None:
             if lo <= d <= hi
         ]
     if not sessions:
+        if args.calendar == "weekdays":
+            # The forward loop asks for "the day after the last one I have"
+            # through today. When that is empty the store is already current --
+            # the normal state right after a successful run, or after a run that
+            # fetched the bhavcopy but found the index file not yet published.
+            logger.info(f"nothing to fetch: no weekday in [{lo}, {hi}]; bhavcopy is current")
+            return
         raise SystemExit(
             f"no sessions in [{lo}, {hi}] from calendar={args.calendar!r}; "
             f"for a span past the reference panel use --calendar weekdays"
