@@ -71,8 +71,20 @@ any scored data existed:
 |---|---|
 | signal / volstop | +0.0165 |
 | equal_weight, monthly | +0.0127 |
-| null / volstop × 20 | mean **+0.0393**, range [−0.0688, +0.0950] |
+| null / volstop × 20 | mean **+0.0384** (run of record; pre-run estimate was +0.0393 — see note) |
 | **signal rank among 21** | **17** |
+
+*Note, 2026-09-10 11:05 UTC.* The pre-run estimate was computed on a store
+built with 1,118 corporate actions. The first run of `paper_daily.sh`
+refreshed the feed to 1,119 and rebuilt the store, which re-adjusted three
+names with ex-dates inside the warm-up span — `FCL.NS` (×2.5, through
+2025-10-30), `BAJFINANCE.NS` (×0.4, through 2025-06-13), `NAZARA.NS` (×2.0,
+through 2025-09-25). Re-scaled history moves `dollar_volume_20`, which feeds
+eligibility, which moves the support the random books draw from: their mean
+shifted by −0.0009. The signal book never held those names, so its NAV was
+unchanged to 3.3e-11 relative. Rank unchanged. This is the retroactive
+re-adjustment mechanism the design anticipates, observed on the first run,
+before any scored data existed.
 
 **Rank 17 of 21.** On two years of unseen data the signal book sits in the
 bottom quartile of its own random distribution. That is the starting position
@@ -81,9 +93,15 @@ after it — and it is recorded here precisely so it cannot be forgotten if the
 forward result looks better.
 
 **Determinism reference:** signal/volstop NAV on 2026-09-09 =
-**1,016,641.125598** from 1,000,000.00. Every subsequent run's replay must
-reproduce this value on this date to 1e-6, or log why (a corporate action
-re-adjusting history is the expected reason; anything else is a defect).
+**1,016,641.125632** from 1,000,000.00, as computed by the run of record
+(`2026-09-10T11:05:43Z`, snapshot `audit/paper/snapshots/2026-09-09`). The
+pre-run estimate was 1,016,641.125598; the 3.4e-5 rupee gap is 3.3e-11
+relative — floating-point noise after the store rebuild described above.
+Tolerance is **relative 1e-9** (`paper_record.py`). Every subsequent run's
+replay is compared to the previous snapshot on every overlapping date; a
+divergence above tolerance is logged with the books affected. A corporate
+action re-adjusting history is the expected reason; anything else is a
+defect.
 
 ## Retraining — a fixed procedure
 
@@ -140,5 +158,7 @@ outside the annual rule; rewriting any line of `record.jsonl`.
 ## Signatures
 
 Frozen: 2026-09-10.
-Warm-up baseline recorded: 2026-09-10.
-First scored session: **pending** — filled by the run that records it.
+Warm-up baseline recorded: 2026-09-10, run `2026-09-10T11:05:43Z`
+(`audit/paper/record.jsonl` line 1, date 2026-09-09).
+First scored session: **pending** — the first NSE session after 2026-09-09,
+filled by the run that records it.

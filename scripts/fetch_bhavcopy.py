@@ -242,7 +242,14 @@ def main() -> None:
             "then be rebuilt on the same data and look fine."
         )
         raise SystemExit(1)
-    if failed > total * 0.25:
+    if args.calendar == "weekdays" and failed:
+        # Every weekday was requested, so a 404 is a holiday or a session NSE
+        # has not published yet. The forward loop asks for today at 21:00 IST
+        # and finds nothing on a day the archive is late: expected, not a
+        # defect. The caller reads the data's end date and decides.
+        logger.info(f"{failed:,} of {total:,} requested weekday(s) had no file "
+                    "(holiday or not yet published)")
+    elif failed > total * 0.25:
         logger.error(
             f"{failed:,} of {total:,} sessions ({failed / max(total, 1):.0%}) "
             "yielded no data. A span extension that silently adds nothing looks "

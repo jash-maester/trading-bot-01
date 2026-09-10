@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Forward paper loop, audit/P2_PAPER_PERMUTATION_TEST.md.
+       Two attempts a day: 21:00 IST, after NSE publishes the bhavcopy (usually
+       18:30-19:30 IST, occasionally later), and 07:30 IST next morning as the
+       catch-up. A run that finds no new session exits 0 in seconds, so the
+       second attempt is free when the first succeeded, and weekends are no-ops.
+       Install:   cp ops/com.jash.tradingbot.paper.plist ~/Library/LaunchAgents/
+                  launchctl load ~/Library/LaunchAgents/com.jash.tradingbot.paper.plist
+       Status:    launchctl list | grep tradingbot
+       Run now:   launchctl start com.jash.tradingbot.paper -->
+  <key>Label</key><string>com.jash.tradingbot.paper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/jash/storage/trading-bot-01/scripts/paper_daily.sh</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/jash/storage/trading-bot-01</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/Users/jash/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key><string>/Users/jash</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>30</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>/Users/jash/storage/trading-bot-01/logs/paper/launchd.out</string>
+  <key>StandardErrorPath</key><string>/Users/jash/storage/trading-bot-01/logs/paper/launchd.err</string>
+  <key>RunAtLoad</key><false/>
+</dict>
+</plist>

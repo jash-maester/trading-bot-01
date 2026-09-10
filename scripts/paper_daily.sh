@@ -34,7 +34,7 @@ TODAY=$(date -u +%F); STATUS="$LOGS/$TODAY.status"; : > "$STATUS"
 stamp(){ echo "$(date -u +%FT%TZ) $*" | tee -a "$STATUS"; }
 fail(){ stamp "FAIL $*"; [ -n "${MW:-}" ] && kill "$MW" 2>/dev/null; exit 1; }
 maxdate(){ uv run python -c "import polars as pl;print(pl.scan_parquet('$1').select(pl.col('date').max()).collect().item())"; }
-nextday(){ date -u -j -f %F "$1" -v+1d +%F 2>/dev/null || date -u -d "$1 + 1 day" +%F; }
+nextday(){ uv run python -c "from datetime import date,timedelta;print(date.fromisoformat('$1')+timedelta(days=1))"; }
 
 bash scripts/memwatch.sh "$LOGS/mem_$TODAY.csv" 15 & MW=$!
 stamp "start  signal=$SIGNAL_DIR  freeze=$FREEZE_DATE"
@@ -47,12 +47,25 @@ uv run python scripts/fetch_bhavcopy.py --calendar weekdays --from "$FROM" --to 
 uv run python scripts/fetch_nse_index.py --from "$FROM" --to "$TODAY" \
     > "$LOGS/index_$TODAY.log" 2>&1 || fail "fetch_nse_index"
 DATA_DATE=$(maxdate data/ext/bhavcopy.parquet)
-IDX_DATE=$(uv run python -c "from datetime import datetime;from trader.data.storage import OhlcvStore;print(OhlcvStore('data/kite_ohlcv').load(tickers=['^NSEI'],start=datetime(2026,1,1))['date'].max().date())")
+IDX_DATE=$(uv run python -c "from datetime import datetime;from trader.data.storage import OhlcvStore;print(str(OhlcvStore('data/kite_ohlcv').load(tickers=['^NSEI'],start=datetime(2026,1,1))['date'].max())[:10])")
 [ "$DATA_DATE" = "$IDX_DATE" ] || fail "bhavcopy ends $DATA_DATE but ^NSEI ends $IDX_DATE -- refusing to build a panel with a dead beta"
 if [ -d "$SNAPS/$DATA_DATE" ] && [ -z "${DRY:-}" ]; then
     stamp "no new session: $DATA_DATE already recorded"; kill "$MW"; exit 0
 fi
 stamp "data through $DATA_DATE (fetched from $FROM)"
+
+# ── 1b corporate actions: refresh this year, keep every other year ──────────
+# The fetcher never re-reads a cached year, and it writes exactly the years it
+# was asked for: requesting 2026 alone would REPLACE the file with 2026 only
+# and silently drop every historical split -- a fake -50% return at each one.
+# So: delete this year's cache, request the full range (old years come from
+# cache instantly), and refuse to continue if the result is implausibly small.
+YEAR=$(date -u +%Y)
+rm -f "data/raw/nse/corpactions/ca_${YEAR}.json"
+uv run python scripts/fetch_corporate_actions.py --from 2010 --to "$YEAR" \
+    > "$LOGS/ca_$TODAY.log" 2>&1 || stamp "WARN corporate-actions refresh failed; existing file stands"
+uv run python -c "import polars as pl,sys;n=pl.read_parquet('data/ext/corporate_actions.parquet').height;print(f'corporate actions: {n} rows');sys.exit(0 if n>=1000 else 1)" \
+    || fail "corporate_actions.parquet has fewer than 1000 rows -- refusing to back-adjust with a truncated file"
 
 # ── 2 store: rebuild beside, verify, swap ────────────────────────────────────
 rm -rf data/bhav_ohlcv_new
