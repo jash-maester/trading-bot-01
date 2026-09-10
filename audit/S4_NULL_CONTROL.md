@@ -69,7 +69,19 @@ Holdout 2025-04 → 2026-09, same matched pairs, K=30:
 | quarterly, volstop | **0.433** | −0.134 | 0.300 |
 
 Random wins **8 of 8** against the 13-window model and **5 of 7** against the
-8-window one — **13 of 15 overall**, a sign test at p ≈ 0.004.
+8-window one — **13 of 15 overall**.
+
+**Correction, 2026-09-10.** An earlier version of this line quoted a sign test
+at p ≈ 0.004. That was wrong: the 15 pairs are not independent. They share the
+same 15 months, the same random book (identical seed, identical null rows in
+both runs), and two signal artefacts from the same model family with
+overlapping training. The effective number of independent comparisons is
+nearer two or three than fifteen, at which a sign test says nothing. What the
+table supports is weaker and should be stated as such: **the point estimates
+went the wrong way, consistently across variants, on one 15-month draw.** That
+is evidence against the signal converting to portfolio value; it is not a
+refutation at any conventional level, and given the holdout's ±6–25pp
+intervals it could not have been.
 
 **This is the fourth reversal.** R5's four arms reversed perfectly; quarterly
 cadence vanished; low-vol lost to the model; and now the signal's advantage
@@ -108,9 +120,13 @@ which does not depend on picking an arm.
 
 ## Conclusion
 
-**There is no demonstrated signal-driven edge.** R4's IC is real and passes its
-own gate; it does not convert into portfolio value once concentration, the
-band and the stop are controlled for.
+**No signal-driven edge is demonstrated, and the holdout cannot demonstrate
+one either way.** R4's IC is real and passes its own gate. Whether it converts
+into portfolio value once concentration, the band and the stop are controlled
+for is *not established*: in sample it does, modestly (~+0.017/yr); on the
+holdout the point estimates go the other way, on a sample far too short to
+detect an effect of that size. Read "does not survive" throughout this document
+as "is not confirmed", which is what the evidence actually supports.
 
 What is left is a risk result, not an alpha result: a smaller, banded, stopped
 book has roughly half the drawdown of equal-weight and about the same return.
