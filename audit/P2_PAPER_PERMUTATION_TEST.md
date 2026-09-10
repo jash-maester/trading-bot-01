@@ -155,9 +155,6 @@ Any change to the Frozen table; adding, removing or re-choosing overlays;
 changing seeds; re-picking K, band or cadence; substituting the artefact
 outside the annual rule; rewriting any line of `record.jsonl`.
 
-## Signatures
-
-Frozen: 2026-09-10.
 ## Restart 1 — 2026-09-10, on the first scored session
 
 **Cause.** The first scored run's determinism check reported **80 of 85 books
