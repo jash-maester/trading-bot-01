@@ -55,7 +55,7 @@ instrument dump. `audit/S1_SURVIVORSHIP.md` has the numbers.
 | 4 | Holdout 2025–26 on PIT | **DONE — NOT CONFIRMED** | 0 of 57 arms clear; candidate ranking reverses vs in-sample. Mostly power (295 sessions), but no corroboration. |
 | 5 | Paper-trading parity | **DONE — PASS** | Backtest vs paper broker: max gap 0.15% in sample, 0.27% holdout, tolerance 5% (`scripts/broker_parity.py`) |
 | 6 | Live readiness | **BLOCKED — CLAUDE.md rule 1** | Predecessor R5 has not passed. Blocked until forward evidence changes that. |
-| 7 | Forward permutation test (`audit/P2`) | **LIVE — clock starts with the first session after 2026-09-09** | One signal book vs 20 random books, K=30 band 0.010 monthly volstop, Kite-free, on the Mac via launchd (21:00 + 07:30 IST). Run of record 2026-09-10T11:05:43Z; warm-up rank **17/21**; determinism 3.3e-11. Verdict at 48 months only. `scripts/paper_daily.sh`, `audit/paper/record.jsonl`. |
+| 7 | Forward permutation test (`audit/P2`) | **RECORDING, NOT YET UNATTENDED** — clock started 2026-09-10; every scheduled run since has been denied by macOS TCC (`ops/SCHEDULER.md`) and sessions are recorded by manual runs until Full Disk Access is granted to cron | One signal book vs 20 random books, K=30 band 0.010 monthly volstop, Kite-free, on the Mac via launchd (21:00 + 07:30 IST). Run of record 2026-09-10T11:05:43Z; warm-up rank **17/21**; determinism 3.3e-11. Verdict at 48 months only. `scripts/paper_daily.sh`, `audit/paper/record.jsonl`. |
 
 **NOTHING IS TRADEABLE YET.** Every number in the R4/R5 rows above was measured
 on the fixed 504-name universe, and Phase 1 showed roughly 12 points of a ~0.26

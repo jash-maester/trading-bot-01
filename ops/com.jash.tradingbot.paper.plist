@@ -7,11 +7,12 @@
        18:30-19:30 IST, occasionally later), and 07:30 IST next morning as the
        catch-up. A run that finds no new session exits 0 in seconds, so the
        second attempt is free when the first succeeded, and weekends are no-ops.
-       STATUS 2026-09-10: NOT the active scheduler. Both `launchctl load` and
-       `bootstrap` register it, but every spawn exits 78 EX_CONFIG from xpcproxy
-       before bash starts -- the identical command runs fine by hand under
-       `env -i`. Cause undiagnosed; cron (crontab -l) is authoritative and runs
-       the same two times. Kept so the fix, when found, is a one-line re-enable.
+       STATUS 2026-09-12: NOT the active scheduler, and the cause is known:
+       macOS TCC. xpcproxy cannot exec a script under ~/storage without Full
+       Disk Access, so every spawn exits 78 EX_CONFIG before bash starts; cron
+       hits the same wall as "Operation not permitted" on its log redirect.
+       See ops/SCHEDULER.md. Once /bin/bash has FDA, prefer this agent over
+       cron: launchd fires missed calendar runs on wake, cron does not.
        Install:   cp ops/com.jash.tradingbot.paper.plist ~/Library/LaunchAgents/
                   launchctl load ~/Library/LaunchAgents/com.jash.tradingbot.paper.plist
        Status:    launchctl list | grep tradingbot
