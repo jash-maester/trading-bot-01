@@ -142,3 +142,32 @@ names differently day to day (median rank corr 0.757), reproduces S6 exactly:
 nothing at the top, strong negative information at the bottom. The finding
 is a property of this model class and objective, not of one training run —
 which is also the motivation for E2.
+
+### E2 — FAIL, all three criteria; closed (2026-09-26 02:13 IST)
+
+`r4_pit_long_listnet`, identical to `r4_pit_long` except `loss=listnet`
+(`audit/topk_gate/r4_pit_long_listnet_top30.json`, `logs/retrain/E2.*`):
+
+| criterion | needed | result |
+|---|---|---|
+| top-30 vs 20 random books | paired t > 2.18 and rank ≤ 2 | t −1.02, **rank 21 of 21** ✗ |
+| rank-IC gate | PASS | **FAIL** — 20d −0.0035 (t −0.29), 5d −0.0098 ✗ |
+| top-30 net excess | > −0.00241 (MSE model) | −0.00573 ✗ |
+
+No holdout look (rule 3). No second loss function (rule 1).
+
+**Why — diagnosed, not tuned.** Daily returns are heavy-tailed, so a softmax
+over z-scored targets puts most of its mass on a few extreme winners, and the
+model learns to predict extremes — i.e. volatility:
+
+| | rank corr(prediction, realized_vol_60d) | (prediction, beta) | top-30 mean vol percentile |
+|---|---|---|---|
+| MSE `r4_pit_long` | −0.162 | −0.232 | 58% |
+| ListNet | **+0.140** | −0.137 | **71%** |
+
+The listwise loss turned the model into a high-volatility picker, and high
+volatility underperforms on this universe (the low-vol effect in `S3`). A
+top-heavy listwise loss on heavy-tailed daily returns is a volatility bet in
+disguise — worth knowing before anyone reaches for a ranking loss again. Any
+future attempt would have to neutralise volatility in the target or the
+book, which is a new hypothesis, not a retune of this one.
