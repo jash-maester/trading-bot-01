@@ -115,3 +115,14 @@ audit/paper/snapshots/
 logs/
 data/panels_forward/
 data/signal/paper_signal/
+
+# Local service state and backups (2026-09-25). MLflow and Postgres now run in
+# the compose stack with named volumes; these are the pre-compose native stores
+# and one-off dumps. None belong in git.
+mlruns/
+mlflow.db
+*.dump
+*.bundle
+
+# Archived paper-loop snapshots (restart 1 and later) are data, like snapshots/.
+audit/paper/snapshots*/

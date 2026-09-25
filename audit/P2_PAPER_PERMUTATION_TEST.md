@@ -170,7 +170,7 @@ different random books every day.
 **Fix.** `trader.allocator.null_signal.stable_null_signal`: each random score
 is a function of `(seed, ticker, calendar day since 2020-01-01)`, so appending
 a session, adding a ticker or moving the panel start leaves every other cell
-identical (unit-tested, commit `59dec15`). Historical `S4`/`S5` controls are
+identical (unit-tested, commit `66d5259`). Historical `S4`/`S5` controls are
 unaffected — within one run the old grid was fixed.
 
 **Clock reset, per the abandonment clause (4).** `record.jsonl` (two lines:

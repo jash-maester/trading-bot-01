@@ -6,6 +6,10 @@ name: trading-bot
 services:
   postgres:
     image: postgres:16-alpine
+    # Survive Docker Desktop restarts and Mac reboots: the forward paper loop
+    # and MLflow logging assume these are up, and on 2026-09-25 a missing
+    # MLflow server failed the loop's allocator stage.
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-trader}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trader}
@@ -23,6 +27,7 @@ services:
       start_period: 10s
 
   mlflow:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: mlflow.Dockerfile

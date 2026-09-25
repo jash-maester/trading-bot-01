@@ -6,7 +6,7 @@ verdict PASS. Logs in `audit/r4_v2/grid_*.log`. Every arm carries a
 null-signal control.
 
 These supersede `audit/R4_R5_RESULTS.md` entirely: the environment's execution
-rule changed under them (`cec3c3e`), so no figure there is comparable.
+rule changed under them (`592e175`), so no figure there is comparable.
 
 ---
 
