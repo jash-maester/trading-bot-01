@@ -1662,7 +1662,8 @@ def run_signal_walk_forward(
         import mlflow as _mlflow
 
         mlflow = _mlflow
-        mlflow.set_tracking_uri(f"http://localhost:{mlflow_port}")
+        from trader.tracking import tracking_uri  # noqa: PLC0415
+        mlflow.set_tracking_uri(tracking_uri(mlflow_port))
         mlflow.set_experiment(mlflow_experiment)
 
     results: list[WindowResult] = []

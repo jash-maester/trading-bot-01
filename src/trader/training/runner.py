@@ -307,7 +307,8 @@ def train_one_run(
     )
 
     # ── MLflow ────────────────────────────────────────────────────────────────
-    mlflow.set_tracking_uri(f"http://localhost:{cfg.get('mlflow_port', 5555)}")
+    from trader.tracking import tracking_uri  # noqa: PLC0415
+    mlflow.set_tracking_uri(tracking_uri(cfg.get('mlflow_port', 5555)))
     mlflow.set_experiment(mlflow_experiment)
 
     with mlflow.start_run(run_name=run_tag) as run:

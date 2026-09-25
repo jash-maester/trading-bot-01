@@ -621,7 +621,8 @@ def main(cfg: DictConfig) -> None:
                 f"Measuring it anyway — see P5, src/trader/allocator/sizing.py."
             )
 
-    mlflow.set_tracking_uri(f"http://localhost:{cfg.get('mlflow_port', 5555)}")
+    from trader.tracking import tracking_uri  # noqa: PLC0415
+    mlflow.set_tracking_uri(tracking_uri(cfg.get('mlflow_port', 5555)))
     mlflow.set_experiment("allocator")
 
     header = (

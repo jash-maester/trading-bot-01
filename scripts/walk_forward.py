@@ -355,7 +355,8 @@ def _log_summary_to_mlflow(
     metrics = _flatten_summary_metrics(summary)
 
     try:
-        mlflow.set_tracking_uri(f"http://localhost:{cfg.get('mlflow_port', 5555)}")
+        from trader.tracking import tracking_uri  # noqa: PLC0415
+        mlflow.set_tracking_uri(tracking_uri(cfg.get('mlflow_port', 5555)))
         mlflow.set_experiment(f"walk_forward_{model_name}")
         with mlflow.start_run(run_name=f"{model_name}_walk_summary"):
             mlflow.set_tags(

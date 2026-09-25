@@ -127,7 +127,8 @@ def main(cfg: DictConfig) -> None:
             ("random", RandomPolicy(seed=seed)),
         ]
 
-    mlflow.set_tracking_uri(f"http://localhost:{cfg.get('mlflow_port', 5555)}")
+    from trader.tracking import tracking_uri  # noqa: PLC0415
+    mlflow.set_tracking_uri(tracking_uri(cfg.get('mlflow_port', 5555)))
     mlflow.set_experiment("baselines")
     apply_tax = bool(cfg.get("apply_tax", False))
     logger.info(
