@@ -209,6 +209,34 @@ def aux_return_loss(
     return diff_sq.sum() / denom
 
 
+def listnet_loss(
+    pred: torch.Tensor,           # [B, N]
+    target: torch.Tensor,         # [B, N] cross-sectionally z-scored
+    tradeable_mask: torch.Tensor, # [B, N] bool / int8
+    temperature: float = 1.0,
+) -> torch.Tensor:
+    """Listwise (ListNet top-1) loss over each date's tradeable cross-section.
+
+    Cross-entropy between ``softmax(target / T)`` and ``softmax(pred)``,
+    restricted to tradeable names. Unlike masked MSE, which rewards fitting the
+    whole cross-section equally, the target distribution puts most of its mass
+    on the top of the ranking -- the names a long-only top-K book buys.
+    audit/S6 found R4's MSE-trained information concentrated in the bottom
+    tail; this is the pre-registered test of moving it (audit/R_OVERNIGHT E2).
+
+    Dates with fewer than two tradeable names contribute nothing.
+    """
+    m = tradeable_mask.bool()
+    neg = torch.finfo(pred.dtype).min
+    t_logp = torch.log_softmax((target / temperature).masked_fill(~m, neg), dim=1)
+    p_logp = torch.log_softmax(pred.masked_fill(~m, neg), dim=1)
+    ce = -(t_logp.exp() * p_logp).masked_fill(~m, 0.0).sum(dim=1)     # [B]
+    rows = m.sum(dim=1) >= 2
+    if not bool(rows.any()):
+        return pred.sum() * 0.0
+    return ce[rows].mean()
+
+
 class CriticHead(nn.Module):
     """Scalar value estimate from pooled embeddings and portfolio summary.
 

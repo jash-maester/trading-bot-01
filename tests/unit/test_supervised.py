@@ -902,3 +902,40 @@ def test_panel_tensors_dataclass_accessors() -> None:
         fwd_raw={1: np.zeros((1, 2), np.float32)},
     )
     assert (t.n_days, t.n_tickers) == (1, 2)
+
+
+def test_listnet_loss_prefers_the_correct_top() -> None:
+    """ListNet is lower when the prediction ranks the target's top name first."""
+    import torch
+
+    from trader.models.heads import listnet_loss
+
+    tgt = torch.tensor([[2.0, 0.0, -2.0, 0.5]])
+    m = torch.tensor([[True, True, True, False]])
+    good = listnet_loss(torch.tensor([[3.0, 0.0, -3.0, 99.0]]), tgt, m)
+    bad = listnet_loss(torch.tensor([[-3.0, 0.0, 3.0, 99.0]]), tgt, m)
+    assert torch.isfinite(good) and good < bad
+    # a masked name's prediction (99.0) must not matter
+    other = listnet_loss(torch.tensor([[3.0, 0.0, -3.0, -99.0]]), tgt, m)
+    torch.testing.assert_close(good, other)
+
+
+def test_listnet_loss_degenerate_rows_are_zero_not_nan() -> None:
+    import torch
+
+    from trader.models.heads import listnet_loss
+
+    p = torch.randn(2, 3, requires_grad=True)
+    m = torch.tensor([[True, False, False], [False, False, False]])
+    out = listnet_loss(p, torch.randn(2, 3), m)
+    out.backward()
+    assert out.item() == 0.0 and torch.isfinite(p.grad).all()
+
+
+def test_supervised_config_rejects_unknown_loss() -> None:
+    import pytest
+
+    from trader.training.supervised import SupervisedConfig
+
+    with pytest.raises(ValueError, match="loss must be"):
+        SupervisedConfig(loss="huber")

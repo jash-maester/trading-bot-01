@@ -74,3 +74,20 @@ loss function tonight.
 ## Results
 
 *(appended below as runs finish)*
+
+### E1 — FAIL (2026-09-25 ~23:00 IST)
+
+`scripts/topk_gate.py --signal r4_pit_long --which screen --k 30`
+(`audit/topk_gate/r4_pit_long_screen30.json`), 13 windows:
+
+| | per 20d, net of cost | t (crit 2.18) | |
+|---|---|---|---|
+| screen excess over the universe | **+0.00039** (9/13 windows > 0) | **1.04** | ✗ |
+| paired vs 20 random screens | +0.00086, **rank 1 of 21** | **2.43** | ✓ |
+
+Fails the pre-registered criterion, which required both. What it does show:
+the bottom-tail information is real — excluding the names R4 flags beats
+excluding random names of the same count, and ranks first of 21 — but the
+absolute gain (~0.5%/yr) is not distinguishable from zero after costs. The
+random screens lose −0.00047 per 20d to turnover alone, which is most of the
+edge. Closed; no alternative K or cost assumption is tried.

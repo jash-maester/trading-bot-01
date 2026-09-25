@@ -47,7 +47,7 @@ import torch
 from loguru import logger
 
 from trader.data.feature_stats import compute_feature_stats, save_stats, stats_to_tensors
-from trader.models.heads import aux_return_loss
+from trader.models.heads import aux_return_loss, listnet_loss
 from trader.models.signal import (
     DEFAULT_HORIZONS,
     SignalConfig,
@@ -1116,6 +1116,9 @@ class SupervisedConfig:
     n_boot: int = 1000
     seed: int = 42
     device: str = "auto"
+    # "mse" (historical) or "listnet" -- see heads.listnet_loss and
+    # audit/R_OVERNIGHT_2026-09-25.md E2.
+    loss: str = "mse"
     # None keeps the historical behaviour: one global (mean, std) per feature.
     # "rank" normalises every feature within each date's tradeable
     # cross-section instead — see `cross_sectional_normalise`.
@@ -1128,6 +1131,8 @@ class SupervisedConfig:
             )
         if self.lookback < 1:
             raise ValueError("lookback must be >= 1")
+        if self.loss not in ("mse", "listnet"):
+            raise ValueError(f"loss must be 'mse' or 'listnet', got {self.loss!r}")
         if self.xs_normalise is not None and self.xs_normalise not in XS_NORMALISE_MODES:
             raise ValueError(
                 f"xs_normalise must be None or one of {XS_NORMALISE_MODES}, "
@@ -1313,7 +1318,8 @@ def train_signal_window(
             loss = torch.zeros((), device=device)
             for h in cfg.horizons:
                 valid = (lab_t[h][b] & mask_t[b]).to(device)
-                loss = loss + aux_return_loss(
+                loss_fn = listnet_loss if cfg.loss == "listnet" else aux_return_loss
+                loss = loss + loss_fn(
                     preds[horizon_key(h)], tgt_t[h][b].to(device), valid
                 )
             opt.zero_grad(set_to_none=True)

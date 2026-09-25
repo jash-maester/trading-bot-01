@@ -96,9 +96,13 @@ def _window_values(g, fwd, mask, dates, d_idx, windows, k, h, cost_rt, min_days,
                 continue
             idx = np.flatnonzero(v)
             order = np.argsort(g[i][idx])
-            top = set(idx[order[-k:] if which == "top" else order[:k]].tolist())
+            if which == "screen":
+                # everything EXCEPT the K lowest-scored names (audit/R_OVERNIGHT E1)
+                top = set(idx[order[k:]].tolist())
+            else:
+                top = set(idx[order[-k:] if which == "top" else order[:k]].tolist())
             excess = float(fwd[i][list(top)].mean() - fwd[i][idx].mean())
-            turn = 1.0 if prev is None else len(top - prev) / k
+            turn = 1.0 if prev is None else len(top - prev) / len(top)
             vals.append(excess - turn * cost_rt)
             prev = top
         if len(vals) >= 3:
@@ -117,7 +121,7 @@ def main() -> None:
     ap.add_argument("--cost-bps", type=float, default=23.0, help="round-trip cost proxy, bps")
     ap.add_argument("--min-days", type=int, default=30)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--which", choices=("top", "bottom"), default="top",
+    ap.add_argument("--which", choices=("top", "bottom", "screen"), default="top",
                     help="score the K highest-scored names (what a long-only book buys) or the "
                          "K lowest (what it would short). If the signal's information lives in "
                          "the bottom tail, a long-only top-K captures none of it -- the mechanism "
@@ -186,6 +190,10 @@ def main() -> None:
           f"{pos}/{len(names)} windows > 0")
     print(f"  vs {a.n_null} random books: paired diff {diff.mean():+.5f}, t {t_diff:.2f}, "
           f"rank {rank}/{a.n_null + 1} on the window mean")
+    if a.which == "screen":
+        # E1 pass criteria, fixed in audit/R_OVERNIGHT_2026-09-25.md before the run.
+        verdict = ("PASS" if (sv.mean() > 0 and t_sig > crit and diff.mean() > 0
+                              and t_diff > crit) else "FAIL")
     if a.which == "bottom":
         verdict = ("SHORT-LEG INFORMATION" if (sv.mean() < 0 and t_sig < -crit and diff.mean() < 0)
                    else "no short-leg information")
