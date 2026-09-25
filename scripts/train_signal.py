@@ -195,6 +195,19 @@ def main(cfg: DictConfig) -> None:
         horizons=horizons,
     )
     max_steps = cfg.train.get("max_steps", None)
+    # Opt-in: TRADER_MATMUL_PRECISION=medium lets MPS/CUDA use reduced-precision
+    # internal accumulation for fp32 matmuls (TF32-like). Default "highest" is
+    # the historical behaviour. The CUDA reference runs had cudnn.allow_tf32 on
+    # by default for their convolutions, so "medium" is not a departure from
+    # how r4_pit_long was trained -- but it changes numerics, so it is recorded
+    # in the run and never switched on silently.
+    import os as _os  # noqa: PLC0415
+
+    import torch as _torch  # noqa: PLC0415
+    _prec = _os.environ.get("TRADER_MATMUL_PRECISION", "highest")
+    _torch.set_float32_matmul_precision(_prec)
+    logger.info(f"float32 matmul precision: {_prec}; "
+                f"TCN forward: {'full' if _os.environ.get('TRADER_TCN_FULL') == '1' else 'pruned'}")
     train_cfg = SupervisedConfig(
         lookback=int(cfg.train.lookback),
         horizons=horizons,

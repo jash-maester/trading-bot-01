@@ -1,6 +1,8 @@
 """Per-ticker time-series encoders and cross-stock attention."""
 from __future__ import annotations
 
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -252,6 +254,47 @@ class _TCNBlock(nn.Module):
         return out + res  # type: ignore[no-any-return]
 
 
+def _live_positions(
+    length: int, kernel: int, dilations: list[int]
+) -> list[tuple[list[int], list[int], list[int]]]:
+    """Timesteps each block must compute for the LAST output position.
+
+    The encoder returns only ``h[:, :, -1]``. Walking backwards through the
+    causal dilated convolutions, most timesteps can never reach that output:
+    with lookback 60, kernel 3 and dilations 1/2/4/8, 332 of the 480 conv
+    output positions are dead work. Returns, per block in forward order,
+    ``(input positions, conv1 output positions, block output positions)``.
+    """
+    need = [length - 1]
+    plan: list[tuple[list[int], list[int], list[int]]] = []
+    for d in reversed(dilations):
+        out = sorted(set(need))
+        mid = sorted({t - j * d for t in out for j in range(kernel) if t - j * d >= 0})
+        inp = sorted({t - j * d for t in mid for j in range(kernel) if t - j * d >= 0} | set(out))
+        plan.append((inp, mid, out))
+        need = inp
+    return plan[::-1]
+
+
+def _conv_at(
+    a: torch.Tensor, taps: torch.Tensor, conv: nn.Conv1d
+) -> torch.Tensor:
+    """A causal dilated Conv1d evaluated only at chosen positions.
+
+    ``a`` is channels-last ``[BN, S, Cin]`` over the source positions; ``taps``
+    is ``[D, k]`` indices into ``[zero-row] + a`` (0 = the causal zero pad).
+    Uses the Conv1d's own weight and bias: one im2col gather and one GEMM,
+    which is how MPS executes Conv1d internally -- bit-identical to it at the
+    positions computed (verified in tests/unit/test_tcn_pruned.py).
+    """
+    w = conv.weight                                    # [Cout, Cin, k]
+    k = w.shape[2]
+    ae = torch.cat([a.new_zeros(a.shape[0], 1, a.shape[2]), a], dim=1)
+    cols = ae[:, taps.reshape(-1), :].reshape(a.shape[0], taps.shape[0], k * a.shape[2])
+    out = cols @ w.permute(2, 1, 0).reshape(k * w.shape[1], w.shape[0])
+    return out + conv.bias if conv.bias is not None else out
+
+
 class TCNEncoder(nn.Module):
     """Temporal Convolutional Network encoder for per-ticker feature windows.
 
@@ -289,11 +332,60 @@ class TCNEncoder(nn.Module):
             in_ch = out_ch
         self.blocks = nn.Sequential(*blocks)
         self.out_dim = in_ch
+        self._kernel = kernel_size
+        self._dilations = dilations
+        # Pruned forward (see `_live_positions`): same parameters, same
+        # state-dict keys, same outputs at the last timestep. Off only to
+        # verify it -- set TRADER_TCN_FULL=1.
+        self.prune_to_last = os.environ.get("TRADER_TCN_FULL", "") != "1"
+        self._plans: dict[tuple[int, str], tuple[torch.Tensor, list[dict[str, torch.Tensor]]]] = {}
+
+    def _plan(
+        self, length: int, device: torch.device
+    ) -> tuple[torch.Tensor, list[dict[str, torch.Tensor]]]:
+        """Cached index tensors for the pruned forward, per (lookback, device)."""
+        key = (length, str(device))
+        if key not in self._plans:
+            k = self._kernel
+            live = _live_positions(length, k, self._dilations)
+
+            def taps(dst: list[int], src: list[int], d: int) -> torch.Tensor:
+                at = {p: i + 1 for i, p in enumerate(src)}
+                rows = [[at.get(t - (k - 1 - j) * d, 0) for j in range(k)] for t in dst]
+                return torch.tensor(rows, dtype=torch.long, device=device)
+
+            blocks = [
+                {
+                    "t1": taps(mid, inp, d),
+                    "t2": taps(out, mid, d),
+                    "res": torch.tensor([inp.index(p) for p in out], dtype=torch.long,
+                                        device=device),
+                }
+                for (inp, mid, out), d in zip(live, self._dilations, strict=True)
+            ]
+            first = torch.tensor(live[0][0], dtype=torch.long, device=device)
+            self._plans[key] = (first, blocks)
+        return self._plans[key]
+
+    def _forward_pruned(self, x: torch.Tensor) -> torch.Tensor:
+        b, n, length, nf = x.shape
+        first, plan = self._plan(length, x.device)
+        h = x.reshape(b * n, length, nf)[:, first, :]    # channels-last, live steps only
+        for blk, p in zip(self.blocks, plan, strict=True):
+            res = h[:, p["res"], :]
+            if blk.downsample is not None:
+                res = res @ blk.downsample.weight[:, :, 0].T + blk.downsample.bias
+            o = blk.drop(F.gelu(blk.norm1(_conv_at(h, p["t1"], blk.conv1.conv))))
+            o = blk.drop(F.gelu(blk.norm2(_conv_at(o, p["t2"], blk.conv2.conv))))
+            h = o + res
+        return h[:, -1, :].reshape(b, n, -1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: [B, N, L, F]
         if self.input_norm is not None:
             x = self.input_norm(x)
+        if self.prune_to_last:
+            return self._forward_pruned(x)
         B, N, L, F = x.shape
         h = x.reshape(B * N, L, F).permute(0, 2, 1)   # [B*N, F, L]
         h = self.blocks(h)                              # [B*N, d, L]

@@ -150,7 +150,21 @@ def test_non_contiguous_warmup_marks_are_refused() -> None:
         build_panel_tensors(scattered, tickers, list(FEATURE_COLS), horizons=(5,))
 
 
-def _predict_first_oos(test_df: pl.DataFrame, tickers: list[str]) -> np.ndarray:
+def _frozen_stats(df: pl.DataFrame) -> tuple[object, object]:
+    """Normaliser stats computed ONCE and reused, as production freezes them
+    from the train split. Recomputing them from each (bumped) panel would let a
+    bump on any day move every prediction through the mean/std."""
+    import torch
+
+    tr = df.filter(pl.col("is_tradeable"))
+    mean = torch.tensor([float(tr[c].mean()) for c in FEATURE_COLS])
+    std = torch.tensor([max(float(tr[c].std()), 1e-8) for c in FEATURE_COLS])
+    return mean, std
+
+
+def _predict_first_oos(
+    test_df: pl.DataFrame, tickers: list[str], stats: tuple[object, object]
+) -> np.ndarray:
     """Prediction vector on the first predictable date, from a fixed model."""
     import torch
 
@@ -158,12 +172,21 @@ def _predict_first_oos(test_df: pl.DataFrame, tickers: list[str]) -> np.ndarray:
     from trader.training.supervised import _predictable_days, predict_panel
 
     t = build_panel_tensors(test_df, tickers, list(FEATURE_COLS), horizons=(5,))
+    # WITH the feature normaliser production uses. Without it, raw
+    # dollar_volume_20 (~1e9) dominates every LayerNorm and a +5 bump on
+    # z_close_20 is ~5e-9 relative -- below float32 precision -- so this test
+    # passed for months on a 2.3e-10 rounding difference while the context's
+    # real effect was zero. Found 2026-09-25 when the pruned TCN forward, which
+    # is bit-stable, stopped producing that noise.
+    mean, std = stats
     torch.manual_seed(0)
     model = SignalModel(
         SignalConfig(
             in_features=len(FEATURE_COLS), embed_dim=8, num_channels=[8, 8],
             kernel_size=3, dropout=0.0, head_hidden=4, horizons=(5,),
-        )
+        ),
+        feat_mean=mean,
+        feat_std=std,
     )
     model.eval()
     preds = predict_panel(
@@ -190,13 +213,16 @@ def test_a_warmup_row_actually_feeds_the_first_prediction(tmp_path: Path) -> Non
         test_df.filter(pl.col("is_warmup"))["date"].unique().to_list()
     )
 
-    base = _predict_first_oos(test_df, tickers)
-    bumped = _predict_first_oos(_bump(test_df, warm_dates[-1]), tickers)
-    # Exact, not allclose: the shift from one perturbed day through an untrained
-    # encoder is small, and a tolerance would let a genuinely inert context pass.
-    assert not np.array_equal(base, bumped, equal_nan=True), (
-        "perturbing the last warm-up day left the first OOS prediction "
-        "unchanged — the context is not reaching the encoder"
+    stats = _frozen_stats(test_df)
+    base = _predict_first_oos(test_df, tickers, stats)
+    bumped = _predict_first_oos(_bump(test_df, warm_dates[-1]), tickers, stats)
+    # A real effect, not a rounding one: exact inequality let a 2.3e-10 float
+    # difference pass for an inert context. 1e-6 is ~4 orders above float32
+    # noise at these magnitudes and ~3 below the measured effect.
+    shift = float(np.nanmax(np.abs(base - bumped)))
+    assert shift > 1e-6, (
+        f"perturbing the last warm-up day moved the first OOS prediction by only "
+        f"{shift:.2e} — the context is not reaching the encoder"
     )
 
 
@@ -210,10 +236,11 @@ def test_the_future_still_cannot_change_a_past_prediction(tmp_path: Path) -> Non
     dates = t.dates
     first = int(_predictable_days(t, _LOOKBACK).min())
 
-    base = _predict_first_oos(test_df, tickers)
+    stats = _frozen_stats(test_df)
+    base = _predict_first_oos(test_df, tickers, stats)
     for offset in (1, 5, 20):
         future = dates[first + offset]
-        moved = _predict_first_oos(_bump(test_df, future), tickers)
+        moved = _predict_first_oos(_bump(test_df, future), tickers, stats)
         # equal_nan: untradeable names carry NaN, and NaN != NaN would make this
         # assertion fail on an unchanged vector.
         assert np.array_equal(base, moved, equal_nan=True), (

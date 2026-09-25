@@ -20,6 +20,11 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"   # scheduler-independent: cron and launchd both start minimal
 set -a; [ -f .env ] && . ./.env; set +a
+# Score with the FULL TCN forward, the path this record was started under
+# (restart 2, 2026-09-25). The pruned forward agrees to <= 3.4e-7 and gives the
+# identical top-30 on all 296 holdout dates, but P2 is a fixed procedure and the
+# pruning exists to speed up TRAINING, not to touch the record.
+export TRADER_TCN_FULL=1
 
 # ── FROZEN (audit/P2) ────────────────────────────────────────────────────────
 SIGNAL_DIR="${SIGNAL_DIR:-data/signal/r4_pit_long}"   # artefact in force; annual refit replaces it

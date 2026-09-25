@@ -4,10 +4,14 @@
 # box is gone. Writes to a SEPARATE tag; the paper loop keeps using
 # r4_pit_long, which P2 freezes until the refit.
 #
-#   bash scripts/retrain_parity.sh          # ~4.2-4.4 h, MPS pinned throughout
+#   bash scripts/retrain_parity.sh                                  # ~1.9 h
+#   TRADER_MATMUL_PRECISION=medium bash scripts/retrain_parity.sh   # ~1.6 h
 #
-# ETA from a probe on 2026-09-25: 60 steps + one validation pass in 83 s on MPS,
-# i.e. ~1.1-1.2 s/step; the CUDA run was 123 epochs / 12,022 steps.
+# ETA from probes on 2026-09-25 (60 steps + one validation pass, W1, MPS):
+#   original encoder      83.2 s  -> ~4.3 h for the 123-epoch run
+#   pruned TCN forward    36.4 s  -> ~1.9 h   (exact maths; the default)
+#   pruned + "medium"     30.4 s  -> ~1.6 h   (TF32-like fp32 matmuls)
+# The CUDA reference was 123 epochs / 12,022 steps.
 #
 # Parity is STATISTICAL, not bit-exact: MPS and CUDA float arithmetic differ.
 # The comparison (scripts/compare_signal_artefacts.py) checks the gate verdict,
@@ -31,7 +35,7 @@ PANEL_START=$(uv run python -c "import polars as pl;print(pl.read_parquet('data/
 
 bash scripts/memwatch.sh "$LOG/mem_${TAG}_${STAMP}.csv" 30 & MW=$!
 trap 'kill $MW 2>/dev/null' EXIT
-stamp "start tag=$TAG ref=$REF panel_start=$PANEL_START (panel sha verified)"
+stamp "start tag=$TAG ref=$REF panel_start=$PANEL_START (panel sha verified) tcn=${TRADER_TCN_FULL:+full}${TRADER_TCN_FULL:-pruned} matmul=${TRADER_MATMUL_PRECISION:-highest}"
 
 rm -rf "data/signal/$TAG"
 # Identical to scripts/pit_extend_span.sh stage 4, except the tag.
