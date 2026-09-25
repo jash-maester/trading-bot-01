@@ -91,3 +91,38 @@ excluding random names of the same count, and ranks first of 21 — but the
 absolute gain (~0.5%/yr) is not distinguishable from zero after costs. The
 random screens lose −0.00047 per 20d to turnover alone, which is most of the
 edge. Closed; no alternative K or cost assumption is tried.
+
+### E0 — NOT AT PARITY (2026-09-26 00:00 IST)
+
+MPS retrain `r4_pit_long_mps`, 74 min (pruned TCN, fp32 highest; panel
+SHA256 verified identical to the CUDA run's). Report:
+`logs/retrain/r4_pit_long_mps_20260925T1715Z.parity.txt`.
+
+| criterion | CUDA `r4_pit_long` | MPS `r4_pit_long_mps` | |
+|---|---|---|---|
+| gate verdict | PASS | PASS | ✓ |
+| 20d mean IC (window t, positive) | +0.0280 (4.19, 12/13) | +0.0252 (2.56, 10/13) | Δ −0.0028 < SE 0.0067 ✓ |
+| 5d mean IC (window t) | +0.0240 (6.43) | +0.0217 (4.29) | |
+| median per-date rank corr, r_hat_20d | — | **0.757** (p10 0.413, p90 0.922) | < 0.8 ✗ |
+| top-30 overlap per date | — | median 57% | |
+
+Per-window 20d IC correlates +0.895 across the 13 windows: statistically the
+same signal. On any given day the two rank names differently. Verdict as
+pre-registered: **NOT AT PARITY.**
+
+### E0b — pre-registered 2026-09-26 00:05, before running
+
+The 0.8 bar in E0 was set with no reference for how much two ordinary
+retrains disagree. E0b measures that floor: identical to E0 (MPS, pruned,
+fp32 highest, same panel/config/windows) except **`seed=43`** instead of 42.
+Tag `r4_pit_long_mps_s43`. Queued after E2.
+
+**Reading, fixed now:** compare `r4_pit_long_mps` vs `r4_pit_long_mps_s43`.
+- If their median per-date rank corr is **≤ 0.807** (within 0.05 of E0's
+  0.757), the CUDA-vs-MPS difference is the size of ordinary seed-to-seed
+  variation: the platform is not the cause, and the 0.8 bar was miscalibrated.
+- If it is **≥ 0.85**, retrains on one platform agree much more closely than
+  across platforms, and the platform itself matters for the 2027 refit.
+- In between: inconclusive, reported as such.
+
+E0's verdict is not changed by E0b under any outcome.
