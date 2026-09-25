@@ -1,6 +1,8 @@
 # Scheduling the paper loop on the Mac — what actually blocks it
 
-**Status 2026-09-12: the loop is NOT running unattended.** Both schedulers fire
+**RESOLVED 2026-09-25: the loop runs in the compose service `paper`** (docker/paper.Dockerfile, supercronic, IST). Host cron entries removed. Docker Desktop reads the USB volume; cron never could. The history below is kept as the diagnosis.
+
+**Status 2026-09-12 (historical): the loop was NOT running unattended.** Both schedulers fire
 and both are denied by macOS TCC before the script starts.
 
 ## Evidence

@@ -43,4 +43,7 @@ ENV PYTHONPATH=/app/src
 
 WORKDIR /app
 COPY docker/paper.crontab /etc/paper.crontab
-CMD ["supercronic", "-passthrough-logs", "/etc/paper.crontab"]
+# Absolute path: as PID 1 supercronic forks a copy of itself to reap zombies by
+# re-exec'ing argv[0]; a bare "supercronic" crash-looped with "Failed to fork
+# exec: no such file or directory".
+CMD ["/usr/local/bin/supercronic", "-passthrough-logs", "/etc/paper.crontab"]

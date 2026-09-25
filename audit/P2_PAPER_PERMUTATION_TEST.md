@@ -187,9 +187,39 @@ record is public, and acted on by nobody. From the next run the determinism
 check compares against a snapshot whose random books are the same books, and
 "0 of 85 diverged" finally means what it says.
 
+## Restart 2 — 2026-09-25, executing platform moved to Docker
+
+**Why.** The Windows training box was lost, and macOS cron never executed a
+single scheduled run: `~/storage` is a USB volume, TCC denies cron access to
+removable volumes, and all 28 firings from 09-10 to 09-25 failed with
+"Operation not permitted" (`ops/SCHEDULER.md`). The loop now runs in the
+compose service `paper` (supercronic, 21:00 and 07:30 IST).
+
+**Why a restart and not a note.** A DRY run in the container matched the host
+exactly on the signal books (3e-11) but NOT on 31 of the 80 random books, by up
+to 3.5%. Located: the store and the allocator are bit-identical across macOS
+and Linux; the feature panel differs in the last bit (`realized_vol_20d` by
+<= 4.8e-15 on 19k rows, `log`/`sum` implementations), and the random books
+amplify that through discrete decisions over 516 days. Each platform is
+deterministic with itself. Continuing the host record from a container would
+have swapped 31 random books mid-test. Chosen instead (by the user, option B):
+restart, so the whole record comes from one platform.
+
+**What was discarded.** `record.jsonl` with 11 sessions (09-10 .. 09-25) on the
+host platform, archived as `record.jsonl.restart2` with its snapshots.
+
+**New baseline, container platform**, run `2026-09-25T15:10:47Z`: warm-up
+signal +0.0165 (unchanged), random-book mean +0.0426, **rank 19 of 21**.
+Record line 1 = **2026-09-25**. Signal NAV 999,814.459569.
+
+**Consequence for the refit.** The annual refit trains on the host (MPS; Docker
+on macOS has no GPU) and the loop scores on Linux CPU. Scoring was verified
+identical across the two to 3e-11, so that split is safe.
+
 ## Signatures
 
 Frozen: 2026-09-10.
 Warm-up baseline recorded: 2026-09-10, run `2026-09-10T11:05:43Z`; re-stated
 after restart 1 by run `2026-09-10T12:39:20Z`.
-First scored session: **2026-09-10**, `audit/paper/record.jsonl` line 1.
+First scored session: **2026-09-10** (restart 1); record restarted at
+**2026-09-25** on the container platform (restart 2), `audit/paper/record.jsonl` line 1.
