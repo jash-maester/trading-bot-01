@@ -75,13 +75,19 @@ def main() -> None:
 
     pa, pb = _pred(a.a, "a"), _pred(a.b, "b")
     tr = pl.scan_parquet(a.panel).select("date", "ticker", "is_tradeable").collect()
-    j = pa.join(pb, on=["date", "ticker"]).join(tr, on=["date", "ticker"]).filter(pl.col("is_tradeable"))
-    rc = (j.group_by("date").agg(pl.corr("a", "b", method="spearman").alias("rc"), pl.len().alias("n"))
-            .filter(pl.col("n") >= 10))["rc"].drop_nulls().to_numpy()
+    j = (pa.join(pb, on=["date", "ticker"])
+           .join(tr, on=["date", "ticker"])
+           .filter(pl.col("is_tradeable")))
+    per_date = j.group_by("date").agg(
+        pl.corr("a", "b", method="spearman").alias("rc"), pl.len().alias("n"))
+    rc = per_date.filter(pl.col("n") >= 10)["rc"].drop_nulls().to_numpy()
     k = a.k
-    top = (j.with_columns(pl.col("a").rank("ordinal", descending=True).over("date").alias("ra"),
-                          pl.col("b").rank("ordinal", descending=True).over("date").alias("rb"))
-             .group_by("date").agg(((pl.col("ra") <= k) & (pl.col("rb") <= k)).sum().alias("both")))
+    ranked = j.with_columns(
+        pl.col("a").rank("ordinal", descending=True).over("date").alias("ra"),
+        pl.col("b").rank("ordinal", descending=True).over("date").alias("rb"),
+    )
+    top = ranked.group_by("date").agg(
+        ((pl.col("ra") <= k) & (pl.col("rb") <= k)).sum().alias("both"))
     ov = (top["both"].to_numpy() / k)
     med = float(np.median(rc))
     ok &= med >= 0.8
