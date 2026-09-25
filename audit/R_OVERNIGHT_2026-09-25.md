@@ -171,3 +171,63 @@ top-heavy listwise loss on heavy-tailed daily returns is a volatility bet in
 disguise — worth knowing before anyone reaches for a ranking loss again. Any
 future attempt would have to neutralise volatility in the target or the
 book, which is a new hypothesis, not a retune of this one.
+
+### E0b — the platform is not the cause; the 0.8 bar was miscalibrated (03:18 IST)
+
+`r4_pit_long_mps` (seed 42) vs `r4_pit_long_mps_s43` (seed 43), both MPS,
+identical otherwise (`logs/retrain/E0b.seed_floor.txt`):
+
+| | seed 42 vs 43, same platform | CUDA vs MPS (E0) |
+|---|---|---|
+| gate verdicts | PASS / PASS | PASS / PASS |
+| 20d mean IC | +0.0252 / +0.0223 (Δ −0.0029, SE 0.0098) | +0.0280 / +0.0252 |
+| per-window IC corr | +0.565 | +0.895 |
+| **median per-date rank corr** | **0.603** | 0.757 |
+| top-30 overlap | 46% | 56% |
+
+0.603 ≤ 0.807, so by the rule fixed before the run: **the CUDA-vs-MPS
+difference is within ordinary seed-to-seed variation — changing the seed
+moves this model more than changing the platform does.** The Mac is fit for
+the 2027 refit. E0's pre-registered verdict (NOT AT PARITY) stands as
+written; the lesson is that a rank-correlation bar of 0.8 is above what this
+model reproduces even against itself, and a future parity criterion should be
+set against a measured seed floor.
+
+**A prediction that failed.** If the top of the ranking carries no
+information (S6), which names land in the top 30 might be mostly seed noise
+while the informative bottom stays stable. Not supported: both tails are about
+equally stable (seed: top 46% / bottom 50%; platform: 56% / 61%; chance 12%).
+The model picks both tails consistently; the bottom's picks go on to
+underperform and the top's do not outperform. The asymmetry is in the
+returns, not in selection stability.
+
+**Consequence for P2, recorded now.** The annual refit (first 2027-04-01)
+will replace roughly half the book on day one regardless of platform — top-30
+overlap between two faithful retrains is ~46–56%. That is expected behaviour
+of the fixed procedure, not a defect, and should not be read as one at the
+review.
+
+## Morning summary (03:20 IST)
+
+| | result | verdict |
+|---|---|---|
+| **E0** MPS parity retrain | gate PASS, IC within SE, rank corr 0.757 | NOT AT PARITY as pre-registered; **explained by E0b** |
+| **E0b** seed floor | same-platform seed change: rank corr 0.603 | **platform is not the cause**; Mac fit for the refit |
+| E0 follow-up | Mac model: top-30 rank 9/21, bottom-30 t −3.07, rank 21/21 | **S6 replicates** on an independent retrain |
+| **E1** bottom-30 screen | beats random screens (rank 1/21, t 2.43); absolute t 1.04 | FAIL — real but too small after costs |
+| **E2** ListNet loss | IC gate FAIL, top-30 rank 21/21 | FAIL — became a volatility bet (+0.14 loading) |
+
+**Nothing tonight produced a tradeable edge, and nothing was tuned to make
+it look like one.** What moved: (1) training on the Mac is proven, 2.7×
+faster, and platform-robust; (2) S6's "screen, not picker" finding now holds
+on two independent retrains and survives a matched random control as a
+screen, though too small to pay after costs; (3) a ranking loss is ruled out
+in its obvious form, with the mechanism identified.
+
+**For the user's audit — decisions, not taken overnight:**
+1. Restart the paper container (stopped since 25 Sep 20:45 IST). Next
+   session is Mon 28 Sep; P2 tolerates ≤5 consecutive missed sessions.
+2. Whether to pursue a volatility-neutral objective (E2's failure mode names
+   it) — a new hypothesis needing its own pre-registration.
+3. Whether the modest screen effect is worth a lower-turnover implementation
+   (quarterly re-forming would cut the cost drag that sank E1) — also new.
