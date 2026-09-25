@@ -1,0 +1,5 @@
+# audit/P2 forward paper loop, IST (TZ set in the image). Two attempts a day:
+# after NSE publishes (usually 18:30-19:30 IST), and a morning catch-up. Both
+# are idempotent -- a run that finds nothing new exits in seconds.
+0 21 * * * bash /app/scripts/paper_daily.sh
+30 7 * * * bash /app/scripts/paper_daily.sh

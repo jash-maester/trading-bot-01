@@ -18,9 +18,17 @@ RUN pip install --no-cache-dir \
 
 EXPOSE 5000
 
+# --allowed-hosts: MLflow 3.x rejects any Host header outside localhost and
+# private IPs with a 403 ("possible DNS rebinding attack"). Inside the compose
+# network the paper container reaches it as mlflow:5000, which that default
+# does not cover. Listed explicitly rather than widened to "*".
+# --workers 1: the default 4 held 1.8 GB for a server that logs one daily job,
+# on a Mac whose Docker VM is capped at 9 GB.
 CMD ["mlflow", "server", \
      "--backend-store-uri", "sqlite:////mlflow/mlflow.db", \
      "--artifacts-destination", "/mlflow/artifacts", \
      "--serve-artifacts", \
      "--host", "0.0.0.0", \
-     "--port", "5000"]
+     "--port", "5000", \
+     "--allowed-hosts", "mlflow,mlflow:5000,localhost,localhost:5555,127.0.0.1,127.0.0.1:5555", \
+     "--workers", "1"]

@@ -1,0 +1,6 @@
+# The paper image needs only the lockfile and its crontab; the repo is
+# bind-mounted at run time. Without this the build context is ~12 GB of data.
+*
+!pyproject.toml
+!uv.lock
+!docker/paper.crontab

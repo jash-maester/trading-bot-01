@@ -42,6 +42,23 @@ services:
       retries: 10
       start_period: 15s
 
+  paper:
+    # audit/P2 forward paper loop on a container schedule. Replaces macOS cron,
+    # which TCC blocks from the USB volume the repo lives on.
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/paper.Dockerfile
+    environment:
+      TRADER_MLFLOW_URI: http://mlflow:5000
+    volumes:
+      - ..:/app
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    profiles:
+      - paper
+
   pgadmin:
     image: dpage/pgadmin4:latest
     environment:
