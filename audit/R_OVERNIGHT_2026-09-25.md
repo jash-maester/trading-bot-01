@@ -126,3 +126,19 @@ Tag `r4_pit_long_mps_s43`. Queued after E2.
 - In between: inconclusive, reported as such.
 
 E0's verdict is not changed by E0b under any outcome.
+
+### E0 follow-ups — S6's structure replicates on the independent retrain
+
+Recorded, not used to select anything (`audit/topk_gate/r4_pit_long_mps_*30.json`):
+
+| | CUDA `r4_pit_long` (S6) | MPS `r4_pit_long_mps` |
+|---|---|---|
+| top-30, rank of 21 vs random | 12 (paired t −0.23) | **9** (paired t 0.10) — no information |
+| bottom-30, window t / rank | −3.20 / 21 | **−3.07 / 21** — worse than every random book |
+| holdout 20d IC, monthly blocks | +0.0459 (t 1.73) | +0.0338 (t 1.69); Δ t −0.81 |
+
+A retrain on a different platform, with a different float path, that ranks
+names differently day to day (median rank corr 0.757), reproduces S6 exactly:
+nothing at the top, strong negative information at the bottom. The finding
+is a property of this model class and objective, not of one training run —
+which is also the motivation for E2.
