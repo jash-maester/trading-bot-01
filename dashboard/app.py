@@ -609,7 +609,134 @@ def page_research() -> None:
         st.error(f"cannot read {pick}: {e}")
 
 
+
+def _inr(x: float, signed: bool = False) -> str:
+    s = f"{abs(x):,.0f}"
+    sign = ("+" if x > 0 else "-" if x < 0 else "") if signed else ("-" if x < 0 else "")
+    return f"{sign}Rs {s}"
+
+
+def page_live() -> None:
+    import plotly.express as px
+
+    st.header("Live book — Rs 1,00,000 paper portfolio")
+    st.caption(
+        "Simulated orders at live Kite prices right after the 09:15 open (09:16 IST), "
+        "chosen by the same algorithm and sizing code as the end-of-day paper record. "
+        "No real money and no orders are ever placed. Marks every 15 minutes in market "
+        "hours. Source: audit/paper/live/ (scripts/live_paper.py)."
+    )
+    snap = D.load_live_snapshot(ROOT)
+    state = D.load_live_state(ROOT)
+    if snap is None or state is None:
+        st.info("Not deployed yet. Rs 1,00,000 cash is scheduled to be invested at "
+                "09:16 IST on 2026-09-30, after the Kite login. This page fills in "
+                "from the first mark (~09:30).")
+        return
+    if snap.get("prices") != "live":
+        st.warning(f"These marks use '{snap.get('prices')}' prices (a rehearsal), not live quotes.")
+    dep = state.get("deployed", {})
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Capital", _inr(snap["capital"]))
+    c2.metric("Invested (cost)", _inr(sum(h["cost"] for h in snap["holdings"])),
+              f"{dep.get('names', len(snap['holdings']))} stocks")
+    c3.metric("Cash", _inr(snap["cash"]))
+    c4.metric("Current value", _inr(snap["nav"]))
+    c5, c6, c7 = st.columns(3)
+    c5.metric("Today's P&L", _inr(snap["day_chg_rs"], True), f"{snap['day_chg_pct']:+.2%}")
+    c6.metric("Total P&L", _inr(snap["pnl_rs"], True), f"{snap['pnl_pct']:+.2%}")
+    c7.metric("Last marked", snap["ts"].replace("T", " ")[:16] + " IST")
+    if snap.get("unpriced"):
+        st.warning(f"No live quote for {', '.join(snap['unpriced'])}; valued at purchase price.")
+    st.caption("Total P&L includes buying charges (STT, stamp, exchange, GST). "
+               "Selling charges and tax apply only when a position is sold.")
+
+    st.subheader("Holdings")
+    h = pl.DataFrame(snap["holdings"])
+    nav = float(snap["nav"]) or 1.0
+    view = h.select(
+        pl.col("symbol").alias("Stock"), pl.col("sector").alias("Sector"),
+        pl.col("qty").alias("Qty"), pl.col("avg_price").alias("Avg buy (Rs)"),
+        pl.col("cost").alias("Invested (Rs)"), pl.col("ltp").alias("LTP (Rs)"),
+        (pl.col("day_chg_pct") * 100).round(2).alias("1D %"),
+        pl.col("day_chg_rs").round(0).alias("1D Rs"),
+        pl.col("value").round(0).alias("Value (Rs)"),
+        pl.col("pnl_rs").round(0).alias("Total P&L (Rs)"),
+        (pl.col("pnl_pct") * 100).round(2).alias("Total P&L %"),
+        (pl.col("value") / nav * 100).round(1).alias("Weight %"),
+    ).sort("Value (Rs)", descending=True)
+    st.dataframe(view.to_pandas(), hide_index=True, width="stretch", height=420)
+
+    st.subheader("By sector")
+    sec = D.sector_summary(snap)
+    left, right = st.columns([3, 2])
+    with left:
+        tm = px.treemap(h.to_pandas(), path=["sector", "symbol"], values="value",
+                        color="pnl_pct", color_continuous_scale="RdYlGn",
+                        color_continuous_midpoint=0.0,
+                        hover_data={"qty": True, "ltp": ":.2f", "pnl_rs": ":,.0f"})
+        tm.update_layout(margin=dict(t=10, l=0, r=0, b=0), height=460,
+                         coloraxis_colorbar=dict(title="P&L %", tickformat=".1%"))
+        st.plotly_chart(tm, width="stretch")
+        st.caption("Box size = current value; colour = total P&L %. Click a sector to zoom in.")
+    with right:
+        sv = sec.select(pl.col("sector").alias("Sector"), pl.col("stocks").alias("Stocks"),
+                        (pl.col("weight") * 100).round(1).alias("Weight %"),
+                        pl.col("value").round(0).alias("Value (Rs)"),
+                        pl.col("pnl_rs").round(0).alias("P&L (Rs)"),
+                        pl.col("day_chg_rs").round(0).alias("1D Rs"))
+        st.dataframe(sv.to_pandas(), hide_index=True, width="stretch", height=460)
+    rows = h.sort(["sector", "value"], descending=[False, True]).to_pandas()
+    bar = go.Figure(go.Bar(y=[f"{r.symbol}  ·  {r.sector}" for r in rows.itertuples()],
+                           x=rows["value"], orientation="h",
+                           marker_color=["#2e7d32" if v >= 0 else "#c62828"
+                                         for v in rows["pnl_rs"]],
+                           customdata=rows[["pnl_rs", "day_chg_pct"]],
+                           hovertemplate="%{y}<br>value Rs %{x:,.0f}"
+                                         "<br>P&L Rs %{customdata[0]:,.0f}"
+                                         "<br>1D %{customdata[1]:.2%}<extra></extra>"))
+    bar.update_layout(height=max(420, 28 * len(rows)), margin=dict(l=10, r=10, t=10, b=10),
+                      xaxis_title="Current value (Rs); green = in profit, red = in loss",
+                      yaxis=dict(autorange="reversed"))
+    with st.container(height=520):
+        st.plotly_chart(bar, width="stretch")
+    st.caption("Scroll the chart above: every stock, grouped by sector.")
+
+    marks = D.load_live_marks(ROOT)
+    if marks.height >= 2:
+        st.subheader("Portfolio value through the day")
+        f = go.Figure(go.Scatter(x=marks["ts"].to_list(), y=marks["nav"].to_list(),
+                                 mode="lines+markers", name="Value"))
+        f.add_hline(y=float(snap["capital"]), line_dash="dot",
+                    annotation_text="Rs 1,00,000 invested")
+        f.update_layout(height=320, yaxis_title="Rs", margin=dict(t=10, b=10),
+                        xaxis=dict(rangeslider=dict(visible=True)))
+        st.plotly_chart(f, width="stretch")
+    sm = D.load_live_stock_marks(ROOT)
+    if sm.height and sm["ts"].n_unique() >= 2:
+        st.subheader("Per-stock P&L over time")
+        pick = st.multiselect("Stocks", sorted(sm["symbol"].unique().to_list()),
+                              default=sorted(sm["symbol"].unique().to_list())[:5])
+        if pick:
+            g = px.line(sm.filter(pl.col("symbol").is_in(pick)).to_pandas(),
+                        x="ts", y="pnl_rs", color="symbol", markers=True)
+            g.update_layout(height=360, yaxis_title="Total P&L (Rs)", margin=dict(t=10, b=10))
+            st.plotly_chart(g, width="stretch")
+
+    st.subheader("Fills")
+    led = D.load_live_ledger(ROOT)
+    if led.height:
+        st.dataframe(led.select([c for c in ("ts", "side", "ticker", "sector", "qty", "price",
+                                             "value", "charges", "target_weight", "quote_ts")
+                                 if c in led.columns]).to_pandas(),
+                     hide_index=True, width="stretch")
+    st.caption("A reminder that matters: after 3 sessions of the previous record the algorithm "
+               "ranked 17th of 21 against random stock picks. Nothing so far shows it beats "
+               "random selection; read early P&L as noise, not skill (audit/P2).")
+
+
 PAGES = {
+    "Live book": page_live,
     "Overview": page_overview,
     "P&L": page_pnl,
     "Warm-up context": page_warmup,

@@ -795,3 +795,93 @@ def gate_jsons(root: Path) -> pl.DataFrame:
             }
         )
     return pl.DataFrame(rows) if rows else pl.DataFrame()
+
+
+# ── Live book (scripts/live_paper.py) ──────────────────────────────────────────
+# The 09:16 IST shadow execution at live Kite prices. Read-only here.
+
+
+def _ist_ts() -> pl.Expr:
+    """Marks are ISO timestamps with a +05:30 offset; parse them as IST."""
+    return pl.col("ts").str.to_datetime(
+        format="%Y-%m-%dT%H:%M:%S%z", time_zone="Asia/Kolkata", strict=False)
+
+
+def live_dir(root: Path) -> Path:
+    return root / "audit" / "paper" / "live"
+
+
+def load_live_snapshot(root: Path) -> dict | None:
+    """Latest mark: portfolio totals plus one row per holding. None if not deployed."""
+    p = live_dir(root) / "holdings_latest.json"
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def load_live_state(root: Path) -> dict | None:
+    p = live_dir(root) / "state.json"
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def load_live_marks(root: Path) -> pl.DataFrame:
+    """Portfolio marks over time: ts, cash, holdings_value, nav, pnl_rs, pnl_pct, day_chg_rs."""
+    p = live_dir(root) / "marks.csv"
+    if not p.exists() or p.stat().st_size == 0:
+        return pl.DataFrame()
+    try:
+        d = pl.read_csv(p)
+    except Exception:  # noqa: BLE001
+        return pl.DataFrame()
+    return d.with_columns(_ist_ts()).sort("ts")
+
+
+def load_live_stock_marks(root: Path) -> pl.DataFrame:
+    """One row per (mark, holding) from marks_holdings.jsonl, for per-stock history."""
+    p = live_dir(root) / "marks_holdings.jsonl"
+    if not p.exists():
+        return pl.DataFrame()
+    rows = []
+    for ln in p.read_text().splitlines():
+        try:
+            snap = json.loads(ln)
+        except json.JSONDecodeError:
+            continue
+        for h in snap.get("holdings", []):
+            rows.append({"ts": snap["ts"], **{k: h.get(k) for k in (
+                "symbol", "sector", "value", "pnl_rs", "pnl_pct", "day_chg_pct", "ltp")}})
+    if not rows:
+        return pl.DataFrame()
+    return pl.DataFrame(rows).with_columns(_ist_ts()).sort("ts")
+
+
+def load_live_ledger(root: Path) -> pl.DataFrame:
+    p = live_dir(root) / "ledger.jsonl"
+    if not p.exists():
+        return pl.DataFrame()
+    rows = [json.loads(x) for x in p.read_text().splitlines() if x.strip()]
+    return pl.DataFrame(rows) if rows else pl.DataFrame()
+
+
+def sector_summary(snapshot: dict) -> pl.DataFrame:
+    """Per-sector value, cost, P&L and weight from a live snapshot."""
+    h = snapshot.get("holdings") or []
+    if not h:
+        return pl.DataFrame()
+    nav = float(snapshot.get("nav") or 0.0) or 1.0
+    return (pl.DataFrame(h)
+            .group_by("sector")
+            .agg(pl.len().alias("stocks"), pl.col("value").sum(), pl.col("cost").sum(),
+                 pl.col("pnl_rs").sum(), pl.col("day_chg_rs").sum(),
+                 pl.col("symbol").sort().str.join(", ").alias("names"))
+            .with_columns((pl.col("value") / nav).alias("weight"),
+                          (pl.col("value") / pl.col("cost") - 1).alias("pnl_pct"))
+            .sort("value", descending=True))

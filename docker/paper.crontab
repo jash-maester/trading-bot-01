@@ -8,3 +8,10 @@
 # the file was only refreshed by hand (ops review, 2026-09-29).
 20 21 * * * cd /app && uv run python scripts/paper_healthcheck.py
 50 7 * * * cd /app && uv run python scripts/paper_healthcheck.py
+# Live paper book (scripts/live_paper.py): Rs 1,00,000 deployed at 09:16 IST at
+# live Kite prices, then marked every 15 minutes through the session and once
+# after the close. Deploy refuses to run twice (state.json). Needs the daily
+# Kite login; without a valid token each run logs the refusal and exits.
+16 9 * * 1-5 bash /app/scripts/live_paper_cron.sh deploy
+*/15 9-15 * * 1-5 bash /app/scripts/live_paper_cron.sh mark
+35 15 * * 1-5 bash /app/scripts/live_paper_cron.sh mark

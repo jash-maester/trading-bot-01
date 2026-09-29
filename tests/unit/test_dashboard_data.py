@@ -310,3 +310,32 @@ def test_record_from_guard_exit_counts_as_a_clean_finish(tmp_path) -> None:
     sig = inspect.signature(fn)
     blocks = fn(logs) if len(sig.parameters) else fn()
     assert blocks[-1]["outcome"] == "NO-NEW"
+
+
+def test_live_loaders_parse_ist_timestamps(tmp_path) -> None:
+    """Marks carry '+05:30'; a naive parse raised and silently hid the time-series
+    sections of the Live book page (found 2026-09-29)."""
+    import json
+
+    import dashboard.data as D
+
+    live = tmp_path / "audit" / "paper" / "live"
+    live.mkdir(parents=True)
+    (live / "marks.csv").write_text(
+        "ts,cash,holdings_value,nav,pnl_rs,pnl_pct,day_chg_rs\n"
+        "2026-09-30T09:30:00+05:30,417,99465,99882,-118,-0.00118,0\n"
+        "2026-09-30T09:45:00+05:30,417,99800,100217,217,0.00217,335\n")
+    snap = {"ts": "2026-09-30T09:45:00+05:30", "nav": 100217.0, "holdings": [
+        {"symbol": "TCS", "sector": "Information Technology", "value": 4100.0,
+         "cost": 4070.0, "pnl_rs": 30.0, "pnl_pct": 0.0074, "day_chg_pct": 0.004,
+         "day_chg_rs": 16.0, "ltp": 2050.0},
+        {"symbol": "SBIN", "sector": "Financial Services", "value": 3900.0, "cost": 3860.0,
+         "pnl_rs": 40.0, "pnl_pct": 0.0104, "day_chg_pct": 0.01, "day_chg_rs": 39.0, "ltp": 975.0}]}
+    (live / "marks_holdings.jsonl").write_text(json.dumps(snap) + "\n")
+    m = D.load_live_marks(tmp_path)
+    assert m.height == 2 and m["ts"].null_count() == 0
+    sm = D.load_live_stock_marks(tmp_path)
+    assert sm.height == 2 and sm["ts"].null_count() == 0
+    sec = D.sector_summary(snap)
+    assert set(sec["sector"]) == {"Information Technology", "Financial Services"}
+    assert abs(sec["value"].sum() - 8000.0) < 1e-9
