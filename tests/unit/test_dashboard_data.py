@@ -290,3 +290,23 @@ def test_experiments_prose_criteria_and_measurement(tmp_path):
     assert by["R5"]["verdict"] == "FAIL" and "paired interval" in by["R5"]["criterion"]
     assert by["E0b"]["verdict"] == "MEASUREMENT" and "seed floor rule" in by["E0b"]["criterion"]
     assert by["E0"]["verdict"] == "FAIL" and "stands" in by["E0"]["note"]
+
+
+def test_record_from_guard_exit_counts_as_a_clean_finish(tmp_path) -> None:
+    """paper_daily.sh's RECORD_FROM guard (restart 3) ends a run with
+    'nothing to record yet'; that is a clean finish, not an incomplete run."""
+    import dashboard.data as D
+
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "2026-09-29.status").write_text(
+        "=== run 2026-09-29T15:37:49Z ===\n"
+        "2026-09-29T15:37:49Z start  signal=x  freeze=2026-09-09\n"
+        "2026-09-29T15:37:51Z data through 2026-09-29 is before RECORD_FROM=2026-09-30"
+        " -- nothing to record yet\n")
+    import inspect
+    fn = next(getattr(D, n) for n in dir(D)
+              if n in ("status_blocks", "load_status_blocks", "parse_status_blocks"))
+    sig = inspect.signature(fn)
+    blocks = fn(logs) if len(sig.parameters) else fn()
+    assert blocks[-1]["outcome"] == "NO-NEW"

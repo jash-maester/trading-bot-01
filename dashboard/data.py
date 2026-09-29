@@ -38,8 +38,9 @@ EVIDENCE_MONTHS = 48  # audit/P2: no rank reading before this
 # Docker platform; line 1 of record.jsonl is 2026-09-25 and the 11 host sessions
 # 09-10..09-25 were discarded (archived as record.jsonl.restart2).
 RESTART_NOTE = (
-    "Record restarted 2026-09-25 (restart 2, Docker platform); 11 earlier host sessions "
-    "discarded, see audit/P2_PAPER_PERMUTATION_TEST.md \u00a7Restart 2."
+    "Record restarted (restart 3, user decision 2026-09-29): P&L and notional funds reset to "
+    "Rs 10,00,000; first recorded session 2026-09-30. Earlier records are archived as "
+    "audit/paper/record.jsonl.restart1..3. See audit/P2 'Restart 3'."
 )
 SESSIONS_PER_MONTH = 21.0
 STALE_HOURS = 26.0  # both crontab slots fire daily; a gap > 26 h = a missed day
@@ -547,7 +548,7 @@ def status_blocks(log_dir: Path, n: int = 5) -> list[dict]:
                 else "DONE"
                 if any(" DONE " in f" {x} " for x in body)
                 else "NO-NEW"
-                if any("no new session" in x for x in body)
+                if any("no new session" in x or "nothing to record yet" in x for x in body)
                 else "DRY"
                 if any("DRY:" in x for x in body)
                 else "INCOMPLETE"

@@ -216,10 +216,27 @@ Record line 1 = **2026-09-25**. Signal NAV 999,814.459569.
 on macOS has no GPU) and the loop scores on Linux CPU. Scoring was verified
 identical across the two to 3e-11, so that split is safe.
 
+## Restart 3 — 2026-09-29, user decision: reset P&L and notional funds
+
+**What.** The user asked to reset P&L and total available funds and start
+afresh from 2026-09-30. The 3-session record (2026-09-25, 09-28, 09-29;
+signal/volstop −2.10%, rank 17 of 21) is archived as `record.jsonl.restart3`
+with its snapshots. The new record starts at the first session on or after
+**RECORD_FROM = 2026-09-30** (`scripts/paper_daily.sh`); runs whose data ends
+before that exit with "nothing to record yet" and write nothing. P&L is
+measured from Rs 10,00,000 notional over recorded sessions only.
+
+**Caveat, recorded plainly.** This restart follows an observed −2.1% start.
+One restart for a clean slate does not bias the permutation test — the rank
+compares books over the same sessions, all reset together — but restarting
+*whenever the early numbers look bad* would. Further restarts are admissible
+only for a defect or a platform change (as in restarts 1 and 2), not for
+performance.
+
 ## Signatures
 
 Frozen: 2026-09-10.
 Warm-up baseline recorded: 2026-09-10, run `2026-09-10T11:05:43Z`; re-stated
 after restart 1 by run `2026-09-10T12:39:20Z`.
-First scored session: **2026-09-10** (restart 1); record restarted at
-**2026-09-25** on the container platform (restart 2), `audit/paper/record.jsonl` line 1.
+First scored session: **2026-09-30** (restart 3); earlier records archived as
+`record.jsonl.restart1..3`.

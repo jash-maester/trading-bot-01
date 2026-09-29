@@ -30,6 +30,7 @@ export TRADER_TCN_FULL=1
 SIGNAL_DIR="${SIGNAL_DIR:-data/signal/r4_pit_long}"   # artefact in force; annual refit replaces it
 PANEL_START="2024-06-01"                                # 365d eligibility + 60d features before the warm-up
 FREEZE_DATE="2026-09-09"                                # last warm-up session; scoring starts strictly after
+RECORD_FROM="2026-09-30"                                # restart 3 (user, 2026-09-29): first session recorded
 K=30; BAND=0.010; FREQ=monthly; HOR=20d
 NULL_SEEDS="[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -62,6 +63,10 @@ uv run python scripts/fetch_nse_index.py --from "$IDX_FROM" --to "$TODAY" \
 DATA_DATE=$(maxdate data/ext/bhavcopy.parquet)
 IDX_DATE=$(uv run python -c "from datetime import datetime;from trader.data.storage import OhlcvStore;print(str(OhlcvStore('data/kite_ohlcv').load(tickers=['^NSEI'],start=datetime(2026,1,1))['date'].max())[:10])")
 [ "$DATA_DATE" = "$IDX_DATE" ] || fail "bhavcopy ends $DATA_DATE but ^NSEI ends $IDX_DATE -- refusing to build a panel with a dead beta"
+if [[ "$DATA_DATE" < "$RECORD_FROM" ]] && [ -z "${DRY:-}" ]; then
+    stamp "data through $DATA_DATE is before RECORD_FROM=$RECORD_FROM -- nothing to record yet"
+    kill "$MW" 2>/dev/null; exit 0
+fi
 if [ -d "$SNAPS/$DATA_DATE" ] && [ -z "${DRY:-}" ]; then
     stamp "no new session: $DATA_DATE already recorded"; kill "$MW"; exit 0
 fi

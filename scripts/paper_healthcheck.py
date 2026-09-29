@@ -11,7 +11,8 @@ Checks, each OK / WARN / FAIL with the evidence:
                   NSE has actually published.
   feeds_aligned   bhavcopy and index end on the same date (else beta is dead).
   record_current  every published session after the record start is recorded.
-  last_run        the most recent status block ended (DONE / no new session) with no FAIL.
+  last_run        the most recent status block ended (DONE / no new session / nothing to
+                  record yet) with no FAIL.
   scheduler_fired some run started within the last 26 h (cron fires twice a day).
   determinism     the last run's replay matched the previous snapshot.
   scheduler       the `paper` container is running (skipped inside it).
@@ -119,8 +120,19 @@ def main() -> None:
     rec = [json.loads(x) for x in rec_path.read_text().splitlines() if x.strip()] \
         if rec_path.exists() else []
     rec_dates = [date.fromisoformat(r["date"]) for r in rec]
-    if not rec_dates:
-        checks.append(_check("record_current", "FAIL", "record is empty"))
+    mrf = re.search(r'^RECORD_FROM="(\d{4}-\d{2}-\d{2})"', Path("scripts/paper_daily.sh")
+                    .read_text(), re.M) if Path("scripts/paper_daily.sh").exists() else None
+    record_from = date.fromisoformat(mrf.group(1)) if mrf else None
+    if not rec_dates and record_from is not None and bh < record_from:
+        # Restart 3: an empty record is the expected state until the first
+        # session on/after RECORD_FROM has been published.
+        checks.append(_check("record_current", "OK",
+                             f"record empty, awaiting first session on/after {record_from} "
+                             f"(data currently ends {bh})"))
+    elif not rec_dates:
+        checks.append(_check("record_current", "FAIL",
+                             f"record is empty but data reaches {bh}"
+                             + (f" (RECORD_FROM {record_from})" if record_from else "")))
     else:
         panel_dates = set(bars.select("date").unique().collect()["date"].to_list())
         missing = sorted(d for d in panel_dates if rec_dates[0] < d <= bh and d not in rec_dates)
@@ -137,7 +149,8 @@ def main() -> None:
         blocks = re.split(r"(?m)^=== run ", st_files[-1].read_text())
         last = blocks[-1].strip().splitlines()
         failed = [x for x in last if " FAIL " in f" {x} "]
-        ended = any(k in x for x in last for k in (" DONE ", "no new session", "DRY:"))
+        ended = any(k in x for x in last
+                    for k in (" DONE ", "no new session", "nothing to record yet", "DRY:"))
         st = "FAIL" if failed else ("OK" if ended else "WARN")
         detail = failed[0] if failed else (last[-1] if last else "empty")
         if not failed and not ended:
