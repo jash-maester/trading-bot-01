@@ -394,6 +394,36 @@ def cross_sectional_normalise(
     return out
 
 
+def neutralise_targets(
+    target: np.ndarray,          # [T, N] z-scored, NaN = unlabelled
+    factor: np.ndarray,          # [T, N] raw factor values (e.g. realized_vol_60d)
+    min_cross_section: int = 10,
+) -> np.ndarray:
+    """Per-date residual of the target on the factor's cross-sectional rank.
+
+    For each date: rank the factor among labelled names (centred to mean 0),
+    OLS-regress the target on it, keep the residual, re-z-score. Dates with
+    too few labelled names are left unlabelled. Used on TRAIN targets only
+    (audit/R_2026-09-29 E3): validation and test stay on raw returns.
+    """
+    out = np.full_like(target, np.nan, dtype=np.float32)
+    for t in range(target.shape[0]):
+        y, f = target[t], factor[t]
+        v = np.isfinite(y) & np.isfinite(f)
+        n = int(v.sum())
+        if n < max(min_cross_section, 3):
+            continue
+        r = np.argsort(np.argsort(f[v], kind="stable"), kind="stable").astype(np.float64)
+        x = r / (n - 1) - 0.5
+        yy = y[v].astype(np.float64)
+        beta = float(((x - x.mean()) * (yy - yy.mean())).sum() / ((x - x.mean()) ** 2).sum())
+        res = yy - yy.mean() - beta * (x - x.mean())
+        sd = res.std()
+        if sd > 1e-12:
+            out[t, v] = (res / sd).astype(np.float32)
+    return out
+
+
 def build_panel_tensors(
     panel: pl.DataFrame,
     tickers: list[str],
@@ -1119,6 +1149,9 @@ class SupervisedConfig:
     # "mse" (historical) or "listnet" -- see heads.listnet_loss and
     # audit/R_OVERNIGHT_2026-09-25.md E2.
     loss: str = "mse"
+    # Feature whose cross-sectional rank is regressed out of the TRAIN targets
+    # (audit/R_2026-09-29 E3). None = historical behaviour.
+    target_neutralise: str | None = None
     # None keeps the historical behaviour: one global (mean, std) per feature.
     # "rank" normalises every feature within each date's tradeable
     # cross-section instead — see `cross_sectional_normalise`.
@@ -1769,6 +1802,15 @@ def run_signal_walk_forward(
             test_df, win_tickers, feature_cols, horizons,
             min_cross_section=mcs, xs_normalise=xsn,
         )
+        if train_cfg.target_neutralise is not None:
+            fcol = train_cfg.target_neutralise
+            if fcol not in feature_cols:
+                raise ValueError(f"target_neutralise={fcol!r} is not a feature column")
+            j = feature_cols.index(fcol)
+            fac = np.where(train_t.mask, train_t.features[:, :, j], np.nan)
+            for h in horizons:
+                train_t.targets[h] = neutralise_targets(train_t.targets[h], fac, mcs)
+            logger.info(f"{window.name}: train targets neutralised on {fcol} (val/test raw)")
         for name, t in (("train", train_t), ("val", val_t), ("test", test_t)):
             lab = {h: int(np.isfinite(t.targets[h]).sum()) for h in horizons}
             skipped = max(train_cfg.lookback - 1, t.n_warmup)

@@ -225,6 +225,7 @@ def main(cfg: DictConfig) -> None:
         seed=int(cfg.seed),
         device=str(cfg.train.get("device", "auto")),
         loss=str(cfg.train.get("loss", "mse")),
+        target_neutralise=(cfg.train.get("target_neutralise") or None),
         xs_normalise=(
             None if cfg.train.get("xs_normalise", None) in (None, "null", "none", "")
             else str(cfg.train.xs_normalise)

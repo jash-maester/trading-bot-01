@@ -939,3 +939,22 @@ def test_supervised_config_rejects_unknown_loss() -> None:
 
     with pytest.raises(ValueError, match="loss must be"):
         SupervisedConfig(loss="huber")
+
+
+def test_neutralise_targets_removes_the_factor() -> None:
+    import numpy as np
+
+    from trader.training.supervised import neutralise_targets
+
+    rng = np.random.default_rng(0)
+    f = rng.normal(size=(40, 200))
+    rank = np.argsort(np.argsort(f, axis=1), axis=1) / 199 - 0.5
+    y = 0.8 * rank + rng.normal(size=f.shape) * 0.3
+    y[:, :5] = np.nan
+    out = neutralise_targets(y.astype(np.float32), f)
+    for t in range(40):
+        v = np.isfinite(out[t])
+        rk = np.argsort(np.argsort(f[t, v]))
+        assert abs(np.corrcoef(rk, out[t, v])[0, 1]) < 1e-6        # factor gone
+        assert abs(out[t, v].mean()) < 1e-5 and abs(out[t, v].std() - 1) < 1e-4
+    assert np.isnan(out[:, :5]).all()                                # unlabelled stay unlabelled
