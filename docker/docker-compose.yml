@@ -59,6 +59,39 @@ services:
     profiles:
       - paper
 
+  dashboard:
+    # Read-only monitor of the audit/P2 forward paper test: http://localhost:8501
+    # No profile: it starts with the stack. It never talks to Kite and places
+    # no orders; it reads files the paper loop writes.
+    #
+    # Mounts: the whole repo READ-ONLY at /app -- so a bug in the page cannot
+    # touch audit/paper/record.jsonl (append-only record of truth), snapshots or
+    # data/. The single writable path is logs/dashboard, where the on-demand
+    # "re-run health check" button writes its health.json (PAPER_HEALTH_OUT)
+    # plus its probe_stamp / probe.lock rate-limit files; the page merges that
+    # report with the host's audit/paper/health.json per check. The check itself
+    # needs scripts/, src/ and data/ -- readable via /app.
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: docker/dashboard.Dockerfile
+    # Loopback only: no auth, and the page can trigger NSE probes. To view from
+    # another device on the LAN, export DASHBOARD_BIND=0.0.0.0 before `up`.
+    ports:
+      - "${DASHBOARD_BIND:-127.0.0.1}:8501:8501"
+    environment:
+      DASHBOARD_HEALTH_OUT: logs/dashboard/health.json
+    volumes:
+      - ..:/app:ro
+      - ../logs/dashboard:/app/logs/dashboard
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health').read().strip()==b'ok' else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
   pgadmin:
     image: dpage/pgadmin4:latest
     environment:

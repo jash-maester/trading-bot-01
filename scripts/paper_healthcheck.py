@@ -11,7 +11,8 @@ Checks, each OK / WARN / FAIL with the evidence:
                   NSE has actually published.
   feeds_aligned   bhavcopy and index end on the same date (else beta is dead).
   record_current  every published session after the record start is recorded.
-  last_run        the most recent status block has no FAIL.
+  last_run        the most recent status block ended (DONE / no new session) with no FAIL.
+  scheduler_fired some run started within the last 26 h (cron fires twice a day).
   determinism     the last run's replay matched the previous snapshot.
   scheduler       the `paper` container is running (skipped inside it).
 Kite is not checked: the loop does not use it (NSE archives only).
@@ -136,9 +137,24 @@ def main() -> None:
         blocks = re.split(r"(?m)^=== run ", st_files[-1].read_text())
         last = blocks[-1].strip().splitlines()
         failed = [x for x in last if " FAIL " in f" {x} "]
-        checks.append(_check("last_run", "FAIL" if failed else "OK",
-                             (failed[0] if failed else (last[-1] if last else "empty")),
-                             file=str(st_files[-1])))
+        ended = any(k in x for x in last for k in (" DONE ", "no new session", "DRY:"))
+        st = "FAIL" if failed else ("OK" if ended else "WARN")
+        detail = failed[0] if failed else (last[-1] if last else "empty")
+        if not failed and not ended:
+            detail = f"in progress or died without a FAIL line: {detail}"
+        checks.append(_check("last_run", st, detail, file=str(st_files[-1])))
+        # scheduler_fired: both crontab slots (07:30, 21:00 IST) run every day and
+        # every run writes an "=== run" header first, so a header older than ~26h
+        # means the scheduler did not fire. 2026-09-25 15:03Z -> 09-29 14:40Z had
+        # none: the container was up in name only or not up at all.
+        starts = re.findall(r"(?m)^=== run (\S+) ===", "\n".join(
+            f.read_text() for f in st_files[-3:]))
+        if starts:
+            age_h = (datetime.now(UTC) - datetime.fromisoformat(
+                starts[-1].replace("Z", "+00:00"))).total_seconds() / 3600
+            checks.append(_check("scheduler_fired", "OK" if age_h <= 26 else "FAIL",
+                                 f"last run started {starts[-1]} ({age_h:.1f} h ago)",
+                                 last_start=starts[-1], age_hours=round(age_h, 1)))
 
     # determinism
     sp = Path("audit/paper/latest/summary.json")

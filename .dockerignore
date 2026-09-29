@@ -4,3 +4,5 @@
 !pyproject.toml
 !uv.lock
 !docker/paper.crontab
+# dashboard image: only its requirements are copied; the code is bind-mounted.
+!dashboard/requirements.txt
