@@ -50,3 +50,19 @@ Missed sessions are recovered by the next run — the recorder writes one line
 per session in the gap, each from that run's own replay — so a late run is
 valid, but the gap is a gap in *unattended* operation and P2 counts more than
 5 consecutive unrecoverable sessions as an abandonment criterion.
+
+## Live paper book (added 2026-09-29)
+
+`scripts/live_paper.py`, scheduled in `docker/paper.crontab`, weekdays, IST:
+
+| time | command | what it does |
+|---|---|---|
+| 09:16, retries 09:20 / 09:30 | `trade` | first funding (30 Sep) / monthly rebalance (first session of a month) / pending volstop sales / hold. Idempotent per day. |
+| every 15 min 09:00–15:45 | `mark` | marks the book at live LTP for the dashboard |
+| 15:35 | `mark --close` | ticks stop cooldowns, flags volstop breaches for the next 09:16 |
+
+All need the daily Kite login (the token expires ~06:00). Without it each run
+logs `Kite token rejected` to `logs/paper/live_<date>.log` and writes nothing.
+Holidays are detected from the quotes (no trade dated today) and skipped.
+The image needs the `zerodha` extra (`kiteconnect`); it is in
+`docker/paper.Dockerfile`.

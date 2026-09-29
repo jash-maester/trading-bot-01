@@ -639,7 +639,7 @@ def page_live() -> None:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Capital", _inr(snap["capital"]))
     c2.metric("Invested (cost)", _inr(sum(h["cost"] for h in snap["holdings"])),
-              f"{dep.get('names', len(snap['holdings']))} stocks")
+              f"{len(snap['holdings'])} stocks")
     c3.metric("Cash", _inr(snap["cash"]))
     c4.metric("Current value", _inr(snap["nav"]))
     c5, c6, c7 = st.columns(3)
@@ -650,6 +650,23 @@ def page_live() -> None:
         st.warning(f"No live quote for {', '.join(snap['unpriced'])}; valued at purchase price.")
     st.caption("Total P&L includes buying charges (STT, stamp, exchange, GST). "
                "Selling charges and tax apply only when a position is sold.")
+
+    st.subheader("Trading and risk")
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("Realised P&L (sold)", _inr(snap.get("realised_rs", 0.0), True),
+              help="Proceeds minus selling charges minus the average cost of the shares sold.")
+    r2.metric("Charges paid to date", _inr(snap.get("charges_rs", 0.0)))
+    r3.metric("Last rebalance", state.get("last_rebalance", dep.get("trade_date", "—")),
+              help="Monthly: the first session of each month at 09:16, turnover budget 30%.")
+    pend = state.get("pending_stops") or []
+    r4.metric("Stops pending for next open", len(pend), ", ".join(D.short(t) for t in pend) or None)
+    cool = state.get("cooldown") or {}
+    if cool:
+        st.caption("Barred from re-entry after a stop (sessions left): "
+                   + ", ".join(f"{D.short(t)} {n}" for t, n in sorted(cool.items())))
+    st.caption("Volatility stop: a stock closing below its stop level is sold at the next "
+               "09:16 and cannot be re-bought for 21 sessions. Stop levels are set at the "
+               "15:35 close mark.")
 
     st.subheader("Holdings")
     h = pl.DataFrame(snap["holdings"])
@@ -664,6 +681,8 @@ def page_live() -> None:
         pl.col("pnl_rs").round(0).alias("Total P&L (Rs)"),
         (pl.col("pnl_pct") * 100).round(2).alias("Total P&L %"),
         (pl.col("value") / nav * 100).round(1).alias("Weight %"),
+        (pl.col("stop_level") if "stop_level" in h.columns
+         else pl.lit(None, pl.Float64)).alias("Stop level (Rs)"),
     ).sort("Value (Rs)", descending=True)
     st.dataframe(view.to_pandas(), hide_index=True, width="stretch", height=420)
 
@@ -726,8 +745,9 @@ def page_live() -> None:
     st.subheader("Fills")
     led = D.load_live_ledger(ROOT)
     if led.height:
-        st.dataframe(led.select([c for c in ("ts", "side", "ticker", "sector", "qty", "price",
-                                             "value", "charges", "target_weight", "quote_ts")
+        st.dataframe(led.select([c for c in ("ts", "kind", "side", "ticker", "sector", "qty",
+                                             "price", "value", "charges", "realised_rs",
+                                             "target_weight", "quote_ts")
                                  if c in led.columns]).to_pandas(),
                      hide_index=True, width="stretch")
     st.caption("A reminder that matters: after 3 sessions of the previous record the algorithm "

@@ -868,7 +868,9 @@ def load_live_ledger(root: Path) -> pl.DataFrame:
     if not p.exists():
         return pl.DataFrame()
     rows = [json.loads(x) for x in p.read_text().splitlines() if x.strip()]
-    return pl.DataFrame(rows) if rows else pl.DataFrame()
+    # Rows gain keys over time (kind, realised_rs from the first rebalance on):
+    # scan every row for the schema, not the first 100.
+    return pl.from_dicts(rows, infer_schema_length=None) if rows else pl.DataFrame()
 
 
 def sector_summary(snapshot: dict) -> pl.DataFrame:
@@ -885,3 +887,8 @@ def sector_summary(snapshot: dict) -> pl.DataFrame:
             .with_columns((pl.col("value") / nav).alias("weight"),
                           (pl.col("value") / pl.col("cost") - 1).alias("pnl_pct"))
             .sort("value", descending=True))
+
+
+def short(ticker: str) -> str:
+    """NSE symbol without the Yahoo-style .NS suffix."""
+    return ticker.removesuffix(".NS")

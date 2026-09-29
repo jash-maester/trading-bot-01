@@ -37,7 +37,9 @@ RUN arch=$(dpkg --print-architecture) \
 # when dependencies change.
 WORKDIR /build
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+# --extra zerodha: kiteconnect, for the live paper book's read-only quotes
+# (scripts/live_paper.py). Without it the 09:16 deploy dies on import.
+RUN uv sync --frozen --no-dev --no-install-project --extra zerodha
 # The project itself is installed from the mount at run time via PYTHONPATH.
 ENV PYTHONPATH=/app/src
 
