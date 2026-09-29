@@ -133,9 +133,15 @@ def _write_navs(nav_dir: str, tag: str, navs: list[float], dates: list[Any]) -> 
 
     out = Path(nav_dir) / f"nav_{tag}.parquet"
     out.parent.mkdir(parents=True, exist_ok=True)
-    # navs carries the opening NAV plus one per step, so it is one longer than
-    # the stepped dates. Trimming the dates rather than the NAVs keeps the
-    # opening value, which every return series has to start from.
+    # navs carries the opening NAV plus one per step. The env trades at the
+    # OPEN of day d and marks to the CLOSE of day d, so navs[i] is the close of
+    # the i-th traded day and the opening NAV belongs to the close BEFORE the
+    # first traded day. Callers pass dates[lookback - 1:] for exactly that.
+    # Until 2026-09-29 they passed dates[lookback:], labelling every NAV one
+    # session late (a replay's P&L for d appeared under d+1). Relative
+    # comparisons between arms were unaffected -- all shifted together -- but
+    # dated records were wrong; NAV files written before then carry the old
+    # +1 labels.
     n = len(navs)
     d = list(dates[:n]) if len(dates) >= n else list(dates) + [None] * (n - len(dates))
     pl.DataFrame({"date": d, "nav": navs}).write_parquet(out)
@@ -540,7 +546,7 @@ def main(cfg: DictConfig) -> None:
     lookback = int(cfg.env.lookback_days)
     dates = sorted(pl.read_parquet(panel_path, columns=["date"])["date"].unique().to_list())
     episode_length = len(dates) - lookback - 1
-    if episode_length < 2:
+    if episode_length < 1:
         _fail(f"{panel_path} has {len(dates)} dates; too short for lookback={lookback}.")
 
     # How many of the env's universe this split can actually trade.  `universe`
@@ -647,7 +653,7 @@ def main(cfg: DictConfig) -> None:
         bl_env = PanelTradingEnv(rebalance_schedule=schedule, **env_base)
         bl_navs, bl_turns, bl_diag = _run_baseline(bl_env, seed)
         if nav_dir:
-            _write_navs(nav_dir, f"equal_weight_{freq}_{split}", bl_navs, dates[lookback:])
+            _write_navs(nav_dir, f"equal_weight_{freq}_{split}", bl_navs, dates[lookback - 1:])
         bl = compute_episode_metrics(bl_navs, bl_turns)
         lines.append(
             f"{'equal_weight':<26}{'-':>4}{'-':>7}{freq:>9}{'-':>5}"
@@ -719,7 +725,7 @@ def main(cfg: DictConfig) -> None:
                               nav_dir,
                               f"null_signal_k{nk}_b{nband}_r{nrisk_name}"
                               f"_s{nseed}_{freq}_{nhor}_{split}",
-                              n_navs, dates[lookback:],
+                              n_navs, dates[lookback - 1:],
                           )
                       lines.append(
                           f"{'null/' + nrisk_name + ' (control)':<26}{nk:>4}"
@@ -799,7 +805,7 @@ def main(cfg: DictConfig) -> None:
                         _write_navs(
                             nav_dir,
                             f"allocator_k{k}_b{band}_r{risk_name}_{freq}_{horizon}_{split}",
-                            navs, dates[lookback:],
+                            navs, dates[lookback - 1:],
                         )
                     m = compute_episode_metrics(navs, turns)
                     # P5's closed form against this run's OWN measured turnover,

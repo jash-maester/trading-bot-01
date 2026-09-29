@@ -32,7 +32,9 @@ EW = re.compile(r"^equal_weight_monthly")
 
 
 def _book(f: Path) -> str:
-    return re.sub(r"_(full|holdout|oos_[a-z0-9_]+)$", "", f.stem.removeprefix("nav_"))
+    # Strip the split suffix so book names are stable whatever panel the replay
+    # ran on ("paper" since restart 3; "full" before it).
+    return re.sub(r"_(full|paper|holdout|oos_[a-z0-9_]+)$", "", f.stem.removeprefix("nav_"))
 
 
 def _load(nav_dir: Path) -> dict[str, pl.DataFrame]:
@@ -62,6 +64,8 @@ def main() -> None:
     ap.add_argument("--snapshots", type=Path, required=True)
     ap.add_argument("--freeze-date", type=date.fromisoformat, required=True)
     ap.add_argument("--data-date", type=date.fromisoformat, required=True)
+    ap.add_argument("--record-from", type=date.fromisoformat, default=None,
+                    help="first session eligible for the record (restart 3: 2026-09-30)")
     a = ap.parse_args()
 
     books = _load(a.nav_dir)
@@ -70,8 +74,11 @@ def main() -> None:
                    key=lambda b: int(VOLSTOP_NULL.match(b).group(1)))
     ew = next(b for b in books if EW.match(b))
     dates = books[sig]["date"].to_list()
-    if a.data_date not in dates:
-        raise SystemExit(f"{a.data_date} is not in the replay ({dates[-1]} is its last date)")
+    # The env marks day d's close only once day d+1 exists, so a run whose data
+    # ends on D can record sessions up to D-1 (the replay's last NAV date).
+    # Sessions are recorded one run late, under their correct dates.
+    if dates[-1] > a.data_date:
+        raise SystemExit(f"replay ends {dates[-1]}, after the data date {a.data_date}")
 
     # ── determinism vs the previous snapshot ────────────────────────────────
     prev_dirs = sorted(p for p in a.snapshots.glob("*") if p.is_dir())
@@ -97,9 +104,10 @@ def main() -> None:
     if a.record.exists():
         recorded = [json.loads(ln) for ln in a.record.read_text().splitlines() if ln.strip()]
     last_rec = date.fromisoformat(recorded[-1]["date"]) if recorded else None
-    new_days = [d for d in dates if d <= a.data_date and (last_rec is None or d > last_rec)]
-    if last_rec is None:
-        new_days = [a.data_date]          # first run: record the freeze date only
+    new_days = [d for d in dates[1:]      # dates[0] is the opening NAV, no return
+                if d <= a.data_date
+                and (a.record_from is None or d >= a.record_from)
+                and (last_rec is None or d > last_rec)]
     run_ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     lines = []
     for day in new_days:

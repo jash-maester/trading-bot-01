@@ -30,7 +30,8 @@ export TRADER_TCN_FULL=1
 SIGNAL_DIR="${SIGNAL_DIR:-data/signal/r4_pit_long}"   # artefact in force; annual refit replaces it
 PANEL_START="2024-06-01"                                # 365d eligibility + 60d features before the warm-up
 FREEZE_DATE="2026-09-09"                                # last warm-up session; scoring starts strictly after
-RECORD_FROM="2026-09-30"                                # restart 3 (user, 2026-09-29): first session recorded
+RECORD_FROM="2026-09-30"                                # restart 3 (user, 2026-09-29): cash deployed at this session's open
+CAPITAL=100000                                          # restart 3: Rs 1,00,000 cash, not Rs 10,00,000
 K=30; BAND=0.010; FREQ=monthly; HOR=20d
 NULL_SEEDS="[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -126,9 +127,22 @@ uv run python scripts/predict_signal.py --signal-dir "$SIGNAL_DIR" --panel data/
 stamp "predict OK ($(grep -oE '[0-9,]+ rows' "$LOGS/predict_$TODAY.log" | tail -1))"
 
 # ── 5 the 21 books (+3 overlays recorded for context) ────────────────────────
+# Restart 3: every book holds Rs 1,00,000 CASH until RECORD_FROM and deploys at
+# that session's open. The panel is cut so the replay's first traded session
+# is RECORD_FROM (scripts/make_paper_panel.py). The env marks a session's close
+# only once the next session exists, so a run on day D records through D-1.
+uv run python scripts/make_paper_panel.py --src data/panels_forward/full.parquet \
+    --out data/panels_forward/paper.parquet --trade-start "$RECORD_FROM" --lookback 60 \
+    > "$LOGS/paperpanel_$TODAY.log" 2>&1 || fail "make_paper_panel"
+N_LIVE=$(uv run python -c "import polars as pl;print(pl.scan_parquet('data/panels_forward/paper.parquet').filter(pl.col('date')>=pl.lit('$RECORD_FROM').str.to_date()).select(pl.col('date').n_unique()).collect().item())")
+if [ "$N_LIVE" -lt 2 ] && [ -z "${DRY:-}" ]; then
+    stamp "deployment session $RECORD_FROM is today; its close is marked when the next session publishes -- nothing to record yet"
+    kill "$MW" 2>/dev/null; exit 0
+fi
 rm -rf "$LATEST"
 uv run python scripts/run_allocator.py data=bhav_v1 data.panels_root=data/panels_forward \
-    +split=full +signal_tag=paper_signal +require_gate_pass=false +apply_tax=true \
+    +split=paper +signal_tag=paper_signal +require_gate_pass=false +apply_tax=true \
+    env.initial_cash="$CAPITAL" \
     "++allocator.universe_from_panel=true" "++allocator.null_control=true" \
     "++allocator.null_seeds=$NULL_SEEDS" \
     "++allocator.k_grid=[$K]" "++allocator.band_grid=[$BAND]" "++allocator.freq_grid=[$FREQ]" \
@@ -141,7 +155,8 @@ if [ -n "${DRY:-}" ]; then
     stamp "DRY: record not appended"; kill "$MW"; exit 0
 fi
 uv run python scripts/paper_record.py --nav-dir "$LATEST" --record "$RECORD" --snapshots "$SNAPS" \
-    --freeze-date "$FREEZE_DATE" --data-date "$DATA_DATE" > "$LOGS/record_$TODAY.log" 2>&1 || fail "paper_record"
+    --freeze-date "$FREEZE_DATE" --data-date "$DATA_DATE" --record-from "$RECORD_FROM" \
+    > "$LOGS/record_$TODAY.log" 2>&1 || fail "paper_record"
 rm -rf "$SNAPS/$DATA_DATE" && cp -r "$LATEST" "$SNAPS/$DATA_DATE"
 kill "$MW" 2>/dev/null
 stamp "DONE $(uv run python -c "import json;s=json.load(open('$LATEST/summary.json'));print(f\"data={s['data_date']} scored={s['scored_sessions']} rank={s['rank']}/{s['n_null']+1} det_diff={s['determinism']['max_abs_rel_diff']:.2e}\")")"

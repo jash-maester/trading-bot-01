@@ -216,22 +216,46 @@ Record line 1 = **2026-09-25**. Signal NAV 999,814.459569.
 on macOS has no GPU) and the loop scores on Linux CPU. Scoring was verified
 identical across the two to 3e-11, so that split is safe.
 
-## Restart 3 — 2026-09-29, user decision: reset P&L and notional funds
+## Restart 3 — 2026-09-29, user decision: Rs 1,00,000 cash deployed from 2026-09-30
 
-**What.** The user asked to reset P&L and total available funds and start
-afresh from 2026-09-30. The 3-session record (2026-09-25, 09-28, 09-29;
-signal/volstop −2.10%, rank 17 of 21) is archived as `record.jsonl.restart3`
-with its snapshots. The new record starts at the first session on or after
-**RECORD_FROM = 2026-09-30** (`scripts/paper_daily.sh`); runs whose data ends
-before that exit with "nothing to record yet" and write nothing. P&L is
-measured from Rs 10,00,000 notional over recorded sessions only.
+**What changed, all by the user's instruction.**
+- **Capital: Rs 1,00,000**, replacing the Rs 10,00,000 in the Frozen table.
+- **Every book starts in cash** and deploys at the **2026-09-30 open**
+  (`RECORD_FROM`), replacing positions carried from the 2024 replay start.
+  `scripts/make_paper_panel.py` cuts the panel so the replay's first traded
+  session is 2026-09-30; the env's first step always trades.
+- The 3-session record (09-25..09-29; signal/volstop −2.10%, rank 17/21) is
+  archived as `record.jsonl.restart3`.
 
-**Caveat, recorded plainly.** This restart follows an observed −2.1% start.
-One restart for a clean slate does not bias the permutation test — the rank
-compares books over the same sessions, all reset together — but restarting
-*whenever the early numbers look bad* would. Further restarts are admissible
-only for a defect or a platform change (as in restarts 1 and 2), not for
-performance.
+**Consequences, recorded now.**
+- **One run late, correctly dated.** The env marks a session's close only
+  once the next session exists, so the 30 Sep deployment and its P&L are
+  recorded by the 1 Oct run, dated 30 Sep; every later session likewise.
+- **Equal-weight is not investable at Rs 1,00,000**: 503 eligible names give
+  Rs 199 each, below the Rs 500 minimum trade (the flat Rs 15.34 DP charge's
+  reason to exist), so the EW book stays in cash. It is context only; the P2
+  statistic (rank among 21 volstop books) does not use it.
+- **A second deployment on 1 Oct** is the procedure, not a defect: the
+  schedule rebalances on each month's first trading day. The 1% band
+  suppresses most of it.
+- **Different experiment from the one frozen.** At Rs 1,00,000 a K=30 book
+  holds ~Rs 3,300 per name, where the flat DP charge is ~0.5% of each sale.
+
+**A defect fixed before the new record began.** `run_allocator.py` labelled
+every replay NAV one session late: the env trades at d's open and marks d's
+close, but the writer paired that close with d+1. Relative comparisons were
+unaffected (all arms shift together); dated records were not. Fixed
+2026-09-29 while the record was empty, so no recorded session carries it.
+NAV files written earlier keep the old +1 labels.
+
+**Caveat.** This restart follows an observed −2.1% start. One reset does not
+bias the rank — all 21 books reset together — but restarting whenever the
+early numbers look bad would. Further restarts only for defects or platform
+changes.
+
+Verified by a rehearsal (Rs 1,00,000 deployed 2026-09-22, two runs): 5
+sessions recorded 09-22..09-28, 85 books each, day one carrying entry costs,
+the second run adding nothing and diverging 0 of 85.
 
 ## Signatures
 

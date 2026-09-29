@@ -150,7 +150,7 @@ def test_pnl_from_ret_not_nav(tmp_path):
     cum = sum(rets)
     assert h["sessions"] == 3
     assert h["signal"]["cum_log"] == pytest.approx(cum)
-    assert h["signal"]["rupees"] == pytest.approx(1_000_000 * (math.exp(cum) - 1))
+    assert h["signal"]["rupees"] == pytest.approx(D.NOTIONAL * (math.exp(cum) - 1))
     assert h["signal"]["pct"] == pytest.approx(math.exp(cum) - 1)
     assert h["equal_weight"]["cum_log"] == pytest.approx(cum / 2)
     s = D.cumulative_series(rec).filter(pl.col("book") == SIG).sort("date")
@@ -206,7 +206,7 @@ def test_band_and_rank(tmp_path):
     assert h["null_median"]["cum_log"] == pytest.approx(0.0105)
     band = D.null_band(D.cumulative_series(rec))
     assert band.height == 1
-    exp10 = 1_000_000 * (math.exp(D.quantile([0.001 * i for i in range(1, 21)], 0.1)) - 1)
+    exp10 = D.NOTIONAL * (math.exp(D.quantile([0.001 * i for i in range(1, 21)], 0.1)) - 1)
     assert band["p10"][0] == pytest.approx(exp10)
     assert band["p10"][0] < band["p50"][0] < band["p90"][0]
 

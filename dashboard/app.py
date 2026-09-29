@@ -104,7 +104,8 @@ def paper_banner() -> None:
     st.markdown(
         "<div style='border:2px solid #e34948;border-radius:6px;"
         "padding:8px 14px;margin-bottom:8px'>"
-        "<b>PAPER ONLY.</b> Rs 10,00,000 notional on NSE point-in-time data. No orders are "
+        "<b>PAPER ONLY.</b> Rs 1,00,000 of simulated cash (deployed 2026-09-30) on NSE "
+        "point-in-time data. No orders are "
         "placed, no real money is at risk. Pre-registered in "
         "<code>audit/P2_PAPER_PERMUTATION_TEST.md</code>.</div>",
         unsafe_allow_html=True,
@@ -232,7 +233,8 @@ def page_overview() -> None:
     st.subheader(f"Forward P&L since the record (re)started on {hd['first_date']}")
     st.caption(
         f"Sum of recorded daily log returns for {hd['sessions']} session(s), "
-        f"{hd['first_date']} .. {hd['last_date']}, applied to Rs 10,00,000 notional. "
+        f"{hd['first_date']} .. {hd['last_date']}, on Rs 1,00,000 of simulated cash "
+        "deployed 2026-09-30. "
         f"Scoring filter: sessions after the {D.FREEZE_DATE} freeze. {D.RESTART_NOTE} "
         "Source: audit/paper/record.jsonl."
     )

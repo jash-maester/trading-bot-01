@@ -123,7 +123,9 @@ def main() -> None:
     mrf = re.search(r'^RECORD_FROM="(\d{4}-\d{2}-\d{2})"', Path("scripts/paper_daily.sh")
                     .read_text(), re.M) if Path("scripts/paper_daily.sh").exists() else None
     record_from = date.fromisoformat(mrf.group(1)) if mrf else None
-    if not rec_dates and record_from is not None and bh < record_from:
+    # Restart 3: a session's close is marked by the NEXT run, so the latest data
+    # date is never expected in the record yet.
+    if not rec_dates and record_from is not None and bh <= record_from:
         # Restart 3: an empty record is the expected state until the first
         # session on/after RECORD_FROM has been published.
         checks.append(_check("record_current", "OK",
@@ -135,7 +137,7 @@ def main() -> None:
                              + (f" (RECORD_FROM {record_from})" if record_from else "")))
     else:
         panel_dates = set(bars.select("date").unique().collect()["date"].to_list())
-        missing = sorted(d for d in panel_dates if rec_dates[0] < d <= bh and d not in rec_dates)
+        missing = sorted(d for d in panel_dates if rec_dates[0] < d < bh and d not in rec_dates)
         st = "OK" if not missing else ("WARN" if len(missing) <= 5 else "FAIL")
         checks.append(_check("record_current", st,
                              f"{len(rec_dates)} sessions recorded, "

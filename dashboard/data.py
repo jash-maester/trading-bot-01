@@ -31,16 +31,18 @@ from pathlib import Path
 
 import polars as pl
 
-NOTIONAL = 1_000_000.0
+# Restart 3 (2026-09-29): Rs 1,00,000 of cash deployed at the 2026-09-30 open.
+NOTIONAL = 100_000.0
 FREEZE_DATE = date(2026, 9, 9)  # scoring filter; cross-checked vs summary.json freeze_date
 EVIDENCE_MONTHS = 48  # audit/P2: no rank reading before this
 # audit/P2_PAPER_PERMUTATION_TEST.md "Restart 2": the record restarted on the
 # Docker platform; line 1 of record.jsonl is 2026-09-25 and the 11 host sessions
 # 09-10..09-25 were discarded (archived as record.jsonl.restart2).
 RESTART_NOTE = (
-    "Record restarted (restart 3, user decision 2026-09-29): P&L and notional funds reset to "
-    "Rs 10,00,000; first recorded session 2026-09-30. Earlier records are archived as "
-    "audit/paper/record.jsonl.restart1..3. See audit/P2 'Restart 3'."
+    "Restart 3 (user decision 2026-09-29): every book starts with Rs 1,00,000 in CASH and "
+    "deploys it at the 2026-09-30 open. A session's close is marked by the NEXT run, so "
+    "each session appears one run late, under its correct date. Earlier records are "
+    "archived as audit/paper/record.jsonl.restart1..3."
 )
 SESSIONS_PER_MONTH = 21.0
 STALE_HOURS = 26.0  # both crontab slots fire daily; a gap > 26 h = a missed day
@@ -320,7 +322,7 @@ def latest_dir(paper: Path) -> Loaded:
 
 
 def book_from_nav_file(p: Path) -> str:
-    return p.name.removeprefix("nav_").removesuffix("_full.parquet")
+    return re.sub(r"_(full|paper)\.parquet$", "", p.name.removeprefix("nav_"))
 
 
 def warmup_navs(nav_dir: Path, freeze: date = FREEZE_DATE) -> pl.DataFrame:
