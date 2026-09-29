@@ -121,6 +121,12 @@ def main() -> None:
     ap.add_argument("--cost-bps", type=float, default=23.0, help="round-trip cost proxy, bps")
     ap.add_argument("--min-days", type=int, default=30)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--score-horizon", type=int, default=None,
+                    help="which r_hat_<h>d column ranks names (default: --horizon). "
+                         "E4 scores on r_hat_20d but holds for 60 sessions.")
+    ap.add_argument("--alpha", type=float, default=0.05,
+                    help="two-sided significance for t_crit; 0.025 for a second look "
+                         "(audit/R_2026-09-29 E4)")
     ap.add_argument("--which", choices=("top", "bottom", "screen"), default="top",
                     help="score the K highest-scored names (what a long-only book buys) or the "
                          "K lowest (what it would short). If the signal's information lives in "
@@ -145,7 +151,8 @@ def main() -> None:
     t_idx = {t: j for j, t in enumerate(tickers)}
     fwd, mask = tens.fwd_raw[h], tens.mask
 
-    g = _grid_from_predictions(sdir / "predictions.parquet", f"r_hat_{h}d", d_idx, t_idx, fwd.shape)
+    score_col = f"r_hat_{a.score_horizon or h}d"
+    g = _grid_from_predictions(sdir / "predictions.parquet", score_col, d_idx, t_idx, fwd.shape)
     logger.info(f"{a.signal}: {np.isfinite(g).mean():.1%} of the "
                 f"[{len(tens.dates)}x{len(tickers)}] grid populated")
     cost = a.cost_bps / 1e4
@@ -169,7 +176,11 @@ def main() -> None:
     def tstat(x):
         sd = x.std(ddof=1)
         return float(x.mean() / (sd / np.sqrt(x.size))) if sd > 0 else float("nan")
-    crit = t_critical_95(len(names) - 1)
+    if a.alpha == 0.05:
+        crit = t_critical_95(len(names) - 1)
+    else:
+        from scipy.stats import t as _t  # noqa: PLC0415
+        crit = float(_t.ppf(1 - a.alpha / 2, len(names) - 1))
     t_sig, t_diff = tstat(sv), tstat(diff)
     pos = int((sv > 0).sum())
     rank = 1 + int((nv.mean(axis=1) > sv.mean()).sum())
