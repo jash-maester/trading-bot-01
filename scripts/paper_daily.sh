@@ -143,6 +143,7 @@ rm -rf "$LATEST"
 uv run python scripts/run_allocator.py data=bhav_v1 data.panels_root=data/panels_forward \
     +split=paper +signal_tag=paper_signal +require_gate_pass=false +apply_tax=true \
     env.initial_cash="$CAPITAL" \
+    "++allocator.initial_full_deploy=true" "++allocator.topup_cash=true" \
     "++allocator.universe_from_panel=true" "++allocator.null_control=true" \
     "++allocator.null_seeds=$NULL_SEEDS" \
     "++allocator.k_grid=[$K]" "++allocator.band_grid=[$BAND]" "++allocator.freq_grid=[$FREQ]" \

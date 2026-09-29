@@ -51,6 +51,7 @@ If it is not there this script says so and stops; it never invents a signal.
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
@@ -227,6 +228,7 @@ def _run_allocator(
     seed: int,
     risk: RiskOverlay | None = None,
     stop_events: list[dict[str, Any]] | None = None,
+    full_first: bool = False,
 ) -> tuple[list[float], list[float], dict[str, float]]:
     """Drive one full pass of the env from the allocator.
 
@@ -284,9 +286,16 @@ def _run_allocator(
             mask = obs["mask"].astype(bool)
             sids = obs["sector_ids"].astype(np.int64)
             cur = obs["portfolio"].astype(np.float64)
-            target = allocate(r_hat[sig], vol[sig], mask, sids, cur, params)
+            # full_first (restart 3): the FIRST rebalance may deploy an all-cash
+            # book in full. turnover_budget exists to limit churn in a running
+            # book; applied to a first funding it would invest 0.30 of capital
+            # on day one and take months to reach the target. Every later
+            # rebalance keeps the configured budget.
+            p_now = (replace(params, turnover_budget=2.0)
+                     if full_first and rebalances == 0 else params)
+            target = allocate(r_hat[sig], vol[sig], mask, sids, cur, p_now)
             if track_band:
-                rep = band_suppression(r_hat[sig], vol[sig], mask, sids, cur, params)
+                rep = band_suppression(r_hat[sig], vol[sig], mask, sids, cur, p_now)
                 suppressed += rep.n_suppressed
                 traded_unbanded += rep.n_traded_unbanded
             if risk is not None:
@@ -590,6 +599,8 @@ def main(cfg: DictConfig) -> None:
     # for a PAIRED bootstrap CI against the baseline, and a paired test needs
     # both NAV series day by day -- a summary CAGR cannot produce one.
     nav_dir = alloc_cfg.get("nav_dir", None)
+    # Opt-in (restart 3): let the first rebalance deploy an all-cash book fully.
+    full_first = bool(alloc_cfg.get("initial_full_deploy", False))
 
     env_base: dict[str, Any] = dict(
         panel_path=panel_path,
@@ -603,6 +614,8 @@ def main(cfg: DictConfig) -> None:
         # predating 2026-09-07 still reproduces; +apply_tax=true turns it on.
         apply_tax=bool(cfg.get("apply_tax", False)),
         seed=seed,
+        # Opt-in (restart 3): spend whole-share rounding leftovers; see PanelTradingEnv.
+        topup_cash=bool(alloc_cfg.get("topup_cash", False)),
     )
 
     # ── P5: does this capital support the K being measured? ───────────────────
@@ -718,6 +731,7 @@ def main(cfg: DictConfig) -> None:
                           ),
                           nseed,
                           risk=noverlay,
+                          full_first=full_first,
                       )
                       nm = compute_episode_metrics(n_navs, n_turns)
                       if nav_dir:
@@ -791,6 +805,7 @@ def main(cfg: DictConfig) -> None:
                     navs, turns, diag = _run_allocator(
                         env, r_hat_all[horizon], vol_all, params, seed, risk=overlay,
                         stop_events=events,
+                        full_first=full_first,
                     )
                     if events is not None:
                         tag = f"k{k}_b{band}_r{risk_name}_{freq}_{horizon}_{split}"

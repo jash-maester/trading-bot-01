@@ -70,8 +70,16 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         rebalance_schedule: RebalanceSchedule | None = None,
         min_trade_value: float = DEFAULT_MIN_TRADE_VALUE,
         apply_tax: bool = False,
+        topup_cash: bool = False,
     ) -> None:
         super().__init__()
+        # Opt-in (paper restart 3, Rs 1,00,000): after flooring targets to whole
+        # shares, spend leftover cash one share at a time on names already in the
+        # target, furthest-below-target first, never above max_weight_per_name.
+        # At small capital, flooring alone left ~a third in cash because several
+        # names cost more per share than their allocation. Off by default, so
+        # every existing result reproduces.
+        self._topup_cash = bool(topup_cash)
 
         self._cost_model: CostModel = cost_model or ZerodhaEquityDeliveryCostModel()
         if min_trade_value < 0.0:
@@ -464,6 +472,43 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
         """The reward function object the env steps."""
         return self._reward_fn
 
+    # Kept back from the top-up for this rebalance's charges (STT, stamp,
+    # exchange, GST ~0.12% of buys) so the cash leg cannot go negative.
+    _TOPUP_RESERVE = 0.005
+
+    def _topup(
+        self,
+        target_shares: np.ndarray,
+        eq_target_frac: np.ndarray,
+        opens: np.ndarray,
+        nav: float,
+    ) -> np.ndarray:
+        """Spend leftover cash on in-target names, one whole share at a time.
+
+        Greedy on the largest rupee shortfall below target; a name is eligible
+        only if it is in the target (weight > 0), has a positive open, one more
+        share fits in the remaining cash, and the resulting position stays at or
+        under ``max_weight_per_name``. Deterministic: ties break on index.
+        """
+        shares = target_shares.astype(np.float64).copy()
+        priced = opens > 0
+        px = np.where(priced, opens, 0.0)          # 0 where unpriced; never multiplied into inf
+        in_book = (eq_target_frac > 0) & priced
+        cap_value = self._max_weight * nav
+        budget = nav * (1.0 - self._TOPUP_RESERVE)
+        spent = float(np.sum(shares * px))
+        target_value = eq_target_frac * nav
+        while True:
+            room = budget - spent
+            ok = in_book & (px <= room) & ((shares + 1.0) * px <= cap_value)
+            if not ok.any():
+                break
+            shortfall = np.where(ok, target_value - shares * px, -np.inf)
+            i = int(np.argmax(shortfall))
+            shares[i] += 1.0
+            spent += float(px[i])
+        return shares
+
     def _step_target(
         self,
         eq_target_frac: np.ndarray | None,
@@ -518,6 +563,10 @@ class PanelTradingEnv(Env):  # type: ignore[type-arg]
             target_shares = np.where(
                 np.abs(requested - self._shares) < 0.5, self._shares, target_shares
             )
+            if self._topup_cash:
+                target_shares = self._topup(
+                    target_shares, np.where(mask, eq_target_frac, 0.0), opens, current_nav
+                )
         else:
             # Hold day: carry the book.  delta_shares is identically zero, so
             # every downstream quantity — fills, trade_val, costs, turnover —
