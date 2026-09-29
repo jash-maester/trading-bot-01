@@ -14,8 +14,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-trader}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trader}
       POSTGRES_DB: ${POSTGRES_DB:-trader}
+    # Localhost only: default credentials (trader/trader) were reachable from
+    # the whole LAN. Containers use the compose network, not these ports.
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d:ro
@@ -32,7 +34,7 @@ services:
       context: .
       dockerfile: mlflow.Dockerfile
     ports:
-      - "${MLFLOW_PORT:-5555}:5000"
+      - "127.0.0.1:${MLFLOW_PORT:-5555}:5000"
     volumes:
       - mlruns:/mlflow
     healthcheck:

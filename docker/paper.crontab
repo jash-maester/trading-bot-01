@@ -3,3 +3,8 @@
 # are idempotent -- a run that finds nothing new exits in seconds.
 0 21 * * * bash /app/scripts/paper_daily.sh
 30 7 * * * bash /app/scripts/paper_daily.sh
+# Health check 20 minutes after each run, so audit/paper/health.json is never
+# older than a day and a silent failure shows up on the dashboard. Without this
+# the file was only refreshed by hand (ops review, 2026-09-29).
+20 21 * * * cd /app && uv run python scripts/paper_healthcheck.py
+50 7 * * * cd /app && uv run python scripts/paper_healthcheck.py
