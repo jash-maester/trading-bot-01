@@ -22,7 +22,8 @@ set -uo pipefail
 OUT="${1:-logs/memwatch.csv}"
 INTERVAL="${2:-15}"
 mkdir -p "$(dirname "$OUT")"
-echo "ts,used_mb,avail_mb,cache_mb,swap_used_mb,gpu_used_mb,gpu_util" > "$OUT"
+# Append: the nightly and the morning catch-up share one file per day.
+[ -s "$OUT" ] || echo "ts,used_mb,avail_mb,cache_mb,swap_used_mb,gpu_used_mb,gpu_util" > "$OUT"
 
 # The Mac is now a working copy of the box (both ran the same allocator sweep
 # on 2026-09-09 and produced byte-identical numbers), so this has to sample on

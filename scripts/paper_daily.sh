@@ -121,19 +121,27 @@ PY
 stamp "panel OK"
 
 # ── 4 score the frozen model ─────────────────────────────────────────────────
+# The replay reads predictions only from the paper panel's first session on,
+# so only those are scored (--start-date; the panel is cut lazily to that
+# session's lookback window). Batches of 6 days, not 24: the forward pass's
+# activations were the whole nightly peak (4.3 GB -> 1.7 GB). Both changes
+# were verified bit-identical to the full-panel, 24-day predictions on every
+# overlapping row (2026-09-29, 19,640 rows, max abs diff 0.0).
+uv run python scripts/make_paper_panel.py --src data/panels_forward/full.parquet \
+    --out data/panels_forward/paper.parquet --trade-start "$RECORD_FROM" --lookback 60 \
+    > "$LOGS/paperpanel_$TODAY.log" 2>&1 || fail "make_paper_panel"
+PRED_FROM=$(uv run python -c "import polars as pl;print(pl.scan_parquet('data/panels_forward/paper.parquet').select(pl.col('date').min()).collect().item())")
 rm -rf data/signal/paper_signal
 uv run python scripts/predict_signal.py --signal-dir "$SIGNAL_DIR" --panel data/panels_forward/full.parquet \
-    --out-tag paper_signal --device cpu > "$LOGS/predict_$TODAY.log" 2>&1 || fail "predict_signal"
-stamp "predict OK ($(grep -oE '[0-9,]+ rows' "$LOGS/predict_$TODAY.log" | tail -1))"
+    --out-tag paper_signal --device cpu --start-date "$PRED_FROM" --batch-days 6 \
+    > "$LOGS/predict_$TODAY.log" 2>&1 || fail "predict_signal"
+stamp "predict OK ($(grep -oE '[0-9,]+ rows' "$LOGS/predict_$TODAY.log" | tail -1), from $PRED_FROM)"
 
 # ── 5 the 21 books (+3 overlays recorded for context) ────────────────────────
 # Restart 3: every book holds Rs 1,00,000 CASH until RECORD_FROM and deploys at
 # that session's open. The panel is cut so the replay's first traded session
 # is RECORD_FROM (scripts/make_paper_panel.py). The env marks a session's close
 # only once the next session exists, so a run on day D records through D-1.
-uv run python scripts/make_paper_panel.py --src data/panels_forward/full.parquet \
-    --out data/panels_forward/paper.parquet --trade-start "$RECORD_FROM" --lookback 60 \
-    > "$LOGS/paperpanel_$TODAY.log" 2>&1 || fail "make_paper_panel"
 N_LIVE=$(uv run python -c "import polars as pl;print(pl.scan_parquet('data/panels_forward/paper.parquet').filter(pl.col('date')>=pl.lit('$RECORD_FROM').str.to_date()).select(pl.col('date').n_unique()).collect().item())")
 if [ "$N_LIVE" -lt 2 ] && [ -z "${DRY:-}" ]; then
     stamp "deployment session $RECORD_FROM is today; its close is marked when the next session publishes -- nothing to record yet"

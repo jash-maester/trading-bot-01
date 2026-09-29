@@ -50,6 +50,13 @@ def main() -> None:
     ap.add_argument("--out-root", type=Path, default=Path("data/signal"))
     ap.add_argument("--device", default="auto")
     ap.add_argument("--batch-days", type=int, default=24)
+    ap.add_argument(
+        "--start-date", type=date.fromisoformat, default=None,
+        help="predict only dates >= this; the panel is cut to the lookback-1 "
+             "sessions before it. A prediction depends only on its own lookback "
+             "window (cross-sectional normalisation is per date), so this "
+             "changes no number -- it bounds memory (the nightly paper loop).",
+    )
     args = ap.parse_args()
 
     from trader.data.features import FEATURE_COLS
@@ -116,7 +123,23 @@ def main() -> None:
             f"{str(index.get('encoder_state_sha256'))[:16]}... — wrong checkpoint."
         )
 
-    panel = pl.read_parquet(args.panel)
+    if args.start_date is None:
+        panel = pl.read_parquet(args.panel)
+    else:
+        # Lazy: only the rows kept are ever materialised -- reading the whole
+        # panel and filtering afterwards costs the same peak memory as no cut.
+        scan = pl.scan_parquet(args.panel)
+        dates = sorted(scan.select(pl.col("date").unique()).collect()["date"].to_list())
+        first = next((i for i, d in enumerate(dates) if d >= args.start_date), None)
+        if first is None:
+            raise SystemExit(f"no session >= {args.start_date} in {args.panel}")
+        if first < lookback - 1:
+            raise SystemExit(f"only {first} sessions before {args.start_date}; "
+                             f"need {lookback - 1} for a full lookback")
+        cut = dates[first - (lookback - 1)]
+        panel = scan.filter(pl.col("date") >= cut).collect()
+        logger.info(f"--start-date {args.start_date}: panel cut to {cut}.. "
+                    f"({len(dates) - first + lookback - 1} of {len(dates)} sessions)")
     # The input representation is part of the checkpoint's contract, not a
     # property of this panel. A model fitted on per-date rank scores that is
     # handed raw features here would still run, still emit finite numbers, and

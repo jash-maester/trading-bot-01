@@ -71,7 +71,7 @@ def main() -> None:
     actions = (
         pl.concat(frames, how="vertical")
         .unique(subset=["ticker", "ex_date", "kind", "price_factor"], keep="first")
-        .sort(["ticker", "ex_date"])
+        .sort(["ticker", "ex_date", "kind", "price_factor"])
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     actions.write_parquet(args.out)

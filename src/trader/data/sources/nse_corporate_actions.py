@@ -168,7 +168,7 @@ def parse_corporate_actions(
         out["subject"].append((r.get("subject") or "").strip())
     return pl.DataFrame(out, schema=CA_SCHEMA).unique(
         subset=["ticker", "ex_date", "kind", "price_factor"], keep="first"
-    ).sort(["ticker", "ex_date"])
+    ).sort(["ticker", "ex_date", "kind", "price_factor"])
 
 
 def back_adjust_with_actions(
@@ -204,7 +204,16 @@ def back_adjust_with_actions(
     # after it. Done as a per-ticker join-and-scan rather than a cross join,
     # which would be 8M x 3k rows.
     acts = (
-        actions.select(["ticker", "ex_date", "price_factor"])
+        actions.select(["ticker", "ex_date", "kind", "price_factor"])
+        # Two actions on one ex-date (BAJFINANCE 2025-06-16: split 0.5 AND
+        # bonus 0.2) must be ONE factor, 0.1. Left as two rows, the as-of join
+        # below matched a pre-ex-date bar to only one of them, so which factor
+        # it got depended on the feed's row order: BAJFINANCE carried a fake
+        # -80% day (log return -1.60) on 2025-06-16 (found 2026-09-29).
+        # Sorted before the product so the float result is order-independent.
+        .sort(["ticker", "ex_date", "kind", "price_factor"])
+        .group_by(["ticker", "ex_date"], maintain_order=True)
+        .agg(pl.col("price_factor").product())
         .sort(["ticker", "ex_date"], descending=[False, True])
         .with_columns(
             pl.col("price_factor").cum_prod().over("ticker").alias("_cum")

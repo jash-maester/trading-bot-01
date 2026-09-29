@@ -209,3 +209,31 @@ def test_no_actions_leaves_prices_raw_and_says_so() -> None:
     })
     out = back_adjust_with_actions(bars, pl.DataFrame(schema=CA_SCHEMA))
     assert out["close"].to_list() == [100.0]
+
+
+def test_two_actions_on_one_ex_date_compound_regardless_of_row_order():
+    """BAJFINANCE 2025-06-16: split 0.5 and bonus 0.2 on one day must give 0.1.
+
+    Regression: the as-of join matched a pre-ex-date bar to only ONE of the two
+    rows, leaving a fake -80% day whose size depended on the feed's row order.
+    """
+    import datetime as dt
+
+    import polars as pl
+
+    from trader.data.sources.nse_corporate_actions import back_adjust_with_actions
+
+    bars = pl.DataFrame({
+        "ticker": ["X"] * 3,
+        "date": [dt.date(2025, 6, 13), dt.date(2025, 6, 16), dt.date(2025, 6, 17)],
+        "close": [1000.0, 100.0, 100.0], "volume": [10.0, 100.0, 100.0],
+    })
+    outs = []
+    for kinds, factors in ((["split", "bonus"], [0.5, 0.2]), (["bonus", "split"], [0.2, 0.5])):
+        acts = pl.DataFrame({"ticker": ["X", "X"], "ex_date": [dt.date(2025, 6, 16)] * 2,
+                             "kind": kinds, "price_factor": factors})
+        out = back_adjust_with_actions(bars, acts)
+        assert out["close"].to_list() == [100.0, 100.0, 100.0]
+        assert out["volume"].to_list()[0] == 100.0
+        outs.append(out)
+    assert outs[0].equals(outs[1])

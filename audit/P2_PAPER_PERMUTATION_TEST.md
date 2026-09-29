@@ -257,6 +257,29 @@ Verified by a rehearsal (Rs 1,00,000 deployed 2026-09-22, two runs): 5
 sessions recorded 09-22..09-28, 85 books each, day one carrying entry costs,
 the second run adding nothing and diverging 0 of 85.
 
+### Data fix before the first recorded session (2026-09-29, late evening)
+
+Found while verifying a memory optimisation: `back_adjust_with_actions`
+matched a bar before an ex-date to only ONE of two corporate actions sharing
+that date, depending on the feed's row order. BAJFINANCE (split 0.5 and bonus
+0.2 on 2025-06-16) carried a fake −80% day (log return −1.60) in the forward
+panel. 33 (ticker, ex-date) pairs in `data/ext/corporate_actions.parquet` have
+two actions. Fixed by combining same-day factors before the cumulative
+product; regression test in `tests/unit/test_nse_corporate_actions.py`.
+
+Effect on the paper test, measured by rebuilding the forward panel and
+re-scoring: predictions changed for 2 tickers (BAJFINANCE, NAZARA), by at most
+3.5e-5 in `r_hat_20d`; the 2026-09-30 target book is identical (27 names, same
+share counts). No session had been recorded, so nothing recorded is affected.
+Not a restart. The frozen model's training panel was built by the same
+function and may carry the same defect for these 33 names; that is noted,
+not re-examined here.
+
+The nightly prediction now scores only from the paper panel's first session,
+in 6-day batches. Both were verified bit-identical to the previous full-panel
+scoring on every overlapping row (19,640 rows, max abs diff 0.0). Peak
+memory of the nightly run fell from 5.3 GB to 2.5 GB, and it now takes ~2 min.
+
 ## Signatures
 
 Frozen: 2026-09-10.

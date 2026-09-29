@@ -35,6 +35,11 @@ services:
       dockerfile: mlflow.Dockerfile
     ports:
       - "127.0.0.1:${MLFLOW_PORT:-5555}:5000"
+    environment:
+      # MLflow 3.x starts a job runner and six huey consumers (~115 MB each,
+      # ~0.9 GB of the server's 1.1 GB idle) for GenAI scorer jobs. Nothing
+      # here uses them; tracking and the UI are unaffected.
+      MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "false"
     volumes:
       - mlruns:/mlflow
     healthcheck:
