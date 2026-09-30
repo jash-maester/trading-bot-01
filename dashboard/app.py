@@ -612,6 +612,63 @@ def page_research() -> None:
 
 
 
+# ── liveness: market clock, schedule, refresh cadence ────────────────────────
+AUTO_REFRESH_PAGES = {"Live book", "Overview", "P&L", "Health & ops"}
+
+
+def market_open(now: datetime) -> bool:
+    """NSE regular session, weekdays 09:15-15:30 IST (holidays not known here)."""
+    t = now.hour * 60 + now.minute
+    return now.weekday() < 5 and 9 * 60 + 15 <= t < 15 * 60 + 30
+
+
+def refresh_seconds(now: datetime) -> int:
+    t = now.hour * 60 + now.minute
+    busy = now.weekday() < 5 and 9 * 60 <= t <= 15 * 60 + 50
+    return 30 if busy else 300
+
+
+def next_live_event(now: datetime) -> tuple[datetime, str]:
+    """The next scheduled live-book job (docker/paper.crontab), in IST."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    day = now.replace(second=0, microsecond=0)
+    for add in range(0, 8):
+        d = (day + timedelta(days=add)).replace(hour=0, minute=0)
+        if d.weekday() >= 5:
+            continue
+        slots = [(d.replace(hour=9, minute=16), "09:16 trade")]
+        slots += [(d.replace(hour=h, minute=m), "price update")
+                  for h in range(9, 16) for m in (0, 15, 30, 45)]
+        slots += [(d.replace(hour=15, minute=35), "close mark and stop check")]
+        for when, what in sorted(slots):
+            if when > now:
+                return when, what
+    return now, "—"
+
+
+def live_strip(snap: dict) -> None:
+    """One line that says how fresh the numbers are and what happens next."""
+    now = datetime.now(KA.IST)
+    ts = datetime.fromisoformat(snap["ts"])
+    age = int((now - ts).total_seconds() // 60)
+    nxt, what = next_live_event(now)
+    phase = "Market open" if market_open(now) else "Market closed"
+    when = nxt.strftime("%H:%M") if nxt.date() == now.date() else nxt.strftime("%a %d %b %H:%M")
+    st.markdown(
+        f"<div style='font-size:0.9rem;opacity:0.85'>🟢 <b>{phase}</b> · last price update "
+        f"<b>{ts.strftime('%H:%M')}</b> ({age} min ago) · next: <b>{what}</b> at {when} IST"
+        f" · page refreshes every {refresh_seconds(now)} s</div>"
+        if market_open(now) else
+        f"<div style='font-size:0.9rem;opacity:0.85'>⚪ <b>{phase}</b> · last price update "
+        f"<b>{ts.strftime('%a %d %b %H:%M')}</b> · next: <b>{what}</b> at {when} IST</div>",
+        unsafe_allow_html=True,
+    )
+    if market_open(now) and age > 20:
+        st.warning(f"No price update for {age} minutes during market hours; the "
+                   "15-minute marks may be failing. Check the Kite login and Health & ops.")
+
+
 def _inr(x: float, signed: bool = False) -> str:
     s = f"{abs(x):,.0f}"
     sign = ("+" if x > 0 else "-" if x < 0 else "") if signed else ("-" if x < 0 else "")
@@ -635,6 +692,7 @@ def page_live() -> None:
                 "09:16 IST on 2026-09-30, after the Kite login. This page fills in "
                 "from the first mark (~09:30).")
         return
+    live_strip(snap)
     if snap.get("prices") != "live":
         st.warning(f"These marks use '{snap.get('prices')}' prices (a rehearsal), not live quotes.")
     dep = state.get("deployed", {})
@@ -878,7 +936,21 @@ with st.sidebar:
         st.cache_data.clear()
 
 paper_banner()  # every page: PAPER ONLY / notional
-try:
-    PAGES[choice]()
-except Exception as e:  # noqa: BLE001 -- a message, never a stack trace
-    st.error(f"This section could not render: {type(e).__name__}: {e}")
+
+
+def _render() -> None:
+    try:
+        PAGES[choice]()
+    except Exception as e:  # noqa: BLE001 -- a message, never a stack trace
+        st.error(f"This section could not render: {type(e).__name__}: {e}")
+
+
+# Data pages re-render themselves: every 30 s in market hours (a new mark lands
+# every 15 min and must show within a minute), every 5 min otherwise. Only the
+# page body reruns (st.fragment), so widget state such as selected stocks is
+# kept. The Kite login and research pages are not auto-refreshed: a form being
+# filled in must not re-render under the user.
+if choice in AUTO_REFRESH_PAGES:
+    st.fragment(run_every=refresh_seconds(datetime.now(KA.IST)))(_render)()
+else:
+    _render()
