@@ -61,8 +61,15 @@ valid, but the gap is a gap in *unattended* operation and P2 counts more than
 | every 15 min 09:00–15:45 | `mark` | marks the book at live LTP for the dashboard |
 | 15:35 | `mark --close` | ticks stop cooldowns, flags volstop breaches for the next 09:16 |
 
-All need the daily Kite login (the token expires ~06:00). Without it each run
-logs `Kite token rejected` to `logs/paper/live_<date>.log` and writes nothing.
+All need the daily Kite login (the token expires ~06:00). Log in from the
+dashboard's **Kite login** page (http://127.0.0.1:8501): it links to Kite,
+captures the redirect's `request_token` automatically when the app's redirect
+URL at developers.kite.trade is `http://127.0.0.1:8501/` (otherwise paste the
+redirect URL), exchanges it, and writes `secrets/kite/access_token.json`
+(0600, gitignored). `live_paper.py` tries that file first, then `.env`.
+Without a valid token each run logs `Kite token rejected` to
+`logs/paper/live_<date>.log` and writes nothing. The sidebar shows the token
+state on every page.
 Holidays are detected from the quotes (no trade dated today) and skipped.
 The image needs the `zerodha` extra (`kiteconnect`); it is in
 `docker/paper.Dockerfile`.

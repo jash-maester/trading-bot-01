@@ -68,8 +68,10 @@ services:
 
   dashboard:
     # Read-only monitor of the audit/P2 forward paper test: http://localhost:8501
-    # No profile: it starts with the stack. It never talks to Kite and places
-    # no orders; it reads files the paper loop writes.
+    # No profile: it starts with the stack. It places no orders; it reads files
+    # the paper loop writes. Its one Kite use is the daily login page
+    # (dashboard/kite_auth.py: generate_session + profile), which writes the
+    # access token to secrets/kite/ for scripts/live_paper.py.
     #
     # Mounts: the whole repo READ-ONLY at /app -- so a bug in the page cannot
     # touch audit/paper/record.jsonl (append-only record of truth), snapshots or
@@ -91,6 +93,8 @@ services:
     volumes:
       - ..:/app:ro
       - ../logs/dashboard:/app/logs/dashboard
+      # Writable ONLY for the Kite token file (0600, gitignored).
+      - ../secrets/kite:/app/secrets/kite
     mem_limit: 1g
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8501/_stcore/health').read().strip()==b'ok' else 1)"]

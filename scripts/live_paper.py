@@ -89,19 +89,42 @@ def _sym(ticker: str) -> str:
     return ticker.removesuffix(".NS")
 
 
+def _token_candidates() -> list[tuple[str, str]]:
+    """Access tokens to try, newest source first: the dashboard's token file
+    (secrets/kite/access_token.json, written by the Kite login page), then .env."""
+    out = []
+    p = Path(os.environ.get("TRADER_KITE_TOKEN_FILE", "secrets/kite/access_token.json"))
+    try:
+        t = json.loads(p.read_text()).get("access_token", "")
+        if t:
+            out.append(("dashboard login", t))
+    except (OSError, ValueError):
+        pass
+    t = os.environ.get("KITE_ACCESS_TOKEN", "")
+    if t and all(t != x for _, x in out):
+        out.append((".env", t))
+    return out
+
+
 def _kite():
     import kiteconnect  # noqa: PLC0415
 
-    key, tok = os.environ.get("KITE_API_KEY", ""), os.environ.get("KITE_ACCESS_TOKEN", "")
-    if not key or not tok:
-        raise SystemExit("KITE_API_KEY / KITE_ACCESS_TOKEN missing -- log in to Kite first")
-    k = kiteconnect.KiteConnect(api_key=key)
-    k.set_access_token(tok)
-    try:
-        k.profile()
-    except Exception as e:  # noqa: BLE001
-        raise SystemExit(f"Kite token rejected ({type(e).__name__}) -- the daily login is needed")
-    return k
+    key = os.environ.get("KITE_API_KEY", "")
+    toks = _token_candidates()
+    if not key or not toks:
+        raise SystemExit("KITE_API_KEY or an access token is missing -- log in to Kite "
+                         "on the dashboard's Kite login page")
+    errors = []
+    for src, tok in toks:
+        k = kiteconnect.KiteConnect(api_key=key)
+        k.set_access_token(tok)
+        try:
+            k.profile()
+            return k
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{src}: {type(e).__name__}")
+    raise SystemExit(f"Kite token rejected ({'; '.join(errors)}) -- the daily login is "
+                     "needed (dashboard → Kite login)")
 
 
 def _live_prices(tickers: list[str]) -> dict[str, dict]:

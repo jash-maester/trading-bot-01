@@ -7,3 +7,4 @@ polars==1.40.0
 pyarrow==23.0.1
 pandas==2.3.3
 loguru==0.7.3
+kiteconnect==5.2.1   # Kite login page (dashboard/kite_auth.py): generate_session + profile only

@@ -21,6 +21,8 @@ import polars as pl
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kite_auth as KA  # noqa: E402
+
 import data as D  # noqa: E402
 
 ROOT = Path(os.environ.get("DASHBOARD_ROOT", Path(__file__).resolve().parent.parent))
@@ -755,6 +757,100 @@ def page_live() -> None:
                "random selection; read early P&L as noise, not skill (audit/P2).")
 
 
+# ── Kite daily login ─────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _kite_status(_stamp: float) -> dict:
+    """Token status, re-checked at most once a minute (and whenever the file changes)."""
+    return KA.check(ROOT)
+
+
+def kite_status() -> dict:
+    p = KA.token_path(ROOT)
+    try:
+        stamp = p.stat().st_mtime
+    except OSError:
+        stamp = 0.0
+    return _kite_status(stamp)
+
+
+def _handle_kite_callback() -> None:
+    """Kite redirects here with ?request_token=...: exchange it once, then clean the URL."""
+    qp = st.query_params
+    if "request_token" not in qp and "status" not in qp:
+        return
+    raw = "&".join(f"{k}={v}" for k, v in qp.items())
+    rt = KA.parse_request_token(raw)
+    st.query_params.clear()                      # a request token is single-use
+    st.session_state["nav"] = "Kite login"
+    if rt is None:
+        st.session_state["kite_msg"] = ("error", "Kite login was not successful "
+                                        f"(status={qp.get('status', '?')}). Try again.")
+        return
+    if st.session_state.get("kite_rt_done") == rt:
+        return
+    st.session_state["kite_rt_done"] = rt
+    try:
+        meta = KA.exchange(ROOT, rt)
+        st.session_state["kite_msg"] = ("success", f"Kite connected. Token valid until "
+                                        f"{meta['expires_at'][:16].replace('T', ' ')} IST.")
+        _kite_status.clear()
+    except RuntimeError as e:
+        st.session_state["kite_msg"] = ("error", str(e))
+
+
+def page_kite() -> None:
+    st.header("Kite login")
+    st.caption(
+        "The live book needs a Kite access token to read prices at 09:16 and through the "
+        "day. Tokens expire around 06:00 IST every morning. Log in once each trading day "
+        "before 09:16. Only login and profile endpoints are used; no orders are ever placed."
+    )
+    msg = st.session_state.pop("kite_msg", None)
+    if msg:
+        (st.success if msg[0] == "success" else st.error)(msg[1])
+    s = kite_status()
+    state = s["state"]
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Token", {"valid": "Valid", "expired": "Expired", "missing": "Not set",
+                        "error": "Check failed"}[state])
+    c2.metric("Minted", (s.get("minted_at") or "—")[:16].replace("T", " "))
+    c3.metric("Expires (approx.)", (s.get("expires_at") or "—")[:16].replace("T", " "))
+    if state == "error":
+        st.warning(f"Could not verify the token: {s.get('error')}. Kite may be unreachable.")
+
+    key, secret = KA.credentials(ROOT)
+    if not key or not secret:
+        st.error("KITE_API_KEY / KITE_API_SECRET are not in .env, so login cannot work.")
+        return
+    st.subheader("1. Log in")
+    st.link_button("Log in to Kite", KA.login_url(key), type="primary")
+    st.caption(
+        "Kite sends you back to the redirect URL registered for this app. If that URL is "
+        "this dashboard, http://127.0.0.1:8501/, the token is captured automatically. "
+        "Set it once at developers.kite.trade → My apps → Redirect URL."
+    )
+    st.subheader("2. Or paste the redirect URL")
+    with st.form("kite_paste", clear_on_submit=True):
+        txt = st.text_input("Redirect URL or request_token",
+                            placeholder="http://127.0.0.1:5000/kite/callback?...&request_token=...",
+                            type="password")
+        if st.form_submit_button("Connect"):
+            rt = KA.parse_request_token(txt)
+            if rt is None:
+                st.error("No request_token found (or the login status was not success).")
+            else:
+                try:
+                    meta = KA.exchange(ROOT, rt)
+                    _kite_status.clear()
+                    st.success(f"Kite connected. Token valid until "
+                               f"{meta['expires_at'][:16].replace('T', ' ')} IST.")
+                except RuntimeError as e:
+                    st.error(str(e))
+    st.caption("The token is stored in secrets/kite/access_token.json (owner-only, "
+               "gitignored) and never shown. The 09:16 trade and the marks read it from there.")
+
+
 PAGES = {
     "Live book": page_live,
     "Overview": page_overview,
@@ -762,12 +858,22 @@ PAGES = {
     "Warm-up context": page_warmup,
     "Health & ops": page_health,
     "Research & reasoning": page_research,
+    "Kite login": page_kite,
 }
+
+_handle_kite_callback()
 
 with st.sidebar:
     st.markdown("### Paper test monitor")
     choice = st.radio("Section", list(PAGES), label_visibility="collapsed", key="nav")
     st.caption("PAPER ONLY · no orders · read-only view of the repo")
+    _ks = kite_status()["state"]
+    if _ks == "valid":
+        st.success("Kite: connected", icon="✅")
+    elif _ks == "error":
+        st.warning("Kite: could not verify", icon="⚠️")
+    else:
+        st.error("Kite: login needed", icon="🔑")
     if st.button("Reload data"):
         st.cache_data.clear()
 
