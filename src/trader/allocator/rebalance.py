@@ -22,10 +22,10 @@ from typing import Literal
 
 import numpy as np
 
-RebalanceFreq = Literal["daily", "weekly", "monthly"]
+RebalanceFreq = Literal["daily", "weekly", "semimonthly", "monthly", "quarterly"]
 RebalanceAnchor = Literal["first", "last"]
 
-_FREQS: tuple[str, ...] = ("daily", "weekly", "monthly", "quarterly")
+_FREQS: tuple[str, ...] = ("daily", "weekly", "semimonthly", "monthly", "quarterly")
 _ANCHORS: tuple[str, ...] = ("first", "last")
 
 
@@ -40,6 +40,13 @@ def _period_key(d: date, freq: str) -> tuple[int, int]:
         return (d.year, (d.month - 1) // 3)
     if freq == "monthly":
         return (d.year, d.month)
+    if freq == "semimonthly":
+        # Two periods a month, split at the 16th: the book trades on the first
+        # session on/after the 1st and on/after the 16th. Added 2026-09-30 for
+        # the adaptive shadow book (audit/P3_ADAPTIVE_SHADOW.md). Calendar-
+        # anchored rather than "every 10 sessions" so it shares the 1st-of-month
+        # rebalance with the monthly book it is compared against.
+        return (d.year, d.month * 2 + (d.day >= 16))
     if freq == "weekly":
         iso = d.isocalendar()
         return (iso.year, iso.week)

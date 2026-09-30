@@ -3,6 +3,11 @@
 # are idempotent -- a run that finds nothing new exits in seconds.
 0 21 * * * bash /app/scripts/paper_daily.sh
 30 7 * * * bash /app/scripts/paper_daily.sh
+# P3 adaptive shadow book (audit/P3_ADAPTIVE_SHADOW.md): end-of-day replay after
+# each P2 run. Separate script so it can never affect the P2 record; waits if
+# P2 has not built today's panel. Refits themselves run on the host GPU.
+40 21 * * * bash /app/scripts/adaptive_daily.sh
+10 8 * * * bash /app/scripts/adaptive_daily.sh
 # Health check 20 minutes after each run, so audit/paper/health.json is never
 # older than a day and a silent failure shows up on the dashboard. Without this
 # the file was only refreshed by hand (ops review, 2026-09-29).

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import subprocess
 import sys
@@ -397,6 +398,8 @@ def status() -> dict:
             _mtime(PAPER / "record.jsonl"),
             _mtime(PAPER / "health.json"),
             _mtime(DASH_HEALTH),
+            _mtime(ADAPT / "record.jsonl"),
+            _mtime(ADAPT / "refits.jsonl"),
             kite.get("minted_at"),
             kite.get("state"),
         )
@@ -420,7 +423,11 @@ def status() -> dict:
 
 
 def experiment() -> dict:
-    key = (_mtime(PAPER / "record.jsonl"),)
+    key = (
+        _mtime(PAPER / "record.jsonl"),
+        _mtime(ADAPT / "record.jsonl"),
+        _mtime(ADAPT / "refits.jsonl"),
+    )
 
     def build() -> dict:
         r = D.load_record(PAPER / "record.jsonl")
@@ -429,6 +436,7 @@ def experiment() -> dict:
                 "error": r.error,
                 "evidence_months": D.EVIDENCE_MONTHS,
                 "restart_note": D.RESTART_NOTE,
+                "adaptive": adaptive(),
             }
         rec = r.value or []
         hd = D.headline(rec)
@@ -467,9 +475,94 @@ def experiment() -> dict:
             "evidence_months": D.EVIDENCE_MONTHS,
             "restart_note": D.RESTART_NOTE,
             "freeze_date": D.FREEZE_DATE.isoformat(),
+            "adaptive": adaptive(),
         }
 
     return _cached("experiment", key, build)
+
+
+# ── P3 adaptive shadow book (stdlib) ─────────────────────────────────────────
+
+ADAPT = PAPER / "adaptive"
+ADAPT_FROM = "2026-10-01"
+ADAPT_READ = "2028-10-01"
+ADAPT_SIG = "allocator_k30_b0.01_rvolstop_semimonthly_20d"
+ADAPT_EW = "equal_weight_semimonthly"
+P2_SIG = D.SIGNAL_BOOK
+
+
+def _q(xs: list[float], q: float) -> float:
+    xs = sorted(xs)
+    if not xs:
+        return 0.0
+    k = (len(xs) - 1) * q
+    lo = int(k)
+    hi = min(lo + 1, len(xs) - 1)
+    return xs[lo] + (xs[hi] - xs[lo]) * (k - lo)
+
+
+def adaptive() -> dict:
+    files = (ADAPT / "record.jsonl", ADAPT / "refits.jsonl", PAPER / "record.jsonl")
+    key = tuple(_mtime(f) for f in files)
+
+    def build() -> dict:
+        refits = _jsonl(files[1])
+        rec = sorted(
+            (e for e in _jsonl(files[0]) if e.get("date", "") >= ADAPT_FROM),
+            key=lambda e: e["date"],
+        )
+        p2 = {e["date"]: e.get("books", {}) for e in _jsonl(files[2])}
+        out = {
+            "refits": refits,
+            "start": ADAPT_FROM,
+            "read_at": ADAPT_READ,
+            "sessions": len(rec),
+            "lines": [],
+            "band": [],
+            "headline": None,
+        }
+        if not rec:
+            return out
+        cum: dict[str, float] = {}
+        p2cum = 0.0
+        lines = {"adaptive": [], "frozen": [], "equal_weight": []}
+        band = []
+        for e in rec:
+            for b, v in e["books"].items():
+                cum[b] = cum.get(b, 0.0) + float(v.get("ret") or 0.0)
+            fr = p2.get(e["date"], {}).get(P2_SIG)
+            if fr is not None:
+                p2cum += float(fr.get("ret") or 0.0)
+            nulls = [c for b, c in cum.items() if b.startswith("null_signal") and "rvolstop" in b]
+            rup = lambda c: (math.exp(c) - 1.0) * D.NOTIONAL  # noqa: E731
+            lines["adaptive"].append([e["date"], rup(cum.get(ADAPT_SIG, 0.0))])
+            lines["equal_weight"].append([e["date"], rup(cum.get(ADAPT_EW, 0.0))])
+            if fr is not None:
+                lines["frozen"].append([e["date"], rup(p2cum)])
+            if nulls:
+                band.append(
+                    [e["date"], rup(_q(nulls, 0.1)), rup(_q(nulls, 0.5)), rup(_q(nulls, 0.9))]
+                )
+        nulls = [c for b, c in cum.items() if b.startswith("null_signal") and "rvolstop" in b]
+        sig = cum.get(ADAPT_SIG, 0.0)
+        pack = lambda c: {"rupees": (math.exp(c) - 1.0) * D.NOTIONAL, "pct": math.exp(c) - 1.0}  # noqa: E731
+        out.update(
+            lines=[{"kind": k, "points": v} for k, v in lines.items() if v],
+            band=band,
+            headline={
+                "adaptive": pack(sig),
+                "frozen": pack(p2cum),
+                "equal_weight": pack(cum.get(ADAPT_EW, 0.0)),
+                "null_median": pack(_q(nulls, 0.5)),
+                "n_null": len(nulls),
+                "rank": 1 + sum(1 for c in nulls if c > sig) if nulls else None,
+                "first_date": rec[0]["date"],
+                "last_date": rec[-1]["date"],
+            },
+        )
+        return out
+
+    return _cached("adaptive", key, build)
 
 
 # ── health (polars only for the memory chart) ────────────────────────────────

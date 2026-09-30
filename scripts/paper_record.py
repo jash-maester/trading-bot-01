@@ -34,7 +34,8 @@ EW = re.compile(r"^equal_weight_monthly")
 def _book(f: Path) -> str:
     # Strip the split suffix so book names are stable whatever panel the replay
     # ran on ("paper" since restart 3; "full" before it).
-    return re.sub(r"_(full|paper|holdout|oos_[a-z0-9_]+)$", "", f.stem.removeprefix("nav_"))
+    suffix = r"_(full|paper_adaptive|paper|holdout|oos_[a-z0-9_]+)$"
+    return re.sub(suffix, "", f.stem.removeprefix("nav_"))
 
 
 def _load(nav_dir: Path) -> dict[str, pl.DataFrame]:
@@ -64,15 +65,22 @@ def main() -> None:
     ap.add_argument("--snapshots", type=Path, required=True)
     ap.add_argument("--freeze-date", type=date.fromisoformat, required=True)
     ap.add_argument("--data-date", type=date.fromisoformat, required=True)
+    ap.add_argument("--freq", default="monthly",
+                    help="rebalance cadence in the book names; monthly = P2, "
+                         "semimonthly = the P3 adaptive shadow book")
     ap.add_argument("--record-from", type=date.fromisoformat, default=None,
                     help="first session eligible for the record (restart 3: 2026-09-30)")
     a = ap.parse_args()
 
     books = _load(a.nav_dir)
-    sig = next(b for b in books if VOLSTOP_SIG.match(b))
-    nulls = sorted((b for b in books if VOLSTOP_NULL.match(b)),
-                   key=lambda b: int(VOLSTOP_NULL.match(b).group(1)))
-    ew = next(b for b in books if EW.match(b))
+    fq = re.escape(a.freq)
+    sig_re = re.compile(VOLSTOP_SIG.pattern.replace("monthly", fq))
+    null_re = re.compile(VOLSTOP_NULL.pattern.replace("monthly", fq))
+    ew_re = re.compile(EW.pattern.replace("monthly", fq))
+    sig = next(b for b in books if sig_re.match(b))
+    nulls = sorted((b for b in books if null_re.match(b)),
+                   key=lambda b: int(null_re.match(b).group(1)))
+    ew = next(b for b in books if ew_re.match(b))
     dates = books[sig]["date"].to_list()
     # The env marks day d's close only once day d+1 exists, so a run whose data
     # ends on D can record sessions up to D-1 (the replay's last NAV date).

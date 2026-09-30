@@ -133,6 +133,7 @@ DEFAULT_MAX_FEE_FRACTION: Final = 0.01
 REBALANCES_PER_YEAR: Final[dict[str, float]] = {
     "daily": 252.0,
     "weekly": 52.0,
+    "semimonthly": 24.0,
     "monthly": 12.0,
     "quarterly": 4.0,
 }

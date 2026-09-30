@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- P3 adaptive refit on the host GPU, nightly at 21:25 (after the P2 run at
+     21:00 has fetched the day's data). The script refits only when due: the
+     eve of the 1st/16th rebalance, or a catch-up. A Mac asleep at 21:25 runs
+     it on wake. See audit/P3_ADAPTIVE_SHADOW.md, Operations. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.paperbook.refit-adaptive</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/bash</string><string>/Users/jash/storage/trading-bot-01/scripts/refit_adaptive_host.sh</string></array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>25</integer></dict>
+  <key>StandardOutPath</key><string>/tmp/paperbook-refit.out</string>
+  <key>StandardErrorPath</key><string>/tmp/paperbook-refit.err</string>
+</dict>
+</plist>

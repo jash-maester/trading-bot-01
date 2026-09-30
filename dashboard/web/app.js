@@ -391,7 +391,7 @@ function pageExperiment(d) {
   const head = `<div class="page-head"><h1>Experiment</h1><p>The same algorithm replayed at NSE's official prices against 20 books that pick stocks at random with identical rules, and an equal-weight book. Recorded once a day after the close. Pre-registered in <span class="mono">audit/P2_PAPER_PERMUTATION_TEST.md</span>.</p></div>`;
   if (d.error) {
     return head + `<div class="callout"><span>ⓘ</span><div><b>No sessions recorded yet.</b> ${esc(d.error)}.<br>The record starts with the 30 Sep session. A session's close is recorded once the next session exists, so the first entry arrives with the 21:00 run on the following trading day.</div></div>
-      <div class="callout"><span>ⓘ</span><div>${esc(d.restart_note)}</div></div>`;
+      <div class="callout"><span>ⓘ</span><div>${esc(d.restart_note)}</div></div>` + adaptiveSection(d.adaptive);
   }
   const h = d.headline;
   const nb = h.n_null + 1;
@@ -432,7 +432,39 @@ function pageExperiment(d) {
   <section class="sec"><div class="sech"><h2>Cumulative P&amp;L</h2><span class="src">audit/paper/record.jsonl</span></div>
     <div class="card big">${chart}${legend}</div></section>
   <section class="sec"><div class="sech"><h2>Per session</h2><span class="n">${d.sessions.length}</span><span class="src">daily log returns as first recorded</span></div>${table}</section>
-  <div class="callout" style="margin-top:28px"><span>ⓘ</span><div>${esc(d.restart_note)}</div></div>`;
+  <div class="callout" style="margin-top:28px"><span>ⓘ</span><div>${esc(d.restart_note)}</div></div>` + adaptiveSection(d.adaptive);
+}
+
+// P3: the adaptive shadow book (audit/P3_ADAPTIVE_SHADOW.md)
+function adaptiveSection(a) {
+  if (!a) return '';
+  const refits = (a.refits || []).slice().reverse().map(r => `<tr><td class="l sym">${esc(dm(r.fit_date))}</td>
+    <td class="l">${pill(r.status === 'OK' ? 'OK' : 'FAIL')}</td>
+    <td class="l muted">${r.window ? `train ${esc(r.window.train_start)} → ${esc(r.window.train_end)} · val → ${esc(r.window.val_end)}` : esc(r.error || '')}</td>
+    <td>${r.wall_s != null ? g(r.wall_s / 60, 1) + ' min' : '—'}</td><td class="l">${esc(r.gate_verdict || '—')}</td></tr>`).join('');
+  const intro = `<div class="sech" style="margin-top:56px"><h2>Adaptive shadow book</h2><span class="n">P3</span><span class="src">audit/P3_ADAPTIVE_SHADOW.md</span></div>
+    <p class="muted" style="margin:0 0 14px;max-width:860px;line-height:1.55">The same rules, except the model is refitted on the newest data before every rebalance and the book rebalances twice a month (first session on or after the 1st and the 16th). Replayed end-of-day like the test above, from ${esc(dm(a.start))}. The live ₹1,00,000 portfolio stays on the frozen model. Read once, on ${esc(dm(a.read_at))} ${esc(a.read_at.slice(0, 4))}; until then it is plumbing, not evidence.</p>`;
+  const refitTable = `<div class="card tblwrap" style="max-height:300px"><table class="t compact"><thead><tr><th class="l">Data through</th><th class="l">Status</th><th class="l">Window</th><th>Took</th><th class="l">Gate (recorded, not used)</th></tr></thead><tbody>${refits || '<tr><td class="l faint" colspan="5">No refit yet. The first runs on data through 30 Sep.</td></tr>'}</tbody></table></div>`;
+  if (!a.headline) return intro + refitTable + `<div class="callout"><span>ⓘ</span><div>No sessions recorded yet. The first rebalance is ${esc(wdm(a.start))} at the open; its close is recorded by the following night's run.</div></div>`;
+  const h = a.headline;
+  const pk = x => `${srs(x.rupees, 0)} <span class="${tone(x.rupees)}" style="font-size:13px">${arr(x.pct)}</span>`;
+  const dates = [...new Set([...a.band.map(b => b[0]), ...a.lines.flatMap(l => l.points.map(q => q[0]))])].sort();
+  const at = pts => { const m = new Map(pts); return dates.map(x => m.has(x) ? m.get(x) : null); };
+  const bm = new Map(a.band.map(b => [b[0], b]));
+  const names = { adaptive: 'Adaptive book', frozen: 'Frozen algorithm (P2)', equal_weight: 'Equal-weight, twice monthly' };
+  const colors = { adaptive: 'var(--c1)', frozen: 'var(--ink)', equal_weight: 'var(--c2)' };
+  const series = a.lines.map(l => ({ ys: at(l.points), color: colors[l.kind], width: l.kind === 'adaptive' ? 2.5 : 1.5, dash: l.kind === 'frozen' ? '5 3' : null, name: names[l.kind] }));
+  const chart = dates.length ? plot({ n: dates.length, series, band: a.band.length ? { lo: dates.map(x => (bm.get(x) || [0, 0])[1]), hi: dates.map(x => (bm.get(x) || [0, 0, 0, 0])[3]) } : null,
+    base: { y: 0 }, yfmt: v => srs(v, 0), height: 280, xlabels: [[0, dm(dates[0])], [100, dm(dates[dates.length - 1])]],
+    tip: i => `<b>${wdm(dates[i])}</b><br>` + series.map(s => s.ys[i] == null ? '' : `${esc(s.name)}: ${srs(s.ys[i], 0)}`).filter(Boolean).join('<br>') }) : '';
+  return intro + `<section class="card kpis" style="margin-top:0">
+      ${kpi('Adaptive book', pk(h.adaptive), 'since ' + esc(dm(h.first_date)))}
+      ${kpi('Frozen algorithm, same days', pk(h.frozen), 'the P2 signal book')}
+      ${kpi(`Its random books, median of ${h.n_null}`, pk(h.null_median), 'twice-monthly, same rules')}
+      ${kpi('Rank vs its random books', `${h.rank ?? '—'} / ${h.n_null + 1}`, 'not evidence until the read')}
+    </section>
+    <div class="card big" style="margin-top:16px">${chart}<div class="lg">${series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('')}${a.band.length ? '<span><i style="background:var(--band);height:10px"></i>Its random books, 10th–90th</span>' : ''}</div></div>
+    <div class="sech" style="margin-top:24px"><h2 style="font-size:15px">Refits</h2><span class="n">${(a.refits || []).length}</span><span class="src">audit/paper/adaptive/refits.jsonl</span></div>${refitTable}`;
 }
 
 // ── System health ────────────────────────────────────────────────────────────

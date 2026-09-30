@@ -1,4 +1,5 @@
 """dashboard/kite_auth.py: token parsing, expiry, storage. No network."""
+
 from __future__ import annotations
 
 import json
@@ -29,8 +30,12 @@ def test_parse_rejects_failed_login_and_junk():
 
 def test_expiry_is_next_six_am_ist():
     ist = KA.IST
-    assert KA.expires_at(datetime(2026, 9, 30, 7, 40, tzinfo=ist)) == datetime(2026, 10, 1, 6, 0, tzinfo=ist)
-    assert KA.expires_at(datetime(2026, 9, 30, 5, 0, tzinfo=ist)) == datetime(2026, 9, 30, 6, 0, tzinfo=ist)
+    assert KA.expires_at(datetime(2026, 9, 30, 7, 40, tzinfo=ist)) == datetime(
+        2026, 10, 1, 6, 0, tzinfo=ist
+    )
+    assert KA.expires_at(datetime(2026, 9, 30, 5, 0, tzinfo=ist)) == datetime(
+        2026, 9, 30, 6, 0, tzinfo=ist
+    )
 
 
 def test_write_token_is_owner_only_and_meta_hides_token(tmp_path):

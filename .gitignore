@@ -132,3 +132,9 @@ audit/paper/health.json
 
 # Kite access token written by the dashboard login page (dashboard/kite_auth.py)
 secrets/
+
+# P3 adaptive shadow book: generated panels and model artefacts (the registry
+# audit/paper/adaptive/refits.jsonl and MLflow hold the durable record)
+data/panels_refit/
+data/signal/adaptive_*/
+data/signal/_adaptive_scratch/
