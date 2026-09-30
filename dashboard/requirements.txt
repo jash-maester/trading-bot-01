@@ -1,10 +1,7 @@
-# Dashboard image only (docker/dashboard.Dockerfile). polars / pyarrow / pandas
-# match uv.lock so the health-check button runs scripts/paper_healthcheck.py
-# on the same library versions as the host. loguru: trader.data.storage imports it.
-streamlit==1.64.0
-plotly==7.1.0
+# Dashboard image only (docker/dashboard.Dockerfile). The server itself is the
+# Python standard library (dashboard/server.py); these two are for the data
+# pages (read lazily) and the on-demand health check button, which runs
+# scripts/paper_healthcheck.py -> trader.data.storage (polars + loguru).
+# Versions match uv.lock.
 polars==1.40.0
-pyarrow==23.0.1
-pandas==2.3.3
 loguru==0.7.3
-kiteconnect==5.2.1   # Kite login page (dashboard/kite_auth.py): generate_session + profile only

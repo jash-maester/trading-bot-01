@@ -300,6 +300,13 @@ notional; two summary metrics.
 
 ## 8. Technical context and constraints
 
+> **Decided 2026-09-30 (owner):** no Streamlit. The dashboard is now plain HTML,
+> CSS and JavaScript (`dashboard/web/`) served by a standard-library Python
+> server (`dashboard/server.py`) with a read-only JSON API (`dashboard/api.py`).
+> The Portfolio design from Claude Design is in `dashboard/design/`; the other
+> screens reuse its tokens and components. The notes below describe the stack
+> as it was when this brief was written.
+
 - **Current stack:** Streamlit 1.64 + Plotly 7, Python, served from a Docker container
   at `http://127.0.0.1:8501` (localhost only, no auth, single user). Memory limit 1 GB.
 - **Data is files, not an API.** The app reads JSON/JSONL/CSV/Parquet written by

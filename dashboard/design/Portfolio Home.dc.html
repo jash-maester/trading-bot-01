@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#e9e8e4}a{color:oklch(0.48 0.1 255)}a:hover{color:oklch(0.4 0.1 255)}</style>
+</helmet>
+<!-- ═══ PRESENTATION CANVAS — imports PortfolioScreen four times: desktop/phone × light/dark. Not part of the product; for review only. ═══ -->
+<section style="padding:72px 80px;font-family:'IBM Plex Sans',sans-serif;color:oklch(0.23 0.012 255)">
+  <div style="max-width:900px;margin-bottom:48px">
+    <div style="font:500 12px 'IBM Plex Mono';letter-spacing:.08em;color:oklch(0.45 0.012 255)">TURN 1 · DIRECTION C — QUIET INSTRUMENT</div>
+    <h1 style="margin:10px 0 8px;font-size:34px;font-weight:500;letter-spacing:-0.02em">Portfolio home · desktop and phone · light and dark</h1>
+    <p style="margin:0;font-size:15px;line-height:1.55;color:oklch(0.45 0.012 255);text-wrap:pretty">Wed 30 Sep 2026, 14:46 IST, market open, session 1. Headline numbers are set in ink; profit and loss colour is only used on the small ± % figures, and each one also carries an arrow. The table sorts when you click a column header, and the sector list scrolls inside its panel.</p>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:64px;align-items:flex-start">
+    <div id="1a" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:10px;align-items:center;font-size:14px"><span style="font:500 12px 'IBM Plex Mono';padding:3px 8px;border-radius:4px;background:oklch(0.23 0.012 255);color:#fff">1a</span>Desktop · light · 1440</div>
+      <div style="width:1440px;border-radius:10px;overflow:hidden;box-shadow:0 1px 0 rgba(0,0,0,.06),0 20px 50px rgba(0,0,0,.08)"><dc-import name="PortfolioScreen" theme="light" layout="desktop" hint-size="1440px,2600px"></dc-import></div>
+    </div>
+    <div id="1b" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:10px;align-items:center;font-size:14px"><span style="font:500 12px 'IBM Plex Mono';padding:3px 8px;border-radius:4px;background:oklch(0.23 0.012 255);color:#fff">1b</span>Desktop · dark · 1440</div>
+      <div style="width:1440px;border-radius:10px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.12)"><dc-import name="PortfolioScreen" theme="dark" layout="desktop" hint-size="1440px,2600px"></dc-import></div>
+    </div>
+    <div id="1c" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:10px;align-items:center;font-size:14px"><span style="font:500 12px 'IBM Plex Mono';padding:3px 8px;border-radius:4px;background:oklch(0.23 0.012 255);color:#fff">1c</span>Phone · light · 390</div>
+      <div style="width:390px;border-radius:28px;overflow:hidden;border:8px solid oklch(0.23 0.012 255);box-shadow:0 20px 50px rgba(0,0,0,.12)"><dc-import name="PortfolioScreen" theme="light" layout="phone" hint-size="390px,3000px"></dc-import></div>
+    </div>
+    <div id="1d" style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:10px;align-items:center;font-size:14px"><span style="font:500 12px 'IBM Plex Mono';padding:3px 8px;border-radius:4px;background:oklch(0.23 0.012 255);color:#fff">1d</span>Phone · dark · 390</div>
+      <div style="width:390px;border-radius:28px;overflow:hidden;border:8px solid oklch(0.23 0.012 255);box-shadow:0 20px 50px rgba(0,0,0,.12)"><dc-import name="PortfolioScreen" theme="dark" layout="phone" hint-size="390px,3000px"></dc-import></div>
+    </div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<!-- ═══ FONTS — IBM Plex Sans (UI + numbers, tabular figures) and IBM Plex Mono (file paths, PAPER ONLY tag). Self-host these in production: no external CDNs. ═══ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* COLOUR TOKENS — light theme (default). --up/--down = profit/loss (teal vs vermilion: separable for red-green colour blindness, always paired with ▲▼ and ±). --ok/--warn/--fail = status. --ink/--ink2/--ink3 = text hierarchy. --line/--line2 = borders. --track = empty bar background. */
+
+:root,[data-pt="light"]{--bg:oklch(0.975 0.004 90);--surface:oklch(0.995 0.002 90);--sunk:oklch(0.955 0.005 90);--ink:oklch(0.23 0.012 255);--ink2:oklch(0.45 0.012 255);--ink3:oklch(0.58 0.01 255);--line:oklch(0.9 0.006 90);--line2:oklch(0.935 0.005 90);--up:oklch(0.5 0.1 162);--down:oklch(0.53 0.14 32);--accent:oklch(0.48 0.1 255);--ok:oklch(0.55 0.11 162);--warn:oklch(0.66 0.13 75);--fail:oklch(0.53 0.17 28);--hatch:oklch(0.925 0.01 90);--track:oklch(0.935 0.004 255);--hover:oklch(0.965 0.005 90)}
+/* COLOUR TOKENS — dark theme, activated by data-pt="dark" on the root element. */
+
+[data-pt="dark"]{--bg:oklch(0.175 0.008 255);--surface:oklch(0.205 0.009 255);--sunk:oklch(0.16 0.008 255);--ink:oklch(0.94 0.006 90);--ink2:oklch(0.75 0.01 255);--ink3:oklch(0.62 0.01 255);--line:oklch(0.3 0.01 255);--line2:oklch(0.255 0.01 255);--up:oklch(0.78 0.11 162);--down:oklch(0.75 0.13 38);--accent:oklch(0.77 0.09 255);--ok:oklch(0.76 0.12 162);--warn:oklch(0.8 0.13 80);--fail:oklch(0.7 0.17 28);--hatch:oklch(0.24 0.01 255);--track:oklch(0.26 0.01 255);--hover:oklch(0.23 0.01 255)}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</helmet>
+<!-- ═══ THEME ROOT — data-pt switches light/dark token sets. tabular-nums keeps every figure column aligned. ═══ -->
+<div data-pt="{{ theme }}" style="background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;min-height:100%">
+
+<!-- ═══ GLOBAL · PAPER-ONLY BAND (brief rule 1) — on every screen, every layout. Calm hatched strip, not a warning colour. ═══ -->
+<div style="display:flex;align-items:center;justify-content:center;gap:10px;min-height:30px;padding:4px 12px;background:repeating-linear-gradient(135deg,var(--hatch) 0 6px,transparent 6px 12px);border-bottom:1px solid var(--line);font-size:12px;color:var(--ink2);text-align:center">
+<span style="font-family:'IBM Plex Mono',monospace;font-weight:500;letter-spacing:.08em;padding:2px 7px;border:1px solid var(--ink3);border-radius:3px;background:var(--bg);color:var(--ink)">PAPER ONLY</span>
+<span>Simulated ₹1,00,000 · no orders are ever sent to a broker</span>
+</div>
+
+<!-- ═══ DESKTOP LAYOUT (layout="desktop") ═══ -->
+<sc-if value="{{ isDesktop }}" hint-placeholder-val="{{ true }}">
+<!-- ═══ GLOBAL · TOP BAR — brand, screen tabs, then status chips: Market status, Kite connection (→ Kite login), Pipeline health (→ System health), Last updated, Reload. Dot colour = --ok / --warn / --fail. ═══ -->
+<header style="display:flex;align-items:center;gap:24px;padding:0 32px;height:60px;border-bottom:1px solid var(--line);background:var(--surface)">
+  <div style="display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:-0.01em;flex:none;white-space:nowrap"><span style="width:16px;height:16px;border:1.5px solid var(--ink);border-radius:4px;background:repeating-linear-gradient(135deg,var(--ink3) 0 1px,transparent 1px 4px)"></span>Paper Book</div>
+  <nav style="display:flex;gap:20px;align-self:stretch;font-size:14px;flex:none;white-space:nowrap">
+    <a style="display:flex;align-items:center;color:var(--ink);font-weight:500;border-bottom:2px solid var(--ink);margin-bottom:-1px">Portfolio</a>
+    <a style="display:flex;align-items:center;color:var(--ink2)">Experiment</a>
+    <a style="display:flex;align-items:center;color:var(--ink2)">System health</a>
+    <a style="display:flex;align-items:center;color:var(--ink2)">Research log</a>
+    <a style="display:flex;align-items:center;color:var(--ink2)">Warm-up</a>
+  </nav>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;flex:none;white-space:nowrap">
+    <span title="Closes 15:30 IST · derived from IST clock + today's quotes" style="box-sizing:border-box;flex:none;white-space:nowrap;display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border:1px solid var(--line);border-radius:999px;background:var(--bg)"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>Market open</span>
+    <a title="Kite token · dashboard/kite_auth.check()" style="box-sizing:border-box;flex:none;white-space:nowrap;display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink)"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>Kite connected<span style="color:var(--ink3)">· valid until 06:00</span></a>
+    <a title="audit/paper/health.json · checked 07:50" style="box-sizing:border-box;flex:none;white-space:nowrap;display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink)"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok)"></span>Pipeline OK</a>
+    <span style="width:1px;height:20px;background:var(--line);margin:0 6px"></span>
+    <span style="color:var(--ink2);flex:none">Updated 14:46</span>
+    <button title="Reload (data cached ≤ 60 s)" style="width:30px;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink2);font-size:15px;cursor:pointer">↻</button>
+  </div>
+</header>
+
+<main style="max-width:1360px;margin:0 auto;padding:0 40px 56px">
+  <!-- ═══ PORTFOLIO · HERO — value (largest), Today and Total P&L in ink; only the small % carries profit/loss colour + arrow. Source: holdings_latest.json (nav, day_chg_*, pnl_*). Includes the inline honesty note. ═══ -->
+<section style="display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:56px;padding:44px 0 36px">
+    <div style="display:flex;flex-direction:column">
+      <div title="holdings_latest.json → nav" style="font-size:13px;color:var(--ink2)">Portfolio value · 30 Sep, marked 14:45 IST</div>
+      <div style="font-size:68px;font-weight:500;letter-spacing:-0.025em;line-height:1.05;margin-top:10px">{{ navInt }}<span style="color:var(--ink3)">{{ navDec }}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:30px;padding-top:26px;border-top:1px solid var(--line)">
+        <div title="holdings_latest.json → day_chg_rs, day_chg_pct">
+          <div style="font-size:13px;color:var(--ink2)">Today</div>
+          <div style="font-size:30px;font-weight:500;letter-spacing:-0.015em;margin-top:6px">{{ dayRs }}</div>
+          <div style="display:flex;gap:8px;align-items:baseline;margin-top:4px;font-size:14px"><span style="color:{{ dayColor }};font-weight:500">{{ dayPct }}</span><span style="color:var(--ink3);font-size:12.5px">vs 09:16 fill prices</span></div>
+        </div>
+        <div title="holdings_latest.json → pnl_rs, pnl_pct">
+          <div style="font-size:13px;color:var(--ink2)">Total P&amp;L</div>
+          <div style="font-size:30px;font-weight:500;letter-spacing:-0.015em;margin-top:6px">{{ totRs }}</div>
+          <div style="display:flex;gap:8px;align-items:baseline;margin-top:4px;font-size:14px"><span style="color:{{ totColor }};font-weight:500">{{ totPct }}</span><span style="color:var(--ink3);font-size:12.5px">on ₹1,00,000, after charges</span></div>
+        </div>
+      </div>
+      <div style="margin-top:auto;padding-top:28px;display:flex;gap:10px;font-size:13px;color:var(--ink2);line-height:1.5">
+        <span style="flex:none;width:18px;height:18px;border:1px solid var(--ink3);border-radius:50%;font:500 11px/16px 'IBM Plex Mono';text-align:center;color:var(--ink2)">i</span>
+        <span style="text-wrap:pretty">Session 1 of a 48-month test. A day's move — up or down — says nothing about the algorithm yet. <a>How it compares to random picks →</a></span>
+      </div>
+    </div>
+
+    <!-- ═══ PORTFOLIO · INTRADAY CHART — NAV per 15-min mark (marks.csv), full session 09:15–15:30 on the x-axis, dashed line = ₹1,00,000 start. Range selector 1D/1W/1M/All (disabled until history exists). ═══ -->
+<div style="background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px 22px 16px;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:14px;font-weight:500">Value through the day</div>
+        <div style="display:flex;gap:2px;padding:2px;background:var(--sunk);border-radius:6px;font-size:12px">
+          <span style="padding:4px 10px;border-radius:4px;background:var(--surface);box-shadow:0 0 0 1px var(--line);font-weight:500">1D</span>
+          <span title="History starts 30 Sep" style="padding:4px 10px;color:var(--ink3)">1W</span>
+          <span title="History starts 30 Sep" style="padding:4px 10px;color:var(--ink3)">1M</span>
+          <span title="History starts 30 Sep" style="padding:4px 10px;color:var(--ink3)">All</span>
+        </div>
+      </div>
+      <div style="position:relative;height:250px;margin:18px 64px 0 0">
+        <sc-for list="{{ yTicks }}" as="t" hint-placeholder-count="4"><div style="position:absolute;left:0;right:0;top:{{ t.top }};border-top:1px solid var(--line2)"><span style="position:absolute;right:-64px;top:-8px;width:58px;font-size:11.5px;color:var(--ink3)">{{ t.label }}</span></div></sc-for>
+        <div style="position:absolute;left:0;right:0;top:{{ baseTop }};border-top:1px dashed var(--ink3)"><span style="position:absolute;left:6px;top:-18px;font-size:11.5px;color:var(--ink2);background:var(--surface);padding:0 4px">Start ₹1,00,000</span></div>
+        <svg viewBox="0 0 1000 250" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+          <path d="{{ areaD }}" fill="var(--ink)" fill-opacity="0.05"></path>
+          <path d="{{ lineD }}" fill="none" stroke="var(--ink)" stroke-width="1.75" vector-effect="non-scaling-stroke" stroke-linejoin="round"></path>
+        </svg>
+        <div style="position:absolute;left:{{ nowLeft }};top:{{ nowTop }};width:9px;height:9px;margin:-4.5px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 3px var(--surface)"></div>
+        <div style="position:absolute;left:{{ nowLeft }};top:0;bottom:0;border-left:1px dotted var(--line)"></div>
+      </div>
+      <div style="position:relative;height:18px;margin:8px 64px 0 0;font-size:11.5px;color:var(--ink3)">
+        <span style="position:absolute;left:0">09:15</span><span style="position:absolute;left:28%">11:00</span><span style="position:absolute;left:60%">13:00</span><span style="position:absolute;right:0">15:30</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--line2);font-size:12px;color:var(--ink3)">
+        <span style="white-space:nowrap">Low {{ lowNav }} at {{ lowAt }} · 22 marks</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px">live/marks.csv · next mark 15:00</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ PORTFOLIO · SECONDARY METRICS — invested, cash, realised, charges, starting capital, last marked. title="" attrs name the source field (rule 4). ═══ -->
+<section style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));background:var(--surface);border:1px solid var(--line);border-radius:10px">
+    <div title="Σ holdings.cost" style="padding:16px 20px;border-right:1px solid var(--line2)"><div style="font-size:12.5px;color:var(--ink2)">Invested</div><div style="font-size:17px;font-weight:500;margin-top:5px">{{ invested }}</div><div style="font-size:12px;color:var(--ink3);margin-top:2px">27 stocks, incl. charges</div></div>
+    <div title="holdings_latest.json → cash" style="padding:16px 20px;border-right:1px solid var(--line2)"><div style="font-size:12.5px;color:var(--ink2)">Cash</div><div style="font-size:17px;font-weight:500;margin-top:5px">{{ cash }}</div><div style="font-size:12px;color:var(--ink3);margin-top:2px">{{ cashPct }} of value</div></div>
+    <div title="holdings_latest.json → realised_rs" style="padding:16px 20px;border-right:1px solid var(--line2)"><div style="font-size:12.5px;color:var(--ink2)">Realised P&amp;L</div><div style="font-size:17px;font-weight:500;margin-top:5px">₹0</div><div style="font-size:12px;color:var(--ink3);margin-top:2px">no sales yet</div></div>
+    <div title="holdings_latest.json → charges_rs" style="padding:16px 20px;border-right:1px solid var(--line2)"><div style="font-size:12.5px;color:var(--ink2)">Charges paid</div><div style="font-size:17px;font-weight:500;margin-top:5px">{{ charges }}</div><div style="font-size:12px;color:var(--ink3);margin-top:2px">STT, stamp, exchange, GST</div></div>
+    <div style="padding:16px 20px;border-right:1px solid var(--line2)"><div style="font-size:12.5px;color:var(--ink2)">Starting capital</div><div style="font-size:17px;font-weight:500;margin-top:5px">₹1,00,000</div><div style="font-size:12px;color:var(--ink3);margin-top:2px">invested 30 Sep 09:16</div></div>
+    <div title="holdings_latest.json → ts" style="padding:16px 20px"><div style="font-size:12.5px;color:var(--ink2)">Last marked</div><div style="font-size:17px;font-weight:500;margin-top:5px">14:45 IST</div><div style="font-size:12px;color:var(--ink3);margin-top:2px">live Kite quotes</div></div>
+  </section>
+
+  <!-- ═══ PORTFOLIO · WHAT HAPPENS NEXT — close mark, next rebalance (derived: first session of next month), pending stops, re-entry bans (state.json). Rules explainer in <details>. ═══ -->
+<section style="display:flex;align-items:center;gap:0;margin-top:16px;padding:0 20px;min-height:52px;border:1px solid var(--line);border-radius:10px;font-size:13px;flex-wrap:wrap">
+    <span style="font-weight:500;padding-right:18px">What happens next</span>
+    <span style="padding:0 18px;border-left:1px solid var(--line2)"><span style="color:var(--ink2)">Close mark</span> 15:35 today<span style="color:var(--ink3)"> · stop levels are set</span></span>
+    <span title="state.json → last_rebalance; next = first session of next month" style="padding:0 18px;border-left:1px solid var(--line2)"><span style="color:var(--ink2)">Next rebalance</span> Thu 1 Oct, 09:16<span style="color:var(--ink3)"> · up to 30% turnover</span></span>
+    <span title="state.json → pending_stops" style="padding:0 18px;border-left:1px solid var(--line2)"><span style="color:var(--ink2)">Stops to sell at next open</span> none</span>
+    <span title="state.json → cooldown" style="padding:0 18px;border-left:1px solid var(--line2)"><span style="color:var(--ink2)">Re-entry bans</span> none</span>
+    <details style="margin-left:auto;color:var(--ink2)"><summary style="cursor:pointer;list-style:none;color:var(--accent)">How the rules work</summary><div style="position:absolute;margin-top:10px;right:80px;width:380px;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08);line-height:1.55;color:var(--ink);z-index:2">Rebalance: on the first session of each month the book re-selects its top 30 stocks, changing at most 30% of holdings.<br><br>Volatility stop: if a stock closes below its stop level, it is sold at the next 09:16 and can't be bought again for 21 sessions.</div></details>
+  </section>
+
+  <!-- ═══ PORTFOLIO · HOLDINGS TABLE — sortable (click header → sort.<key>, indicator ind.<key>), sticky header, scrolls inside its card. Weight bar is scaled to the 10% cap. Stop level empty until the 15:35 close mark. ═══ -->
+<section style="margin-top:40px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
+      <h2 style="margin:0;font-size:18px;font-weight:500">Holdings</h2><span style="color:var(--ink3);font-size:14px">27</span>
+      <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink3)">live/holdings_latest.json · 14:45</span>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:640px">
+      <table style="width:100%;border-collapse:separate;border-spacing:0;font-size:13px">
+        <thead><tr style="font-size:12px;color:var(--ink2)">
+          <th onClick="{{ sort.symbol }}" style="position:sticky;top:0;background:var(--surface);text-align:left;font-weight:500;padding:0 12px 0 18px;height:40px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">Stock {{ ind.symbol }}</th>
+          <th onClick="{{ sort.sector }}" style="position:sticky;top:0;background:var(--surface);text-align:left;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">Sector {{ ind.sector }}</th>
+          <th onClick="{{ sort.qty }}" style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">{{ ind.qty }} Qty</th>
+          <th onClick="{{ sort.avg }}" style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">{{ ind.avg }} Avg buy</th>
+          <th onClick="{{ sort.ltp }}" style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">{{ ind.ltp }} LTP</th>
+          <th onClick="{{ sort.d1pct }}" style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">{{ ind.d1pct }} 1D %</th>
+          <th onClick="{{ sort.d1rs }}" style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">{{ ind.d1rs }} 1D ₹</th>
+          <th onClick="{{ sort.value }}" style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">{{ ind.value }} Value</th>
+          <th onClick="{{ sort.cost }}" style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">{{ ind.cost }} Invested</th>
+          <th onClick="{{ sort.pnlrs }}" style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">{{ ind.pnlrs }} P&amp;L ₹</th>
+          <th onClick="{{ sort.pnlpct }}" style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">{{ ind.pnlpct }} P&amp;L %</th>
+          <th onClick="{{ sort.weight }}" style="position:sticky;top:0;background:var(--surface);text-align:left;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap">Weight {{ ind.weight }}</th>
+          <th title="Set at the first close mark (15:35)" style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 12px;border-bottom:1px solid var(--line);white-space:nowrap">Stop level</th>
+          <th style="position:sticky;top:0;background:var(--surface);text-align:right;font-weight:500;padding:0 18px 0 12px;border-bottom:1px solid var(--line);white-space:nowrap">Opened</th>
+        </tr></thead>
+        <tbody>
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="12">
+          <tr style-hover="background:var(--hover)">
+            <td style="padding:0 12px 0 18px;height:40px;border-bottom:1px solid var(--line2);font-weight:500;white-space:nowrap">{{ r.symbol }}</td>
+            <td title="{{ r.sector }}" style="padding:0 12px;border-bottom:1px solid var(--line2);color:var(--ink2);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.sector }}</td>
+            <td style="padding:0 12px;border-bottom:1px solid var(--line2);text-align:right">{{ r.qty }}</td>
+            <td style="padding:0 12px;border-bottom:1px solid var(--line2);text-align:right;color:var(--ink2)">{{ r.avgS }}</td>
+            <td style="padding:0 12px;border-bottom:1px solid var(--line2);text-align:right">{{ r.ltpS }}</td>
+            <td style="padding:0 12px;border-bottom:1px solid var(--line2);text-align:right;color:{{ r.dayColor }};white-space:nowrap">{{ r.d1pctS }}</td>
+            <td style="padding:0 12px;border-bottom:1px solid var(--line2);text-align:right;color:{{ r.dayColor }}">{{ r.d1rsS }}</td>
+            <td style="padding:0 12px;border-bottom:1px solid var(--line2);text-align:right;font-weight:500">{{ r.valueS }}</td>
+            <td style="padding:0 12px;border-bottom:1px solid var(--line2);text-align:right;color:var(--ink2)">{{ r.costS }}</td>
+            <td style="padding:0 12px;border-bottom:1px solid var(--line2);text-align:right;color:{{ r.pnlColor }}">{{ r.pnlrsS }}</td>
+            <td style="padding:0 12px;border-bottom:1px solid var(--line2);text-align:right;color:{{ r.pnlColor }};white-space:nowrap">{{ r.pnlpctS }}</td>
+            <td title="Cap is 10% per stock" style="padding:0 12px;border-bottom:1px solid var(--line2)"><div style="display:flex;align-items:center;gap:8px"><span style="width:28px;text-align:right">{{ r.weightS }}</span><span style="position:relative;width:48px;height:4px;border-radius:2px;background:var(--track)"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ r.wbar }};border-radius:2px;background:var(--ink3)"></span></span></div></td>
+            <td title="Stop levels are set at the first close mark, 15:35" style="padding:0 12px;border-bottom:1px solid var(--line2);text-align:right;color:var(--ink3);white-space:nowrap">— at 15:35</td>
+            <td style="padding:0 18px 0 12px;border-bottom:1px solid var(--line2);text-align:right;color:var(--ink2);white-space:nowrap">30 Sep</td>
+          </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:18px;margin-top:10px;font-size:12px;color:var(--ink3)"><span>▲ ▼ and ± mark direction; colour is a second cue, never the only one.</span><span>Click any column to sort.</span></div>
+  </section>
+
+  <!-- ═══ PORTFOLIO · SECTOR VIEW — left: sector summary table (weight bar scaled to 20%). Right: scrollable bar list grouped by sector, bar length = value, colour = total P&L sign, hover title = P&L and 1D %. ═══ -->
+<section style="margin-top:44px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
+      <h2 style="margin:0;font-size:18px;font-weight:500">By sector</h2><span style="color:var(--ink3);font-size:14px">{{ sectorCount }} sectors</span>
+      <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink3)">sector_summary · NSE industry names</span>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px">
+      <div style="background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="font-size:12px;color:var(--ink2)"><th style="text-align:left;font-weight:500;padding:0 12px 0 18px;height:38px;border-bottom:1px solid var(--line)">Sector</th><th style="text-align:right;font-weight:500;padding:0 10px;border-bottom:1px solid var(--line)">#</th><th style="text-align:left;font-weight:500;padding:0 10px;border-bottom:1px solid var(--line)">Weight</th><th style="text-align:right;font-weight:500;padding:0 10px;border-bottom:1px solid var(--line)">Value</th><th style="text-align:right;font-weight:500;padding:0 10px;border-bottom:1px solid var(--line)">1D ₹</th><th style="text-align:right;font-weight:500;padding:0 18px 0 10px;border-bottom:1px solid var(--line)">P&amp;L ₹</th></tr></thead>
+          <tbody><sc-for list="{{ sectors }}" as="s" hint-placeholder-count="8"><tr style-hover="background:var(--hover)">
+            <td style="padding:0 12px 0 18px;height:36px;border-bottom:1px solid var(--line2);white-space:nowrap;max-width:190px;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</td>
+            <td style="padding:0 10px;border-bottom:1px solid var(--line2);text-align:right;color:var(--ink2)">{{ s.n }}</td>
+            <td style="padding:0 10px;border-bottom:1px solid var(--line2)"><div style="display:flex;align-items:center;gap:8px"><span style="width:36px;text-align:right">{{ s.weightS }}</span><span style="position:relative;width:80px;height:6px;border-radius:3px;background:var(--track)"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ s.wbar }};border-radius:3px;background:var(--ink2)"></span></span></div></td>
+            <td style="padding:0 10px;border-bottom:1px solid var(--line2);text-align:right">{{ s.valueS }}</td>
+            <td style="padding:0 10px;border-bottom:1px solid var(--line2);text-align:right;color:{{ s.dayColor }}">{{ s.dayS }}</td>
+            <td style="padding:0 18px 0 10px;border-bottom:1px solid var(--line2);text-align:right;color:{{ s.pnlColor }}">{{ s.pnlS }}</td>
+          </tr></sc-for></tbody>
+        </table>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:0 18px;height:38px;border-bottom:1px solid var(--line);font-size:12px;color:var(--ink2)"><span style="font-weight:500">Each stock, grouped by sector · bar = value</span><span style="display:flex;gap:12px"><span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:6px;border-radius:2px;background:var(--up)"></span>▲ in profit</span><span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:6px;border-radius:2px;background:var(--down)"></span>▼ in loss</span></span></div>
+        <div style="overflow-y:auto;max-height:470px;padding:6px 18px 14px">
+          <sc-for list="{{ sectors }}" as="s" hint-placeholder-count="5">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:14px 0 6px;font-size:12.5px"><span style="font-weight:500">{{ s.name }}</span><span style="color:var(--ink3)">{{ s.weightS }} · <span style="color:{{ s.pnlColor }}">{{ s.pnlS }}</span></span></div>
+            <sc-for list="{{ s.stocks }}" as="b" hint-placeholder-count="2">
+              <div title="{{ b.tip }}" style="display:grid;grid-template-columns:92px minmax(0,1fr) 78px 64px;align-items:center;gap:10px;height:26px;font-size:12.5px">
+                <span style="color:var(--ink2)">{{ b.symbol }}</span>
+                <span style="height:12px;background:var(--track);border-radius:2px;position:relative"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ b.bar }};border-radius:2px;background:{{ b.color }};opacity:.85"></span></span>
+                <span style="text-align:right">{{ b.valueS }}</span>
+                <span style="text-align:right;color:{{ b.dayColor }}">{{ b.d1pctS }}</span>
+              </div>
+            </sc-for>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ PORTFOLIO · TRADES — one collapsible row per trade day (trades.jsonl); expands to the fills (ledger.jsonl). Read-only: no trading controls anywhere (rule 6). ═══ -->
+<section style="margin-top:44px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
+      <h2 style="margin:0;font-size:18px;font-weight:500">Trades</h2>
+      <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink3)">live/trades.jsonl · live/ledger.jsonl</span>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden">
+      <button onClick="{{ toggleFills }}" style="all:unset;box-sizing:border-box;width:100%;display:grid;grid-template-columns:24px 150px repeat(4,minmax(0,1fr));align-items:center;gap:16px;padding:0 18px;height:52px;font-size:13px;cursor:pointer">
+        <span style="color:var(--ink3)">{{ fillsCaret }}</span>
+        <span style="font-weight:500">Wed 30 Sep, 09:16</span>
+        <span><span style="color:var(--ink2)">First purchase</span></span>
+        <span><span style="color:var(--ink2)">Buys</span> 27 <span style="color:var(--ink2)">· Sells</span> 0</span>
+        <span><span style="color:var(--ink2)">Bought</span> {{ bought }}</span>
+        <span><span style="color:var(--ink2)">Charges</span> {{ charges }}</span>
+      </button>
+      <sc-if value="{{ fillsOpen }}" hint-placeholder-val="{{ false }}">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;border-top:1px solid var(--line)">
+          <thead><tr style="color:var(--ink2);font-size:12px;background:var(--sunk)"><th style="text-align:left;font-weight:500;padding:0 12px 0 58px;height:34px">Time</th><th style="text-align:left;font-weight:500;padding:0 12px">Side</th><th style="text-align:left;font-weight:500;padding:0 12px">Stock</th><th style="text-align:right;font-weight:500;padding:0 12px">Qty</th><th style="text-align:right;font-weight:500;padding:0 12px">Price</th><th style="text-align:right;font-weight:500;padding:0 12px">Value</th><th style="text-align:right;font-weight:500;padding:0 18px 0 12px">Charges</th></tr></thead>
+          <tbody><sc-for list="{{ fills }}" as="f" hint-placeholder-count="6"><tr>
+            <td style="padding:0 12px 0 58px;height:32px;border-top:1px solid var(--line2);color:var(--ink2)">{{ f.time }}</td>
+            <td style="padding:0 12px;border-top:1px solid var(--line2)"><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;padding:1px 6px;border:1px solid var(--line);border-radius:3px">BUY</span></td>
+            <td style="padding:0 12px;border-top:1px solid var(--line2);font-weight:500">{{ f.symbol }}</td>
+            <td style="padding:0 12px;border-top:1px solid var(--line2);text-align:right">{{ f.qty }}</td>
+            <td style="padding:0 12px;border-top:1px solid var(--line2);text-align:right">{{ f.price }}</td>
+            <td style="padding:0 12px;border-top:1px solid var(--line2);text-align:right">{{ f.value }}</td>
+            <td style="padding:0 18px 0 12px;border-top:1px solid var(--line2);text-align:right;color:var(--ink2)">{{ f.charges }}</td>
+          </tr></sc-for></tbody>
+        </table>
+      </sc-if>
+    </div>
+  </section>
+
+  <!-- ═══ PORTFOLIO · HONESTY FOOTER — standing note that early P&L is noise; links to Experiment (rules 2 & 3). ═══ -->
+<footer style="margin-top:48px;padding-top:22px;border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:40px;font-size:13px;line-height:1.6;color:var(--ink2)">
+    <p style="margin:0;text-wrap:pretty">Early P&amp;L is noise. The algorithm has not shown that it picks better than random stock selection; the pre-registered test needs 48 months of record, and only rank 1 of 21 at that point counts. <a>Open the experiment →</a></p>
+    <p style="margin:0;text-align:right;color:var(--ink3)">Paper portfolio · simulated fills at live Kite quotes · no orders placed</p>
+  </footer>
+</main>
+</sc-if>
+
+<!-- ═══ PHONE LAYOUT (layout="phone", designed at 390px) — same content, condensed. Hit targets ≥ 32–44px. ═══ -->
+<sc-if value="{{ isPhone }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column">
+  <!-- ═══ PHONE · HEADER — title, updated time, reload; status chips scroll horizontally. ═══ -->
+<header style="padding:14px 18px 12px;background:var(--surface);border-bottom:1px solid var(--line)">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:17px;font-weight:600;letter-spacing:-0.01em">Portfolio</div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2)">14:46 IST<button style="width:36px;height:36px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink2);font-size:16px">↻</button></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:10px;overflow-x:auto;font-size:12px;white-space:nowrap">
+      <span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:var(--bg)"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span>Open</span>
+      <a style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink)"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span>Kite · until 06:00</a>
+      <a style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink)"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span>Pipeline OK</a>
+    </div>
+  </header>
+
+  <!-- ═══ PHONE · HERO + SPARKLINE — same numbers and chart paths as desktop. ═══ -->
+<section style="padding:24px 18px 20px">
+    <div style="font-size:12.5px;color:var(--ink2)">Portfolio value · marked 14:45</div>
+    <div style="font-size:42px;font-weight:500;letter-spacing:-0.025em;line-height:1.1;margin-top:6px">{{ navInt }}<span style="color:var(--ink3)">{{ navDec }}</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)">
+      <div><div style="font-size:12px;color:var(--ink2)">Today</div><div style="font-size:20px;font-weight:500;margin-top:3px">{{ dayRs }}</div><div style="font-size:13px;color:{{ dayColor }};font-weight:500;margin-top:2px">{{ dayPct }}</div></div>
+      <div><div style="font-size:12px;color:var(--ink2)">Total P&amp;L</div><div style="font-size:20px;font-weight:500;margin-top:3px">{{ totRs }}</div><div style="font-size:13px;color:{{ totColor }};font-weight:500;margin-top:2px">{{ totPct }}</div></div>
+    </div>
+    <div style="position:relative;height:96px;margin-top:20px">
+      <div style="position:absolute;left:0;right:0;top:{{ baseTop }};border-top:1px dashed var(--ink3)"></div>
+      <svg viewBox="0 0 1000 250" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible"><path d="{{ areaD }}" fill="var(--ink)" fill-opacity="0.05"></path><path d="{{ lineD }}" fill="none" stroke="var(--ink)" stroke-width="1.5" vector-effect="non-scaling-stroke"></path></svg>
+      <div style="position:absolute;left:{{ nowLeft }};top:{{ nowTop }};width:7px;height:7px;margin:-3.5px;border-radius:50%;background:var(--ink)"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--ink3)"><span>09:15</span><span>dashed = ₹1,00,000 start</span><span>15:30</span></div>
+    <div style="margin-top:16px;font-size:12.5px;line-height:1.5;color:var(--ink2);text-wrap:pretty">Session 1 of 48 months. A day's move says nothing about the algorithm yet. <a>Experiment →</a></div>
+  </section>
+
+  <!-- ═══ PHONE · SECONDARY METRICS (2×2) ═══ -->
+<section style="margin:0 18px;display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:12px">
+    <div style="padding:12px 14px;border-right:1px solid var(--line2);border-bottom:1px solid var(--line2)"><div style="color:var(--ink2)">Invested</div><div style="font-size:14px;font-weight:500;margin-top:3px">{{ invested }}</div></div>
+    <div style="padding:12px 14px;border-bottom:1px solid var(--line2)"><div style="color:var(--ink2)">Cash</div><div style="font-size:14px;font-weight:500;margin-top:3px">{{ cash }}</div></div>
+    <div style="padding:12px 14px;border-right:1px solid var(--line2)"><div style="color:var(--ink2)">Charges paid</div><div style="font-size:14px;font-weight:500;margin-top:3px">{{ charges }}</div></div>
+    <div style="padding:12px 14px"><div style="color:var(--ink2)">Realised P&amp;L</div><div style="font-size:14px;font-weight:500;margin-top:3px">₹0</div></div>
+  </section>
+
+  <!-- ═══ PHONE · WHAT HAPPENS NEXT ═══ -->
+<section style="margin:12px 18px 0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:12.5px;display:flex;flex-direction:column;gap:6px">
+    <div style="font-weight:500">What happens next</div>
+    <div style="display:flex;justify-content:space-between"><span style="color:var(--ink2)">Close mark</span><span>15:35 today</span></div>
+    <div style="display:flex;justify-content:space-between"><span style="color:var(--ink2)">Next rebalance</span><span>Thu 1 Oct, 09:16</span></div>
+    <div style="display:flex;justify-content:space-between"><span style="color:var(--ink2)">Stops · re-entry bans</span><span>none · none</span></div>
+  </section>
+
+  <!-- ═══ PHONE · HOLDINGS LIST — sort chips (pSorts) replace column headers; one 56px row per stock: name/qty×LTP/sector · 1D % · value/P&L. ═══ -->
+<section style="margin-top:28px">
+    <div style="display:flex;align-items:baseline;gap:8px;padding:0 18px"><h2 style="margin:0;font-size:16px;font-weight:500">Holdings</h2><span style="color:var(--ink3);font-size:13px">27</span></div>
+    <div style="display:flex;gap:6px;padding:10px 18px 0;overflow-x:auto">
+      <sc-for list="{{ pSorts }}" as="p" hint-placeholder-count="4"><button onClick="{{ p.on }}" style="flex:none;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:{{ p.bg }};color:{{ p.fg }};font:500 12.5px 'IBM Plex Sans'">{{ p.label }}</button></sc-for>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:0 14px;padding:14px 18px 6px;font-size:11.5px;color:var(--ink3);border-bottom:1px solid var(--line)"><span>Stock · qty × LTP</span><span style="text-align:right;width:62px">1D</span><span style="text-align:right;width:92px">Value · P&amp;L</span></div>
+    <sc-for list="{{ prows }}" as="r" hint-placeholder-count="10">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:0 14px;align-items:center;padding:0 18px;min-height:56px;border-bottom:1px solid var(--line2);font-size:13px">
+        <div style="min-width:0"><div style="font-weight:500">{{ r.symbol }}</div><div style="font-size:11.5px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.qty }} × {{ r.ltpS }} · {{ r.sector }}</div></div>
+        <div style="text-align:right;width:62px;color:{{ r.dayColor }};font-size:12.5px">{{ r.d1pctS }}</div>
+        <div style="text-align:right;width:92px"><div style="font-weight:500">{{ r.valueS0 }}</div><div style="font-size:11.5px;color:{{ r.pnlColor }}">{{ r.pnlrsS }}</div></div>
+      </div>
+    </sc-for>
+  </section>
+
+  <!-- ═══ PHONE · SECTOR BARS — scrollable panel, same data as desktop bar list. ═══ -->
+<section style="margin-top:28px;padding:0 18px">
+    <div style="display:flex;align-items:baseline;gap:8px"><h2 style="margin:0;font-size:16px;font-weight:500">By sector</h2><span style="color:var(--ink3);font-size:13px">{{ sectorCount }}</span></div>
+    <div style="margin-top:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);max-height:420px;overflow-y:auto;padding:4px 14px 12px">
+      <sc-for list="{{ sectors }}" as="s" hint-placeholder-count="4">
+        <div style="display:flex;justify-content:space-between;padding:12px 0 4px;font-size:12.5px;gap:10px"><span style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</span><span style="color:var(--ink3);white-space:nowrap">{{ s.weightS }} · <span style="color:{{ s.pnlColor }}">{{ s.pnlS }}</span></span></div>
+        <sc-for list="{{ s.stocks }}" as="b" hint-placeholder-count="2">
+          <div style="display:grid;grid-template-columns:84px minmax(0,1fr) 52px;align-items:center;gap:8px;height:24px;font-size:12px"><span style="color:var(--ink2);overflow:hidden;text-overflow:ellipsis">{{ b.symbol }}</span><span style="height:10px;background:var(--track);border-radius:2px;position:relative"><span style="position:absolute;left:0;top:0;bottom:0;width:{{ b.bar }};border-radius:2px;background:{{ b.color }};opacity:.85"></span></span><span style="text-align:right;color:{{ b.dayColor }}">{{ b.d1pctS }}</span></div>
+        </sc-for>
+      </sc-for>
+    </div>
+    <div style="margin-top:6px;font-size:11.5px;color:var(--ink3)">Bar = value · colour = total P&amp;L (▲ profit, ▼ loss) · right = 1D %</div>
+  </section>
+
+  <!-- ═══ PHONE · TRADES SUMMARY ROW (opens the trade log) ═══ -->
+<section style="margin:24px 18px 0;padding:14px;border:1px solid var(--line);border-radius:10px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:500">Trades · Wed 30 Sep</div><div style="color:var(--ink2);margin-top:2px">First purchase · 27 buys · {{ boughtShort }}</div></div><span style="color:var(--ink3)">›</span></section>
+
+  <p style="margin:24px 18px 0;padding-top:16px;border-top:1px solid var(--line);font-size:12px;line-height:1.55;color:var(--ink2)">Early P&amp;L is noise. The algorithm hasn't shown it picks better than random; only rank 1 of 21 at 48 months counts.</p>
+
+  <!-- ═══ PHONE · BOTTOM NAV — Portfolio, Kite, Experiment, More (health, research, warm-up). ═══ -->
+<nav style="position:sticky;bottom:0;margin-top:24px;display:grid;grid-template-columns:repeat(4,1fr);height:62px;border-top:1px solid var(--line);background:var(--surface);font-size:11px;text-align:center">
+    <a style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink);font-weight:500"><span style="width:18px;height:3px;border-radius:2px;background:var(--ink)"></span>Portfolio</a>
+    <a style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink2)"><span style="width:18px;height:3px"></span>Kite</a>
+    <a style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink2)"><span style="width:18px;height:3px"></span>Experiment</a>
+    <a style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink2)"><span style="width:18px;height:3px"></span>More</a>
+  </nav>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;},&quot;layout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;desktop&quot;,&quot;phone&quot;],&quot;default&quot;:&quot;desktop&quot;,&quot;tsType&quot;:&quot;'desktop'|'phone'&quot;}}">
+// ── SAMPLE DATA (illustrative, not live) ─────────────────────────────
+// [symbol, sector, qty, avg_price, 1D % move vs fill]. Replace with holdings_latest.json → holdings[].
+const RAW=[["HDFCBANK","Banks",3,964.7,0.56],["ICICIBANK","Banks",2,1412.3,-0.62],["AXISBANK","Banks",3,1168.45,-1.12],["FEDERALBNK","Banks",21,212.18,0.41],["INFY","IT - Software",2,1520.6,-0.88],["TCS","IT - Software",1,3110,-0.47],["PERSISTENT","IT - Software",1,5482.5,-1.64],["COFORGE","IT - Software",2,1721.9,-1.21],["SUNPHARMA","Pharmaceuticals",2,1640.2,0.73],["LUPIN","Pharmaceuticals",1,2010.45,1.18],["CIPLA","Pharmaceuticals",2,1515.8,0.22],["M&M","Automobiles",1,3381,-0.94],["TVSMOTOR","Automobiles",1,3422.6,-0.31],["BAJFINANCE","Finance",3,1005.35,-1.46],["CHOLAFIN","Finance",2,1561.1,-0.83],["SHRIRAMFIN","Finance",8,640.25,-0.52],["ITC","Diversified FMCG",13,402.15,0.19],["HINDUNILVR","Diversified FMCG",1,2521.4,0.36],["AMBUJACEM","Cement & Cement Products",9,575.6,-0.71],["NTPC","Power",14,342.85,-0.18],["POWERGRID","Power",16,288.4,0.09],["BHARTIARTL","Telecom - Services",1,1915.2,-0.39],["RELIANCE","Refineries & Marketing",2,1380.1,-0.58],["LT","Construction",1,3650,-0.27],["TITAN","Consumer Durables",1,3410.75,0.48],["NIFTYBEES","Unclassified (ETF / other)",16,288.62,-0.36],["HINDALCO","Non - Ferrous Metals",7,745.3,-1.87]];
+// CAP = starting capital; CH = buy-side charge rate (STT 0.1% + stamp + exchange + GST ≈ 0.119%).
+const CAP=100000,CH=0.00119;
+// ── FORMATTERS ───────────────────────────────────────────────────────
+// g: Indian digit grouping (1,00,000) via en-IN locale. sgn: "+" / U+2212 "−" / "" after rounding.
+// rs: ₹ amount; srs: signed ₹; spct: signed %; arr: ▲/▼ + % (never colour alone); tone: CSS var for sign.
+// Convention: whole rupees in summaries, paise in prices; 2 dp for returns, 1 dp for weights.
+const g=(n,dp)=>Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:dp,maximumFractionDigits:dp});
+const sgn=(n,dp)=>{const r=+n.toFixed(dp);return r>0?'+':r<0?'−':'';};
+const rs=(n,dp=2)=>'₹'+g(n,dp);
+const srs=(n,dp=2)=>sgn(n,dp)+'₹'+g(n,dp);
+const spct=(f,dp=2)=>sgn(f*100,dp)+g(f*100,dp)+'%';
+const arr=(f,dp=2)=>{const r=+(f*100).toFixed(dp);return (r>0?'▲ ':r<0?'▼ ':'')+g(f*100,dp)+'%';};
+const tone=n=>n>0.004?'var(--up)':n<-0.004?'var(--down)':'var(--ink2)';
+
+// ── DERIVED HOLDINGS — mirrors the snapshot fields: cost (incl. charges), value, day_chg_rs/pct, pnl_rs/pct, weight = value / nav.
+const H=RAW.map(([symbol,sector,qty,avg,d])=>{const ltp=+(avg*(1+d/100)).toFixed(2);const cost=qty*avg*(1+CH);const value=qty*ltp;const d1rs=value-qty*avg;const pnlrs=value-cost;return{symbol,sector,qty,avg,ltp,cost,value,d1rs,d1pct:d1rs/(qty*avg),pnlrs,pnlpct:pnlrs/cost};});
+// ── PORTFOLIO TOTALS — nav = cash + holdings at LTP; total P&L vs ₹1,00,000 is net of charges.
+const HV=H.reduce((a,h)=>a+h.value,0),COST=H.reduce((a,h)=>a+h.cost,0),GROSS=H.reduce((a,h)=>a+h.qty*h.avg,0);
+const CASH=CAP-COST,NAV=CASH+HV,CHG=COST-GROSS,DAY=H.reduce((a,h)=>a+h.d1rs,0),TOT=NAV-CAP;
+// Pre-formatted display strings + colour per row (keeps the template free of expressions).
+H.forEach(h=>{h.weight=h.value/NAV;Object.assign(h,{avgS:rs(h.avg),ltpS:rs(h.ltp),d1pctS:arr(h.d1pct),d1rsS:srs(h.d1rs),valueS:rs(h.value),valueS0:rs(h.value,0),costS:rs(h.cost),pnlrsS:srs(h.pnlrs),pnlpctS:arr(h.pnlpct),weightS:(h.weight*100).toFixed(1)+'%',wbar:Math.min(100,h.weight*1000).toFixed(1)+'%',dayColor:tone(h.d1rs),pnlColor:tone(h.pnlrs)});});
+
+// ── SECTOR SUMMARY — grouped by NSE industry, sorted by value; stock bars scaled to the largest single position.
+const maxV=Math.max(...H.map(h=>h.value));
+const SECT=Object.values(H.reduce((m,h)=>{(m[h.sector]=m[h.sector]||{name:h.sector,list:[]}).list.push(h);return m;},{})).map(s=>{const v=s.list.reduce((a,h)=>a+h.value,0),p=s.list.reduce((a,h)=>a+h.pnlrs,0),d=s.list.reduce((a,h)=>a+h.d1rs,0);return{name:s.name,n:s.list.length,v,valueS:rs(v,0),weightS:(v/NAV*100).toFixed(1)+'%',wbar:(v/NAV/0.2*100).toFixed(1)+'%',pnlS:srs(p),dayS:srs(d),pnlColor:tone(p),dayColor:tone(d),stocks:s.list.sort((a,b)=>b.value-a.value).map(h=>({symbol:h.symbol,bar:(h.value/maxV*100).toFixed(1)+'%',color:h.pnlrs>=0?'var(--up)':'var(--down)',valueS:rs(h.value,0),d1pctS:h.d1pctS,dayColor:h.dayColor,tip:h.symbol+' · P&L '+h.pnlrsS+' ('+h.pnlpctS+') · 1D '+h.d1pctS}))};}).sort((a,b)=>b.v-a.v);
+
+// ── INTRADAY SERIES — day P&L per mark (09:16 fill, then every 15 min from 09:30). Replace with marks.csv.
+const PATH=[0,-120,-205,-180,-260,-310,-275,-340,-395,-360,-420,-470,-445,-500,-455,-410,-380,-430,-465,-440,-405,-420,DAY];
+// Minutes since midnight for each mark.
+const MIN=[556,...Array.from({length:22},(_,i)=>570+i*15)];
+const NAVS=PATH.map(v=>CAP-CHG+v);
+// Chart scales: x = 09:15→15:30 mapped to 0→1000; y = fixed ₹ band mapped to 250 (SVG viewBox units).
+const yLo=99300,yHi=100100;
+const X=m=>(m-555)/375*1000,Y=v=>(yHi-v)/(yHi-yLo)*250;
+const lineD=NAVS.map((v,i)=>(i?'L':'M')+X(MIN[i]).toFixed(1)+' '+Y(v).toFixed(1)).join(' ');
+const areaD=lineD+` L${X(MIN[MIN.length-1]).toFixed(1)} 250 L${X(MIN[0]).toFixed(1)} 250 Z`;
+const lowI=NAVS.indexOf(Math.min(...NAVS));
+const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+// ── FILLS — one BUY per holding at 09:16 (ledger.jsonl shape: ts, side, ticker, qty, price, value, charges).
+const FILLS=RAW.map((r,i)=>{const h=H[i];return{time:'09:16:'+String(2+i).padStart(2,'0'),symbol:h.symbol,qty:h.qty,price:rs(h.avg),value:rs(h.qty*h.avg),charges:rs(h.cost-h.qty*h.avg)};});
+// Split NAV into rupees / paise so the paise can be set in a lighter tone.
+const navS=rs(NAV);const [nI,nD]=navS.split('.');
+const COMMON={navInt:nI,navDec:'.'+nD,dayRs:srs(DAY),dayPct:arr(DAY/GROSS),dayColor:tone(DAY),totRs:srs(TOT),totPct:arr(TOT/CAP),totColor:tone(TOT),invested:rs(COST),cash:rs(CASH),cashPct:(CASH/NAV*100).toFixed(1)+'%',charges:rs(CHG),bought:rs(GROSS),boughtShort:rs(GROSS,0)+' bought',sectors:SECT,sectorCount:SECT.length,lineD,areaD,baseTop:(Y(CAP)/2.5).toFixed(2)+'%',nowLeft:(X(MIN[MIN.length-1])/10).toFixed(2)+'%',nowTop:(Y(NAVS[NAVS.length-1])/2.5).toFixed(2)+'%',yTicks:[100000,99800,99600,99400].map(v=>({top:(Y(v)/2.5).toFixed(2)+'%',label:rs(v,0)})),lowNav:rs(NAVS[lowI],0),lowAt:hm(MIN[lowI]),fills:FILLS};
+// Sortable columns (desktop) and phone sort chips.
+const KEYS=['symbol','sector','qty','avg','ltp','d1pct','d1rs','value','cost','pnlrs','pnlpct','weight'];
+const PS=[['value','Value'],['d1pct','1D %'],['pnlpct','P&L %'],['symbol','A–Z']];
+
+// ── COMPONENT ─────────────────────────────────────────────────────────
+// Props: theme ("light"|"dark"), layout ("desktop"|"phone").
+// State: sk/sd = desktop sort key/direction, ps = phone sort key, fills = trade log expanded.
+// Clicking the active column flips direction; a new column starts descending (A→Z for text).
+class Component extends DCLogic {
+  state={sk:'value',sd:-1,fills:false,ps:'value'};
+  renderVals(){
+    const layout=this.props.layout??'desktop';
+    const {sk,sd,ps}=this.state;
+    const cmp=(k,d)=>(a,b)=>{const x=a[k],y=b[k];return (typeof x==='string'?x.localeCompare(y):x-y)*d;};
+    const sort={},ind={};
+    KEYS.forEach(k=>{sort[k]=()=>this.setState(s=>({sk:k,sd:s.sk===k?-s.sd:(k==='symbol'||k==='sector'?1:-1)}));ind[k]=sk===k?(sd<0?'↓':'↑'):'';});
+    return {...COMMON,theme:this.props.theme??'light',isDesktop:layout==='desktop',isPhone:layout==='phone',
+      rows:[...H].sort(cmp(sk,sd)),sort,ind,
+      prows:[...H].sort(cmp(ps,ps==='symbol'?1:-1)),
+      pSorts:PS.map(([k,l])=>({label:l,on:()=>this.setState({ps:k}),bg:ps===k?'var(--ink)':'var(--surface)',fg:ps===k?'var(--bg)':'var(--ink2)'})),
+      fillsOpen:this.state.fills,fillsCaret:this.state.fills?'▾':'▸',toggleFills:()=>this.setState(s=>({fills:!s.fills}))};
+  }
+}
+</script>
+</body>
+</html>

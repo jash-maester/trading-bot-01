@@ -29,7 +29,19 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-import polars as pl
+
+class _LazyPolars:
+    """polars on first use. The portfolio and status paths never touch it, so the
+    web server stays ~25 MB until someone opens a page that needs a DataFrame."""
+
+    def __getattr__(self, name: str):
+        import polars  # noqa: PLC0415
+
+        globals()["pl"] = polars
+        return getattr(polars, name)
+
+
+pl = _LazyPolars()
 
 # Restart 3 (2026-09-29): Rs 1,00,000 of cash deployed at the 2026-09-30 open.
 NOTIONAL = 100_000.0

@@ -12,15 +12,22 @@ module turns that into one click on the dashboard:
 3. The access token is written to ``secrets/kite/access_token.json`` (mode
    0600, gitignored). ``scripts/live_paper.py`` reads it before ``.env``.
 
-Only authentication endpoints are called: ``generate_session`` (the exchange)
-and ``profile`` (a validity check). No order-placing endpoint is imported or
-called (CLAUDE.md). The token value is never displayed or logged.
+Only two Kite endpoints are called, over plain HTTPS with the standard library
+(no kiteconnect import, which pulls in twisted/autobahn): ``POST
+/session/token`` (the exchange) and ``GET /user/profile`` (a validity check).
+No order-placing endpoint exists in this module (CLAUDE.md). The token value is
+never displayed or logged.
 """
+
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -99,8 +106,12 @@ def write_token(root: Path, access_token: str, meta: dict) -> dict:
     p = token_path(root)
     p.parent.mkdir(parents=True, exist_ok=True)
     minted = datetime.now(IST)
-    rec = {"access_token": access_token, "minted_at": minted.isoformat(timespec="seconds"),
-           "expires_at": expires_at(minted).isoformat(timespec="seconds"), **meta}
+    rec = {
+        "access_token": access_token,
+        "minted_at": minted.isoformat(timespec="seconds"),
+        "expires_at": expires_at(minted).isoformat(timespec="seconds"),
+        **meta,
+    }
     tmp = p.with_suffix(".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
@@ -109,33 +120,79 @@ def write_token(root: Path, access_token: str, meta: dict) -> dict:
     return {k: v for k, v in rec.items() if k != "access_token"}
 
 
+API = "https://api.kite.trade"
+
+
+class KiteError(Exception):
+    """A Kite API error: ``kind`` is Kite's error_type (e.g. TokenException)."""
+
+    def __init__(self, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+
+
+def _call(
+    method: str,
+    path: str,
+    *,
+    api_key: str,
+    token: str = "",
+    form: dict | None = None,
+    timeout: float = 10.0,
+) -> dict:
+    headers = {"X-Kite-Version": "3"}
+    if token:
+        headers["Authorization"] = f"token {api_key}:{token}"
+    data = urllib.parse.urlencode(form).encode() if form else None
+    req = urllib.request.Request(API + path, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        try:
+            body = json.loads(e.read() or b"{}")
+        except ValueError:
+            body = {}
+        raise KiteError(
+            body.get("error_type") or f"HTTP{e.code}", body.get("message") or str(e)
+        ) from None
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise KiteError("NetworkError", str(e)) from None
+    if body.get("status") != "success":
+        raise KiteError(body.get("error_type") or "KiteError", body.get("message") or "failed")
+    return body.get("data") or {}
+
+
 def exchange(root: Path, request_token: str) -> dict:
     """Swap a request token for an access token, verify it, store it.
 
     Raises RuntimeError with a readable message on any failure; the token is
-    stored only after ``profile`` accepts it.
+    stored only after the profile check accepts it.
     """
-    import kiteconnect  # noqa: PLC0415
-
     key, secret = credentials(root)
     if not key or not secret:
         raise RuntimeError("KITE_API_KEY / KITE_API_SECRET not found in the environment or .env")
-    k = kiteconnect.KiteConnect(api_key=key)
+    checksum = hashlib.sha256((key + request_token + secret).encode()).hexdigest()
     try:
-        sess = k.generate_session(request_token, api_secret=secret)
-    except Exception as e:  # noqa: BLE001
+        sess = _call(
+            "POST",
+            "/session/token",
+            api_key=key,
+            form={"api_key": key, "request_token": request_token, "checksum": checksum},
+        )
+    except KiteError as e:
         raise RuntimeError(
-            f"Kite refused the request token ({type(e).__name__}: {e}). Request tokens are "
-            "single-use and expire within minutes -- log in again."
+            f"Kite refused the request token ({e.kind}: {e}). Request tokens are single-use "
+            "and expire within minutes -- log in again."
         ) from None
     tok = sess.get("access_token", "")
-    k.set_access_token(tok)
     try:
-        prof = k.profile()
-    except Exception as e:  # noqa: BLE001
-        raise RuntimeError(f"new token failed the profile check ({type(e).__name__})") from None
-    return write_token(root, tok, {"user_type": prof.get("user_type", ""),
-                                   "broker": prof.get("broker", "")})
+        prof = _call("GET", "/user/profile", api_key=key, token=tok)
+    except KiteError as e:
+        raise RuntimeError(f"new token failed the profile check ({e.kind})") from None
+    return write_token(
+        root, tok, {"user_type": prof.get("user_type", ""), "broker": prof.get("broker", "")}
+    )
 
 
 def check(root: Path) -> dict:
@@ -146,15 +203,8 @@ def check(root: Path) -> dict:
     meta = {k: v for k, v in d.items() if k != "access_token"}
     key, _ = credentials(root)
     try:
-        import kiteconnect  # noqa: PLC0415
-
-        k = kiteconnect.KiteConnect(api_key=key)
-        k.set_access_token(d["access_token"])
-        k.profile()
+        _call("GET", "/user/profile", api_key=key, token=d["access_token"])
         return {"state": "valid", **meta}
-    except ImportError:
-        return {"state": "error", "error": "kiteconnect not installed", **meta}
-    except Exception as e:  # noqa: BLE001
-        name = type(e).__name__
-        state = "expired" if name in ("TokenException", "PermissionException") else "error"
-        return {"state": state, "error": name, **meta}
+    except KiteError as e:
+        state = "expired" if e.kind in ("TokenException", "PermissionException") else "error"
+        return {"state": state, "error": e.kind, **meta}
