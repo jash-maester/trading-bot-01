@@ -1,0 +1,294 @@
+{
+  "as_of": "2026-09-30T09:16:01+05:30",
+  "cash": 409.54,
+  "holdings": {
+    "ACC.NS": {
+      "qty": 4,
+      "avg_price": 1209.3,
+      "entry_price": 1209.3,
+      "opened": "2026-09-30",
+      "cost": 4842.94,
+      "sector": "Construction Materials",
+      "stop_threshold": 0.05,
+      "stop_level": 1148.83
+    },
+    "ADANIENT.NS": {
+      "qty": 1,
+      "avg_price": 2915.0,
+      "entry_price": 2915.0,
+      "opened": "2026-09-30",
+      "cost": 2918.46,
+      "sector": "Metals & Mining",
+      "stop_threshold": 0.1047,
+      "stop_level": 2609.87
+    },
+    "ASIANPAINT.NS": {
+      "qty": 2,
+      "avg_price": 2414.3,
+      "entry_price": 2414.3,
+      "opened": "2026-09-30",
+      "cost": 4834.33,
+      "sector": "Consumer Durables",
+      "stop_threshold": 0.0607,
+      "stop_level": 2267.71
+    },
+    "AXISBANK.NS": {
+      "qty": 2,
+      "avg_price": 1205.7,
+      "entry_price": 1205.7,
+      "opened": "2026-09-30",
+      "cost": 2414.26,
+      "sector": "Financial Services",
+      "stop_threshold": 0.075,
+      "stop_level": 1115.26
+    },
+    "BAJAJFINSV.NS": {
+      "qty": 2,
+      "avg_price": 1737.0,
+      "entry_price": 1737.0,
+      "opened": "2026-09-30",
+      "cost": 3478.13,
+      "sector": "Financial Services",
+      "stop_threshold": 0.0662,
+      "stop_level": 1621.94
+    },
+    "BEL.NS": {
+      "qty": 6,
+      "avg_price": 386.25,
+      "entry_price": 386.25,
+      "opened": "2026-09-30",
+      "cost": 2320.25,
+      "sector": "Capital Goods",
+      "stop_threshold": 0.0724,
+      "stop_level": 358.27
+    },
+    "BHARTIARTL.NS": {
+      "qty": 2,
+      "avg_price": 1773.5,
+      "entry_price": 1773.5,
+      "opened": "2026-09-30",
+      "cost": 3551.21,
+      "sector": "Telecommunication",
+      "stop_threshold": 0.0713,
+      "stop_level": 1647.05
+    },
+    "BRITANNIA.NS": {
+      "qty": 1,
+      "avg_price": 4790.0,
+      "entry_price": 4790.0,
+      "opened": "2026-09-30",
+      "cost": 4795.69,
+      "sector": "Fast Moving Consumer Goods",
+      "stop_threshold": 0.05,
+      "stop_level": 4550.5
+    },
+    "CUMMINSIND.NS": {
+      "qty": 1,
+      "avg_price": 4799.5,
+      "entry_price": 4799.5,
+      "opened": "2026-09-30",
+      "cost": 4805.2,
+      "sector": "Capital Goods",
+      "stop_threshold": 0.0664,
+      "stop_level": 4480.86
+    },
+    "GODREJCP.NS": {
+      "qty": 5,
+      "avg_price": 854.45,
+      "entry_price": 854.45,
+      "opened": "2026-09-30",
+      "cost": 4277.32,
+      "sector": "Fast Moving Consumer Goods",
+      "stop_threshold": 0.05,
+      "stop_level": 811.73
+    },
+    "GODREJPROP.NS": {
+      "qty": 1,
+      "avg_price": 1643.0,
+      "entry_price": 1643.0,
+      "opened": "2026-09-30",
+      "cost": 1644.95,
+      "sector": "Realty",
+      "stop_threshold": 0.0994,
+      "stop_level": 1479.76
+    },
+    "HINDUNILVR.NS": {
+      "qty": 2,
+      "avg_price": 1875.9,
+      "entry_price": 1875.9,
+      "opened": "2026-09-30",
+      "cost": 3756.25,
+      "sector": "Fast Moving Consumer Goods",
+      "stop_threshold": 0.05,
+      "stop_level": 1782.11
+    },
+    "ITC.NS": {
+      "qty": 11,
+      "avg_price": 265.75,
+      "entry_price": 265.75,
+      "opened": "2026-09-30",
+      "cost": 2926.72,
+      "sector": "Fast Moving Consumer Goods",
+      "stop_threshold": 0.0635,
+      "stop_level": 248.88
+    },
+    "LICI.NS": {
+      "qty": 7,
+      "avg_price": 396.9,
+      "entry_price": 396.9,
+      "opened": "2026-09-30",
+      "cost": 2781.6,
+      "sector": "Financial Services",
+      "stop_threshold": 0.0654,
+      "stop_level": 370.96
+    },
+    "LT.NS": {
+      "qty": 1,
+      "avg_price": 3762.0,
+      "entry_price": 3762.0,
+      "opened": "2026-09-30",
+      "cost": 3766.47,
+      "sector": "Construction",
+      "stop_threshold": 0.0537,
+      "stop_level": 3560.1
+    },
+    "LUPIN.NS": {
+      "qty": 2,
+      "avg_price": 2062.2,
+      "entry_price": 2062.2,
+      "opened": "2026-09-30",
+      "cost": 4129.3,
+      "sector": "Healthcare",
+      "stop_threshold": 0.0502,
+      "stop_level": 1958.71
+    },
+    "NIFTYBEES.NS": {
+      "qty": 30,
+      "avg_price": 259.19,
+      "entry_price": 259.19,
+      "opened": "2026-09-30",
+      "cost": 7784.93,
+      "sector": "Unclassified (ETF / other)",
+      "stop_threshold": 0.05,
+      "stop_level": 246.23
+    },
+    "NTPC.NS": {
+      "qty": 16,
+      "avg_price": 322.15,
+      "entry_price": 322.15,
+      "opened": "2026-09-30",
+      "cost": 5160.52,
+      "sector": "Power",
+      "stop_threshold": 0.05,
+      "stop_level": 306.04
+    },
+    "PFC.NS": {
+      "qty": 8,
+      "avg_price": 327.95,
+      "entry_price": 327.95,
+      "opened": "2026-09-30",
+      "cost": 2626.72,
+      "sector": "Financial Services",
+      "stop_threshold": 0.065,
+      "stop_level": 306.64
+    },
+    "PIIND.NS": {
+      "qty": 1,
+      "avg_price": 2298.4,
+      "entry_price": 2298.4,
+      "opened": "2026-09-30",
+      "cost": 2301.13,
+      "sector": "Chemicals",
+      "stop_threshold": 0.0881,
+      "stop_level": 2095.92
+    },
+    "SBILIFE.NS": {
+      "qty": 2,
+      "avg_price": 1721.5,
+      "entry_price": 1721.5,
+      "opened": "2026-09-30",
+      "cost": 3447.09,
+      "sector": "Financial Services",
+      "stop_threshold": 0.0792,
+      "stop_level": 1585.09
+    },
+    "SBIN.NS": {
+      "qty": 4,
+      "avg_price": 964.6,
+      "entry_price": 964.6,
+      "opened": "2026-09-30",
+      "cost": 3862.98,
+      "sector": "Financial Services",
+      "stop_threshold": 0.0574,
+      "stop_level": 909.21
+    },
+    "TATACONSUM.NS": {
+      "qty": 4,
+      "avg_price": 962.2,
+      "entry_price": 962.2,
+      "opened": "2026-09-30",
+      "cost": 3853.37,
+      "sector": "Fast Moving Consumer Goods",
+      "stop_threshold": 0.05,
+      "stop_level": 914.09
+    },
+    "TATASTEEL.NS": {
+      "qty": 15,
+      "avg_price": 187.73,
+      "entry_price": 187.73,
+      "opened": "2026-09-30",
+      "cost": 2819.29,
+      "sector": "Metals & Mining",
+      "stop_threshold": 0.0672,
+      "stop_level": 175.12
+    },
+    "TCS.NS": {
+      "qty": 2,
+      "avg_price": 2060.2,
+      "entry_price": 2060.2,
+      "opened": "2026-09-30",
+      "cost": 4125.29,
+      "sector": "Information Technology",
+      "stop_threshold": 0.0592,
+      "stop_level": 1938.28
+    },
+    "TECHM.NS": {
+      "qty": 2,
+      "avg_price": 1521.9,
+      "entry_price": 1521.9,
+      "opened": "2026-09-30",
+      "cost": 3047.41,
+      "sector": "Information Technology",
+      "stop_threshold": 0.0607,
+      "stop_level": 1429.48
+    },
+    "THERMAX.NS": {
+      "qty": 1,
+      "avg_price": 3314.7,
+      "entry_price": 3314.7,
+      "opened": "2026-09-30",
+      "cost": 3318.64,
+      "sector": "Capital Goods",
+      "stop_threshold": 0.0724,
+      "stop_level": 3074.57
+    }
+  },
+  "deployed": {
+    "trade_date": "2026-09-30",
+    "signal_date": "2026-09-29",
+    "prices": "live",
+    "capital": 100000.0,
+    "names": 27,
+    "invested": 99472.35,
+    "charges": 118.1,
+    "cash": 409.54,
+    "invested_pct": 0.9947,
+    "unpriced": []
+  },
+  "last_rebalance": "2026-09-30",
+  "realised_rs": 0.0,
+  "charges_rs": 118.1,
+  "pending_stops": [],
+  "cooldown": {},
+  "last_close_mark": "2026-09-30"
+}
