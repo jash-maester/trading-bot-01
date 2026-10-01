@@ -110,6 +110,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         u = urlparse(self.path)
+        if "request_token" in u.query or u.path.startswith("/kite"):
+            sys.stderr.write(f"GET {u.path} (Kite redirect, query keys "
+                             f"{sorted(parse_qs(u.query))})\n")
         q = parse_qs(u.query)
         try:
             if u.path in ("/", "/kite/callback") and ("request_token" in q or "status" in q):
@@ -134,14 +137,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"{type(e).__name__}: {e}"}, 500)
 
     def _kite_callback(self, query: str) -> None:
+        # Logged without the token: the outcome is what matters when a login fails.
         rt = KA.parse_request_token(query)
         if rt is None:
+            q = parse_qs(query)
+            sys.stderr.write(f"kite callback: no usable request_token "
+                             f"(status={q.get('status')}, keys={sorted(q)})\n")
             return self._redirect("/#kite?err=" + quote("Kite login was not successful."))
         try:
             meta = KA.exchange(api.ROOT, rt)
             api.kite_status(force=True)
+            sys.stderr.write(f"kite callback: OK, token valid until {meta['expires_at']}\n")
             return self._redirect("/#kite?ok=" + quote(meta["expires_at"]))
         except RuntimeError as e:
+            sys.stderr.write(f"kite callback: exchange FAILED: {e}\n")
             return self._redirect("/#kite?err=" + quote(str(e)[:300]))
 
     # ── POST ─────────────────────────────────────────────────────────────────

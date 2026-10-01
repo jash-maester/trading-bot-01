@@ -657,6 +657,9 @@ window.addEventListener('hashchange', () => {
   renderChrome(); renderPage(); tick();
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+// A login completed in one tab refreshes every other open dashboard tab at once.
+window.addEventListener('storage', e => { if (e.key === 'pb-kite-login') { delete VER[route().name]; tick(true); } });
+const announceLogin = () => store.set('pb-kite-login', Date.now());
 document.addEventListener('click', async e => {
   const t = e.target.closest('[data-sort],[data-psort],[data-range],[data-trade],[data-act],[data-doc]');
   if (!t) return;
@@ -689,10 +692,11 @@ document.addEventListener('submit', async e => {
   const r = await postJSON('/api/kite/token', { text: f.text.value });
   f.text.value = '';
   msg.innerHTML = r.ok ? `<div class="callout ok" style="margin:0"><span>✓</span><div>Kite connected. Valid until ${esc(hm(r.expires_at))} IST.</div></div>` : `<div class="callout fail" style="margin:0"><span>!</span><div>${esc(r.error)}</div></div>`;
-  if (r.ok) tick(true);
+  if (r.ok) { announceLogin(); tick(true); }
 });
 
 // boot
+if (route().name === 'kite' && route().params.get('ok')) announceLogin();
 if (route().name === 'kite' && route().params.get('ok')) FLASH = { id: 'kite-ok', level: 'ok', title: 'Kite connected', message: `Token valid until ${hm(route().params.get('ok'))} IST.`, action: null };
 renderChrome();
 tick(true);

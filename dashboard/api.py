@@ -412,8 +412,11 @@ def status() -> dict:
         "last_mark": pf["snapshot"]["ts"] if pf.get("deployed") else None,
         "next_event": next_live_event(now),
         "attention": attention(now, kite, pipe, pf),
+        # 30 s from 06:00 (when the Kite token expires and a login is due) through
+        # the close, and whenever something urgent is showing; 5 min otherwise.
         "poll_s": 30
-        if now.weekday() < 5 and 9 * 60 <= now.hour * 60 + now.minute <= 15 * 60 + 50
+        if (now.weekday() < 5 and 6 * 60 <= now.hour * 60 + now.minute <= 15 * 60 + 50)
+        or any(a["level"] == "urgent" for a in attention(now, kite, pipe, pf))
         else 300,
         "version": version,
     }
