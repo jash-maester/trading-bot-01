@@ -58,7 +58,17 @@ IST = timezone(timedelta(hours=5, minutes=30))
 # Overridable so a rehearsal never touches the real live book.
 LIVE = Path(os.environ.get("TRADER_LIVE_DIR", "audit/paper/live"))
 PANEL = Path("data/panels_forward/full.parquet")
-SIGNAL = Path("data/signal/paper_signal/predictions.parquet")
+SIGNAL = Path(os.environ.get("TRADER_LIVE_SIGNAL", "data/signal/paper_signal/predictions.parquet"))
+# Rebalance cadence. "monthly" = the frozen P2 book (default); "semimonthly" =
+# the P3 adaptive live book (audit/paper/live_adaptive), first session on/after
+# the 1st and the 16th, the same calendar as RebalanceSchedule("semimonthly").
+FREQ = os.environ.get("TRADER_LIVE_FREQ", "monthly")
+if FREQ not in ("monthly", "semimonthly"):
+    raise SystemExit(f"TRADER_LIVE_FREQ must be monthly or semimonthly, got {FREQ!r}")
+
+
+def _period(d: date) -> tuple[int, int]:
+    return (d.year, d.month * 2 + (d.day >= 16)) if FREQ == "semimonthly" else (d.year, d.month)
 CAPITAL = 100_000.0
 MIN_TRADE = 500.0
 K, BAND, MAX_W = 30, 0.010, 0.10
@@ -401,7 +411,8 @@ def trade(a: argparse.Namespace) -> None:
     if st.get("last_trade_day") == str(trade_day) or st["deployed"]["trade_date"] == str(trade_day):
         print(f"already traded {trade_day} -- nothing to do")
         return None
-    rebalance = st.get("last_rebalance", "")[:7] != trade_day.isoformat()[:7]
+    last = st.get("last_rebalance")
+    rebalance = last is None or _period(date.fromisoformat(last[:10])) != _period(trade_day)
     pending = list(st.get("pending_stops", []))
     if not rebalance and not pending:
         print(f"{trade_day}: hold day, no stops pending -- nothing traded")

@@ -65,8 +65,9 @@ class Handler(BaseHTTPRequestHandler):
             super().log_request(code, size)
 
     # ── responses ────────────────────────────────────────────────────────────
-    def _send(self, code: int, body: bytes, ctype: str, cache: str = "no-store",
-              extra: dict | None = None) -> None:
+    def _send(
+        self, code: int, body: bytes, ctype: str, cache: str = "no-store", extra: dict | None = None
+    ) -> None:
         if len(body) > 1024 and "gzip" in (self.headers.get("Accept-Encoding") or ""):
             body = gzip.compress(body, compresslevel=5)
             extra = {**(extra or {}), "Content-Encoding": "gzip"}
@@ -83,8 +84,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _json(self, obj, code: int = 200) -> None:
-        self._send(code, json.dumps(obj, default=_default, separators=(",", ":")).encode(),
-                   "application/json; charset=utf-8")
+        self._send(
+            code,
+            json.dumps(obj, default=_default, separators=(",", ":")).encode(),
+            "application/json; charset=utf-8",
+        )
 
     def _redirect(self, to: str) -> None:
         self.send_response(HTTPStatus.SEE_OTHER)
@@ -111,14 +115,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         u = urlparse(self.path)
         if "request_token" in u.query or u.path.startswith("/kite"):
-            sys.stderr.write(f"GET {u.path} (Kite redirect, query keys "
-                             f"{sorted(parse_qs(u.query))})\n")
+            sys.stderr.write(
+                f"GET {u.path} (Kite redirect, query keys {sorted(parse_qs(u.query))})\n"
+            )
         q = parse_qs(u.query)
         try:
             if u.path in ("/", "/kite/callback") and ("request_token" in q or "status" in q):
                 return self._kite_callback(u.query)
             if u.path == "/healthz":
                 return self._send(200, b"ok", "text/plain")
+            if u.path == "/api/portfolio":
+                return self._json(api.portfolio((q.get("book") or ["monthly"])[0]))
             if u.path in GET_ROUTES:
                 return self._json(GET_ROUTES[u.path]())
             if u.path == "/api/doc":
@@ -141,8 +148,10 @@ class Handler(BaseHTTPRequestHandler):
         rt = KA.parse_request_token(query)
         if rt is None:
             q = parse_qs(query)
-            sys.stderr.write(f"kite callback: no usable request_token "
-                             f"(status={q.get('status')}, keys={sorted(q)})\n")
+            sys.stderr.write(
+                f"kite callback: no usable request_token "
+                f"(status={q.get('status')}, keys={sorted(q)})\n"
+            )
             return self._redirect("/#kite?err=" + quote("Kite login was not successful."))
         try:
             meta = KA.exchange(api.ROOT, rt)
@@ -168,8 +177,12 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/kite/token":
             rt = KA.parse_request_token(str(body.get("text", "")))
             if rt is None:
-                return self._json({"ok": False, "error": "No request_token found, or the "
-                                   "login status was not success."})
+                return self._json(
+                    {
+                        "ok": False,
+                        "error": "No request_token found, or the login status was not success.",
+                    }
+                )
             try:
                 meta = KA.exchange(api.ROOT, rt)
                 api.kite_status(force=True)

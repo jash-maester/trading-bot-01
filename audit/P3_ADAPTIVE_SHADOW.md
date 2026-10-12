@@ -147,6 +147,24 @@ Until then a due refit is run by hand (`uv run python scripts/refit_adaptive.py
 --if-due`); the next is due on the evening of Thu 15 Oct 2026. A refit that is
 not run leaves the previous model in force, as pre-registered.
 
+
+**2026-10-12 — a live ₹1,00,000 book on the P3 rules (owner's request).**
+`audit/paper/live_adaptive/`, run by the same `scripts/live_paper.py` with
+`TRADER_LIVE_SIGNAL=data/signal/adaptive_signal/predictions.parquet` and
+`TRADER_LIVE_FREQ=semimonthly`, at 09:17 / 09:21 / 09:31 (a minute after the
+frozen book), marks every 15 min and a 15:36 close mark. First funding at the
+open of 2026-10-13; rebalances on the first session on/after the 1st and the
+16th; same stop, caps, band, budget and costs. Like the frozen live book it
+SHADOWS the record: it is not part of the P3 criterion, which stays the
+end-of-day replay above. Both live books are shown side by side on the
+dashboard's Portfolio page.
+
+Observed in the dry run on 2026-10-12 data, recorded so it is not mistaken for
+a bug later: the adaptive model's top 30 includes two liquid (money-market)
+ETFs, LIQUIDPLUS and LIQUIDBETF, at ~6.8% each — inverse-volatility weighting
+gives a near-zero-volatility instrument a large weight up to the 10% cap. That
+is the pre-registered rule working as written; it is not changed.
+
 ## Results
 
 *(appended at the read)*

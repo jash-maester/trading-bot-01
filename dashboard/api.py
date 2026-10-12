@@ -28,6 +28,16 @@ IST = KA.IST
 ROOT = Path(os.environ.get("DASHBOARD_ROOT", Path(__file__).resolve().parent.parent))
 PAPER = ROOT / "audit/paper"
 LIVE = PAPER / "live"
+# Two live books (owner, 2026-10-12): the frozen P2 rules, monthly, and the P3
+# adaptive rules, rebalanced on the 1st and 16th. Same code, separate folders.
+BOOKS = {
+    "monthly": {"dir": LIVE, "label": "Monthly · frozen model", "freq": "monthly"},
+    "adaptive": {
+        "dir": PAPER / "live_adaptive",
+        "label": "Twice monthly · adaptive model",
+        "freq": "semimonthly",
+    },
+}
 LOGS = ROOT / "logs/paper"
 DASH_HEALTH = ROOT / os.environ.get("DASHBOARD_HEALTH_OUT", "logs/dashboard/health.json")
 PROBE_STAMP = DASH_HEALTH.parent / "probe_stamp"
@@ -152,8 +162,8 @@ def next_live_event(now: datetime) -> dict:
 # ── portfolio (stdlib only) ──────────────────────────────────────────────────
 
 
-def _marks() -> list[dict]:
-    p = LIVE / "marks.csv"
+def _marks(live: Path = LIVE) -> list[dict]:
+    p = live / "marks.csv"
     try:
         with p.open() as fh:
             rows = list(csv.DictReader(fh))
@@ -224,9 +234,22 @@ def _trade_days(ledger: list[dict], trades: list[dict]) -> list[dict]:
     return sorted(days.values(), key=lambda d: d["date"] or "", reverse=True)
 
 
-def portfolio() -> dict:
+def next_semimonthly(last: str | None, today: date) -> date:
+    """First weekday on/after the next 1st or 16th after the last rebalance."""
+    base = date.fromisoformat(last) if last else today
+    nxt = (
+        date(base.year, base.month, 16)
+        if base.day < 16
+        else date(base.year + (base.month == 12), base.month % 12 + 1, 1)
+    )
+    return next_weekday(nxt)
+
+
+def portfolio(book: str = "monthly") -> dict:
+    cfg = BOOKS.get(book) or BOOKS["monthly"]
+    live = cfg["dir"]
     files = [
-        LIVE / n
+        live / n
         for n in ("holdings_latest.json", "state.json", "marks.csv", "ledger.jsonl", "trades.jsonl")
     ]
     key = tuple(_mtime(p) for p in files)
@@ -234,8 +257,13 @@ def portfolio() -> dict:
     def build() -> dict:
         snap, state = _json(files[0]), _json(files[1])
         if snap is None or state is None:
-            return {"deployed": False}
-        marks = _marks()
+            return {
+                "deployed": False,
+                "book": book,
+                "book_label": cfg["label"],
+                "freq": cfg["freq"],
+            }
+        marks = _marks(live)
         days = sorted({m["ts"][:10] for m in marks})
         dep = state.get("deployed") or {}
         for h in snap.get("holdings", []):
@@ -259,13 +287,39 @@ def portfolio() -> dict:
             "marks": _thin(marks, 2000),
             "sessions": len(days),
             "trade_days": _trade_days(_jsonl(files[3]), _jsonl(files[4])),
-            "next_rebalance": next_rebalance(
-                state.get("last_rebalance"), datetime.now(IST).date()
-            ).isoformat(),
+            "next_rebalance": (
+                next_semimonthly if cfg["freq"] == "semimonthly" else next_rebalance
+            )(state.get("last_rebalance"), datetime.now(IST).date()).isoformat(),
+            "book": book,
+            "book_label": cfg["label"],
+            "freq": cfg["freq"],
             "evidence_months": D.EVIDENCE_MONTHS,
         }
 
-    return _cached("portfolio", key, build)
+    return _cached(f"portfolio:{book}", key, build)
+
+
+def books_summary() -> list[dict]:
+    """One line per live book for the comparison strip (cheap: cached portfolios)."""
+    out = []
+    for name, cfg in BOOKS.items():
+        pf = portfolio(name)
+        row = {"book": name, "label": cfg["label"], "deployed": pf.get("deployed", False)}
+        if pf.get("deployed"):
+            s_ = pf["snapshot"]
+            row.update(
+                nav=s_["nav"],
+                pnl_rs=s_["pnl_rs"],
+                pnl_pct=s_["pnl_pct"],
+                day_chg_rs=s_["day_chg_rs"],
+                day_chg_pct=s_["day_chg_pct"],
+                ts=s_["ts"],
+                names=len(s_["holdings"]),
+                since=pf.get("deployed_on"),
+                next_rebalance=pf.get("next_rebalance"),
+            )
+        out.append(row)
+    return out
 
 
 # ── status: chips, attention banner, change detection ────────────────────────
@@ -395,6 +449,8 @@ def status() -> dict:
         for x in (
             _mtime(LIVE / "holdings_latest.json"),
             _mtime(LIVE / "state.json"),
+            _mtime(BOOKS["adaptive"]["dir"] / "holdings_latest.json"),
+            _mtime(BOOKS["adaptive"]["dir"] / "state.json"),
             _mtime(PAPER / "record.jsonl"),
             _mtime(PAPER / "health.json"),
             _mtime(DASH_HEALTH),
@@ -411,6 +467,7 @@ def status() -> dict:
         "pipeline": pipe,
         "last_mark": pf["snapshot"]["ts"] if pf.get("deployed") else None,
         "next_event": next_live_event(now),
+        "books": books_summary(),
         "attention": attention(now, kite, pipe, pf),
         # 30 s from 06:00 (when the Kite token expires and a login is due) through
         # the close, and whenever something urgent is showing; 5 min otherwise.

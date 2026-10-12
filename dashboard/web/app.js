@@ -49,7 +49,7 @@ let STATUS = null, LOGIN_URL = null, FLASH = null, OFFLINE = false;
 const DATA = {}, VER = {};
 
 const PAGES = {
-  portfolio: { title: 'Portfolio', api: '/api/portfolio', render: pagePortfolio },
+  portfolio: { title: 'Portfolio', api: () => '/api/portfolio?book=' + (ui.book || 'monthly'), render: pagePortfolio },
   experiment: { title: 'Experiment', api: '/api/experiment', render: pageExperiment },
   health: { title: 'System health', api: '/api/health', render: pageHealth },
   research: { title: 'Research log', api: '/api/research', render: pageResearch },
@@ -255,10 +255,24 @@ function intraday(p) {
     <div class="chartft"><span>Low ${rs(navs[lowI], 0)} at ${pts[lowI].fill ? '09:16' : hm(pts[lowI].ts)} · ${pts.length} marks</span><span class="mono" style="font-size:11px">live/marks.csv${nxt}</span></div></div>`;
 }
 
+function bookStrip(cur) {
+  const books = (STATUS && STATUS.books) || [];
+  if (!books.length) return '';
+  const cell = b => {
+    const on = b.book === cur;
+    const body = b.deployed
+      ? `<div class="v">${rs(b.nav, 0)}</div><div class="s"><span class="${tone(b.pnl_rs)}">${srs(b.pnl_rs, 0)} · ${arr(b.pnl_pct)}</span> <span class="faint">since ${esc(dm(b.since))} · today ${srs(b.day_chg_rs, 0)}</span></div>`
+      : `<div class="v faint" style="font-size:15px">Not funded yet</div><div class="s faint">first purchase at the next 09:16</div>`;
+    return `<button class="bookbtn ${on ? 'on' : ''}" data-book="${esc(b.book)}"><div class="k">${esc(b.label)}</div>${body}</button>`;
+  };
+  return `<div class="books">${books.map(cell).join('')}</div>`;
+}
+
 function pagePortfolio(p) {
+  const strip = bookStrip(p.book || ui.book || 'monthly');
   if (!p.deployed) {
-    return `<section class="hero"><div><div class="lbl">Portfolio value</div><div class="navbig">₹1,00,000<span>.00</span></div>
-      <div class="note"><span class="i">i</span><span>Not invested yet. ₹1,00,000 of simulated cash is invested by the algorithm at 09:16 IST on the next trading day, after the Kite login.</span></div></div>
+    return strip + `<section class="hero"><div><div class="lbl">Portfolio value</div><div class="navbig">₹1,00,000<span>.00</span></div>
+      <div class="note"><span class="i">i</span><span>Not invested yet. ₹1,00,000 of simulated cash is invested by ${p.book === 'adaptive' ? 'the adaptive book' : 'the algorithm'} at 09:16 IST on the next trading day, after the Kite login.</span></div></div>
       <div class="card chartcard"><div class="empty">Holdings, sectors and the day's chart appear after the first purchase.</div></div></section>`;
   }
   const s = p.snapshot, st = p.state || {};
@@ -321,7 +335,7 @@ function pagePortfolio(p) {
       <span class="xs"><span class="muted">${t.sold ? 'Bought / sold' : 'Bought'}</span> ${rs(t.bought, 0)}${t.sold ? ' / ' + rs(t.sold, 0) : ''}</span><span class="xs"><span class="muted">Charges</span> ${rs(t.charges)}</span></button>${fills}`;
   }).join('');
 
-  return `
+  return strip + `
   <section class="hero">
     <div style="display:flex;flex-direction:column">
       <div class="lbl" title="live/holdings_latest.json → nav">Portfolio value · ${dm(s.ts)}, marked ${hm(s.ts)} IST</div>
@@ -352,7 +366,7 @@ function pagePortfolio(p) {
     <span title="state.json → last_rebalance; next = first session of next month"><span class="muted">Next rebalance</span> ${wdm(p.next_rebalance)}, 09:16<span class="faint"> · up to 30% turnover</span></span>
     <span title="state.json → pending_stops"><span class="muted">Stops to sell at next open</span> ${pending.length ? `<span class="alert">${pending.map(short).map(esc).join(', ')}</span>` : 'none'}</span>
     <span title="state.json → cooldown"><span class="muted">Re-entry bans</span> ${cool.length ? cool.map(([t, n]) => `${esc(short(t))} (${n})`).join(', ') : 'none'}</span>
-    <details><summary>How the rules work</summary><div class="pop">Rebalance: on the first session of each month the book re-selects its top 30 stocks, changing at most 30% of holdings.<br><br>Volatility stop: if a stock closes below its stop level, it is sold at the next 09:16 and can't be bought again for 21 sessions. The stop sits between 5% and 30% below the buy price, set by the stock's own 20-day volatility.</div></details>
+    <details><summary>How the rules work</summary><div class="pop">Rebalance: on the first session ${p.freq === 'semimonthly' ? 'on or after the 1st and the 16th of each month, using a model refitted the evening before,' : 'of each month'} the book re-selects its top 30 stocks, changing at most 30% of holdings.<br><br>Volatility stop: if a stock closes below its stop level, it is sold at the next 09:16 and can't be bought again for 21 sessions. The stop sits between 5% and 30% below the buy price, set by the stock's own 20-day volatility.</div></details>
   </section>
   ${s.unpriced && s.unpriced.length ? `<div class="callout warn">No live quote for ${s.unpriced.map(short).map(esc).join(', ')}; valued at the purchase price.</div>` : ''}
 
@@ -639,7 +653,7 @@ async function tick(forcePage) {
     if (!LOGIN_URL) { try { LOGIN_URL = (await getJSON('/api/kite/login-url')).url; } catch { /* retry next tick */ } }
     const r = route(), p = PAGES[r.name];
     if (p.api && (forcePage || !DATA[r.name] || VER[r.name] !== STATUS.version)) {
-      DATA[r.name] = await getJSON(p.api); VER[r.name] = STATUS.version; renderPage();
+      DATA[r.name] = await getJSON(typeof p.api === 'function' ? p.api() : p.api); VER[r.name] = STATUS.version; renderPage();
     } else if (!p.api || r.name === 'portfolio') renderPage();       // kite page reads STATUS; portfolio shows "x min ago"
     if (r.name !== 'portfolio' && !DATA.portfolio) { getJSON('/api/portfolio').then(v => { DATA.portfolio = v; VER.portfolio = STATUS.version; }).catch(() => {}); }
   } catch (e) { OFFLINE = true; console.warn(e); }
@@ -661,9 +675,10 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) tick
 window.addEventListener('storage', e => { if (e.key === 'pb-kite-login') { delete VER[route().name]; tick(true); } });
 const announceLogin = () => store.set('pb-kite-login', Date.now());
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-sort],[data-psort],[data-range],[data-trade],[data-act],[data-doc]');
+  const t = e.target.closest('[data-book],[data-sort],[data-psort],[data-range],[data-trade],[data-act],[data-doc]');
   if (!t) return;
   if (t.dataset.sort) { const k = t.dataset.sort; ui.sd = ui.sk === k ? -ui.sd : (k === 'symbol' || k === 'sector' ? 1 : -1); ui.sk = k; saveUI(); renderPage(); }
+  else if (t.dataset.book) { ui.book = t.dataset.book; saveUI(); delete DATA.portfolio; delete VER.portfolio; renderPage(); tick(true); }
   else if (t.dataset.psort) { ui.ps = t.dataset.psort; saveUI(); renderPage(); }
   else if (t.dataset.range) { ui.range = t.dataset.range; saveUI(); renderPage(); }
   else if (t.dataset.trade) { ui.open[t.dataset.trade] = !ui.open[t.dataset.trade]; saveUI(); renderPage(); }

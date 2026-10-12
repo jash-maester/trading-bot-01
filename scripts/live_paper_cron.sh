@@ -7,7 +7,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 set -a; [ -f .env ] && . ./.env; set +a
 mkdir -p logs/paper
-LOG="logs/paper/live_$(date +%F).log"
+# TRADER_LIVE_TAG separates the books' logs (unset = the frozen P2 book).
+LOG="logs/paper/live${TRADER_LIVE_TAG:+_$TRADER_LIVE_TAG}_$(date +%F).log"
 echo "=== $(date -Is) live_paper $* ===" >> "$LOG"
 uv run python scripts/live_paper.py "$@" --prices live >> "$LOG" 2>&1
 echo "exit=$?" >> "$LOG"
