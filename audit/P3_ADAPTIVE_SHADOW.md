@@ -165,6 +165,15 @@ ETFs, LIQUIDPLUS and LIQUIDBETF, at ~6.8% each — inverse-volatility weighting
 gives a near-zero-volatility instrument a large weight up to the 10% cap. That
 is the pre-registered rule working as written; it is not changed.
 
+**2026-10-13 — first funding, late and short four names.** No Kite login
+before the 09:17–09:31 attempts, so the first funding ran by hand at 10:21
+IST at that minute's quotes (frozen book's two stop sales likewise). Four of
+the target names (BLISSGVS, DIACABS, E2E, STLTECH) had no quote: they trade
+in NSE's BE series, which Kite lists as SYMBOL-BE. They were left unbought and
+the top-up spread their cash over the other 25 names (99.47% invested). Fixed
+the same day in `scripts/live_paper.py` (`_live_prices` retries SYMBOL-BE);
+the 16 Oct rebalance buys them if they are still in the target.
+
 ## Results
 
 *(appended at the read)*

@@ -137,21 +137,32 @@ def _kite():
                      "needed (dashboard → Kite login)")
 
 
+def _quote_row(v: dict) -> dict:
+    ohlc = v.get("ohlc") or {}
+    return {"price": float(v["last_price"]),
+            "open": float(ohlc.get("open") or 0.0),
+            "prev_close": float(ohlc.get("close") or 0.0),
+            "quote_ts": str(v.get("timestamp") or v.get("last_trade_time") or ""),
+            "last_trade": str(v.get("last_trade_time") or "")}
+
+
 def _live_prices(tickers: list[str]) -> dict[str, dict]:
+    """Kite quotes keyed by ticker. A stock in NSE's BE (trade-for-trade) series
+    is listed on Kite as SYMBOL-BE, not SYMBOL; a name with no plain-symbol
+    quote is retried there (BLISSGVS, DIACABS, E2E, STLTECH on 2026-10-13)."""
     k = _kite()
     out: dict[str, dict] = {}
-    keys = [f"NSE:{_sym(t)}" for t in tickers]
-    for i in range(0, len(keys), 200):
-        q = k.quote(keys[i : i + 200])
-        for t in tickers[i : i + 200]:
-            v = q.get(f"NSE:{_sym(t)}")
-            if v and v.get("last_price"):
-                ohlc = v.get("ohlc") or {}
-                out[t] = {"price": float(v["last_price"]),
-                          "open": float(ohlc.get("open") or 0.0),
-                          "prev_close": float(ohlc.get("close") or 0.0),
-                          "quote_ts": str(v.get("timestamp") or v.get("last_trade_time") or ""),
-                          "last_trade": str(v.get("last_trade_time") or "")}
+    for suffix in ("", "-BE"):
+        todo = [t for t in tickers if t not in out]
+        for i in range(0, len(todo), 200):
+            chunk = todo[i : i + 200]
+            q = k.quote([f"NSE:{_sym(t)}{suffix}" for t in chunk])
+            for t in chunk:
+                v = q.get(f"NSE:{_sym(t)}{suffix}")
+                if v and v.get("last_price"):
+                    out[t] = _quote_row(v)
+        if len(out) == len(tickers):
+            break
     return out
 
 
