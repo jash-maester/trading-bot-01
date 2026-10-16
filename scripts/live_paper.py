@@ -71,7 +71,10 @@ def _period(d: date) -> tuple[int, int]:
     return (d.year, d.month * 2 + (d.day >= 16)) if FREQ == "semimonthly" else (d.year, d.month)
 CAPITAL = 100_000.0
 MIN_TRADE = 500.0
-K, BAND, MAX_W = 30, 0.010, 0.10
+# Names held. 30 for the P2 and P3 books; the P6 momentum book holds 15
+# (audit/P6_MOMENTUM_15.md) so fixed per-sale charges weigh less at Rs 1L.
+K = int(os.environ.get("TRADER_LIVE_K", "30"))
+BAND, MAX_W = 0.010, 0.10
 TURNOVER_BUDGET = 0.30                    # every rebalance after the first funding
 STOP_MULT, STOP_H, STOP_MIN, STOP_MAX, COOLDOWN = 1.0, 20, 0.05, 0.30, 21
 MAX_SIGNAL_AGE_DAYS = 4                   # a Friday signal still serves a Monday open

@@ -10,6 +10,15 @@
 17,21,31 9 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_adaptive TRADER_LIVE_SIGNAL=data/signal/adaptive_signal/predictions.parquet TRADER_LIVE_FREQ=semimonthly TRADER_LIVE_TAG=adaptive bash /app/scripts/live_paper_cron.sh trade
 */15 9-15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_adaptive TRADER_LIVE_SIGNAL=data/signal/adaptive_signal/predictions.parquet TRADER_LIVE_FREQ=semimonthly TRADER_LIVE_TAG=adaptive bash /app/scripts/live_paper_cron.sh mark
 36 15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_adaptive TRADER_LIVE_SIGNAL=data/signal/adaptive_signal/predictions.parquet TRADER_LIVE_FREQ=semimonthly TRADER_LIVE_TAG=adaptive bash /app/scripts/live_paper_cron.sh mark --close
+# Third live book (owner, 2026-10-16): P6, 12-1 momentum, 15 names, monthly
+# (audit/P6_MOMENTUM_15.md). Signal is a plain price ratio rebuilt after each P2
+# panel build; same allocator, stop and costs. Its own Rs 1L in
+# audit/paper/live_momentum/, log logs/paper/live_momentum_<date>.log.
+50 21 * * * cd /app && uv run python scripts/momentum_signal.py >> logs/paper/momentum_signal.log 2>&1
+20 8 * * * cd /app && uv run python scripts/momentum_signal.py >> logs/paper/momentum_signal.log 2>&1
+18,22,32 9 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_momentum TRADER_LIVE_SIGNAL=data/signal/momentum_12_1/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=momentum bash /app/scripts/live_paper_cron.sh trade
+*/15 9-15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_momentum TRADER_LIVE_SIGNAL=data/signal/momentum_12_1/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=momentum bash /app/scripts/live_paper_cron.sh mark
+37 15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_momentum TRADER_LIVE_SIGNAL=data/signal/momentum_12_1/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=momentum bash /app/scripts/live_paper_cron.sh mark --close
 # P3 adaptive shadow book (audit/P3_ADAPTIVE_SHADOW.md): end-of-day replay after
 # each P2 run. Separate script so it can never affect the P2 record; waits if
 # P2 has not built today's panel. Refits themselves run on the host GPU.

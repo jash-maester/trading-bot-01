@@ -28,7 +28,7 @@ IST = KA.IST
 ROOT = Path(os.environ.get("DASHBOARD_ROOT", Path(__file__).resolve().parent.parent))
 PAPER = ROOT / "audit/paper"
 LIVE = PAPER / "live"
-# Two live books (owner, 2026-10-12): the frozen P2 rules, monthly, and the P3
+# Live books (owner, 2026-10-12; momentum 2026-10-16): the frozen P2 rules, monthly, and the P3
 # adaptive rules, rebalanced on the 1st and 16th. Same code, separate folders.
 BOOKS = {
     "monthly": {"dir": LIVE, "label": "Monthly · frozen model", "freq": "monthly"},
@@ -36,6 +36,13 @@ BOOKS = {
         "dir": PAPER / "live_adaptive",
         "label": "Twice monthly · adaptive model",
         "freq": "semimonthly",
+    },
+    # Third (owner, 2026-10-16): P6, plain 12-1 momentum, 15 names, monthly.
+    "momentum": {
+        "dir": PAPER / "live_momentum",
+        "label": "Monthly · 12-1 momentum, 15 names",
+        "freq": "monthly",
+        "k": 15,
     },
 }
 LOGS = ROOT / "logs/paper"
@@ -262,6 +269,7 @@ def portfolio(book: str = "monthly") -> dict:
                 "book": book,
                 "book_label": cfg["label"],
                 "freq": cfg["freq"],
+                "k": cfg.get("k", 30),
             }
         marks = _marks(live)
         days = sorted({m["ts"][:10] for m in marks})
@@ -290,6 +298,7 @@ def portfolio(book: str = "monthly") -> dict:
             "next_rebalance": (
                 next_semimonthly if cfg["freq"] == "semimonthly" else next_rebalance
             )(state.get("last_rebalance"), datetime.now(IST).date()).isoformat(),
+            "k": cfg.get("k", 30),
             "book": book,
             "book_label": cfg["label"],
             "freq": cfg["freq"],
@@ -449,8 +458,8 @@ def status() -> dict:
         for x in (
             _mtime(LIVE / "holdings_latest.json"),
             _mtime(LIVE / "state.json"),
-            _mtime(BOOKS["adaptive"]["dir"] / "holdings_latest.json"),
-            _mtime(BOOKS["adaptive"]["dir"] / "state.json"),
+            *(_mtime(c["dir"] / f) for c in BOOKS.values() if c["dir"] != LIVE
+              for f in ("holdings_latest.json", "state.json")),
             _mtime(PAPER / "record.jsonl"),
             _mtime(PAPER / "health.json"),
             _mtime(DASH_HEALTH),
