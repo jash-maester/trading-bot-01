@@ -9,8 +9,8 @@
       "opened": "2026-09-30",
       "cost": 2918.46,
       "sector": "Metals & Mining",
-      "stop_threshold": 0.1162,
-      "stop_level": 2576.2
+      "stop_threshold": 0.1151,
+      "stop_level": 2579.53
     },
     "ASIANPAINT.NS": {
       "qty": 2,
@@ -19,8 +19,8 @@
       "opened": "2026-09-30",
       "cost": 4834.33,
       "sector": "Consumer Durables",
-      "stop_threshold": 0.0685,
-      "stop_level": 2248.88
+      "stop_threshold": 0.0668,
+      "stop_level": 2253.02
     },
     "AXISBANK.NS": {
       "qty": 2,
@@ -29,8 +29,8 @@
       "opened": "2026-09-30",
       "cost": 2414.26,
       "sector": "Financial Services",
-      "stop_threshold": 0.0711,
-      "stop_level": 1119.96
+      "stop_threshold": 0.0693,
+      "stop_level": 1122.19
     },
     "BAJAJFINSV.NS": {
       "qty": 1,
@@ -39,8 +39,8 @@
       "opened": "2026-09-30",
       "cost": 1739.065,
       "sector": "Financial Services",
-      "stop_threshold": 0.0685,
-      "stop_level": 1617.97
+      "stop_threshold": 0.0682,
+      "stop_level": 1618.5
     },
     "BEL.NS": {
       "qty": 6,
@@ -49,8 +49,8 @@
       "opened": "2026-09-30",
       "cost": 2320.25,
       "sector": "Capital Goods",
-      "stop_threshold": 0.0773,
-      "stop_level": 356.41
+      "stop_threshold": 0.0625,
+      "stop_level": 362.11
     },
     "BHARTIARTL.NS": {
       "qty": 2,
@@ -59,8 +59,8 @@
       "opened": "2026-09-30",
       "cost": 3551.21,
       "sector": "Telecommunication",
-      "stop_threshold": 0.0672,
-      "stop_level": 1654.31
+      "stop_threshold": 0.0694,
+      "stop_level": 1650.38
     },
     "BRITANNIA.NS": {
       "qty": 1,
@@ -69,8 +69,8 @@
       "opened": "2026-09-30",
       "cost": 4795.69,
       "sector": "Fast Moving Consumer Goods",
-      "stop_threshold": 0.0533,
-      "stop_level": 4534.7
+      "stop_threshold": 0.059,
+      "stop_level": 4507.41
     },
     "CUMMINSIND.NS": {
       "qty": 1,
@@ -79,8 +79,8 @@
       "opened": "2026-09-30",
       "cost": 4805.2,
       "sector": "Capital Goods",
-      "stop_threshold": 0.0757,
-      "stop_level": 4436.0
+      "stop_threshold": 0.0641,
+      "stop_level": 4491.85
     },
     "GODREJCP.NS": {
       "qty": 5,
@@ -89,8 +89,8 @@
       "opened": "2026-09-30",
       "cost": 4277.32,
       "sector": "Fast Moving Consumer Goods",
-      "stop_threshold": 0.058,
-      "stop_level": 804.88
+      "stop_threshold": 0.0607,
+      "stop_level": 802.59
     },
     "HINDUNILVR.NS": {
       "qty": 2,
@@ -99,8 +99,8 @@
       "opened": "2026-09-30",
       "cost": 3756.25,
       "sector": "Fast Moving Consumer Goods",
-      "stop_threshold": 0.0597,
-      "stop_level": 1763.89
+      "stop_threshold": 0.0707,
+      "stop_level": 1743.29
     },
     "ITC.NS": {
       "qty": 11,
@@ -109,8 +109,8 @@
       "opened": "2026-09-30",
       "cost": 2926.72,
       "sector": "Fast Moving Consumer Goods",
-      "stop_threshold": 0.095,
-      "stop_level": 240.51
+      "stop_threshold": 0.1005,
+      "stop_level": 239.05
     },
     "LICI.NS": {
       "qty": 7,
@@ -119,8 +119,8 @@
       "opened": "2026-09-30",
       "cost": 2781.6,
       "sector": "Financial Services",
-      "stop_threshold": 0.0768,
-      "stop_level": 366.4
+      "stop_threshold": 0.0704,
+      "stop_level": 368.94
     },
     "LT.NS": {
       "qty": 1,
@@ -129,8 +129,8 @@
       "opened": "2026-09-30",
       "cost": 3766.47,
       "sector": "Construction",
-      "stop_threshold": 0.0658,
-      "stop_level": 3514.47
+      "stop_threshold": 0.0671,
+      "stop_level": 3509.7
     },
     "LUPIN.NS": {
       "qty": 2,
@@ -139,8 +139,8 @@
       "opened": "2026-09-30",
       "cost": 4129.3,
       "sector": "Healthcare",
-      "stop_threshold": 0.0632,
-      "stop_level": 1931.9
+      "stop_threshold": 0.0623,
+      "stop_level": 1933.65
     },
     "NIFTYBEES.NS": {
       "qty": 30,
@@ -159,8 +159,8 @@
       "opened": "2026-09-30",
       "cost": 645.0650000000005,
       "sector": "Power",
-      "stop_threshold": 0.0528,
-      "stop_level": 305.15
+      "stop_threshold": 0.0536,
+      "stop_level": 304.88
     },
     "PFC.NS": {
       "qty": 8,
@@ -169,8 +169,8 @@
       "opened": "2026-09-30",
       "cost": 2626.72,
       "sector": "Financial Services",
-      "stop_threshold": 0.0556,
-      "stop_level": 309.7
+      "stop_threshold": 0.0611,
+      "stop_level": 307.9
     },
     "PIIND.NS": {
       "qty": 1,
@@ -179,8 +179,8 @@
       "opened": "2026-09-30",
       "cost": 2301.13,
       "sector": "Chemicals",
-      "stop_threshold": 0.1029,
-      "stop_level": 2061.99
+      "stop_threshold": 0.1038,
+      "stop_level": 2059.77
     },
     "SBILIFE.NS": {
       "qty": 2,
@@ -189,8 +189,8 @@
       "opened": "2026-09-30",
       "cost": 3447.09,
       "sector": "Financial Services",
-      "stop_threshold": 0.0777,
-      "stop_level": 1587.78
+      "stop_threshold": 0.0776,
+      "stop_level": 1587.83
     },
     "SBIN.NS": {
       "qty": 4,
@@ -199,8 +199,8 @@
       "opened": "2026-09-30",
       "cost": 3862.98,
       "sector": "Financial Services",
-      "stop_threshold": 0.0583,
-      "stop_level": 908.39
+      "stop_threshold": 0.0551,
+      "stop_level": 911.46
     },
     "TATACONSUM.NS": {
       "qty": 4,
@@ -209,8 +209,8 @@
       "opened": "2026-09-30",
       "cost": 3853.37,
       "sector": "Fast Moving Consumer Goods",
-      "stop_threshold": 0.0574,
-      "stop_level": 906.97
+      "stop_threshold": 0.0647,
+      "stop_level": 899.94
     },
     "TCS.NS": {
       "qty": 2,
@@ -219,8 +219,8 @@
       "opened": "2026-09-30",
       "cost": 4125.29,
       "sector": "Information Technology",
-      "stop_threshold": 0.0773,
-      "stop_level": 1901.02
+      "stop_threshold": 0.1022,
+      "stop_level": 1849.61
     },
     "TECHM.NS": {
       "qty": 2,
@@ -229,8 +229,8 @@
       "opened": "2026-09-30",
       "cost": 3047.41,
       "sector": "Information Technology",
-      "stop_threshold": 0.0528,
-      "stop_level": 1441.57
+      "stop_threshold": 0.0759,
+      "stop_level": 1406.4
     },
     "THERMAX.NS": {
       "qty": 1,
@@ -239,8 +239,8 @@
       "opened": "2026-09-30",
       "cost": 3318.64,
       "sector": "Capital Goods",
-      "stop_threshold": 0.0926,
-      "stop_level": 3007.76
+      "stop_threshold": 0.0891,
+      "stop_level": 3019.46
     },
     "M&M.NS": {
       "qty": 1,
@@ -254,8 +254,8 @@
         "qty": 1,
         "px": 2892.1
       },
-      "stop_threshold": 0.0584,
-      "stop_level": 2723.18
+      "stop_threshold": 0.0639,
+      "stop_level": 2707.42
     },
     "VOLTAS.NS": {
       "qty": 2,
@@ -269,8 +269,8 @@
         "qty": 2,
         "px": 1073.3
       },
-      "stop_threshold": 0.0864,
-      "stop_level": 980.54
+      "stop_threshold": 0.0859,
+      "stop_level": 981.05
     },
     "GODFRYPHLP.NS": {
       "qty": 1,
@@ -284,8 +284,8 @@
         "qty": 1,
         "px": 1880.9
       },
-      "stop_threshold": 0.0972,
-      "stop_level": 1698.02
+      "stop_threshold": 0.1022,
+      "stop_level": 1688.62
     }
   },
   "deployed": {
@@ -305,9 +305,9 @@
   "charges_rs": 221.0880320614,
   "pending_stops": [],
   "cooldown": {
-    "ACC.NS": 21,
-    "TATASTEEL.NS": 21
+    "ACC.NS": 18,
+    "TATASTEEL.NS": 18
   },
-  "last_close_mark": "2026-10-12",
+  "last_close_mark": "2026-10-15",
   "last_trade_day": "2026-10-13"
 }

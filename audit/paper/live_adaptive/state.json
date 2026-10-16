@@ -1,6 +1,6 @@
 {
-  "as_of": "2026-10-13T10:21:40+05:30",
-  "cash": 407.94,
+  "as_of": "2026-10-16T09:17:01+05:30",
+  "cash": 472.64,
   "holdings": {
     "AARTIIND.NS": {
       "qty": 10,
@@ -8,15 +8,19 @@
       "entry_price": 466.0,
       "opened": "2026-10-13",
       "cost": 4665.53,
-      "sector": "Chemicals"
+      "sector": "Chemicals",
+      "stop_threshold": 0.0932,
+      "stop_level": 422.59
     },
     "AEQUS.NS": {
-      "qty": 13,
+      "qty": 9,
       "avg_price": 267.6,
       "entry_price": 267.6,
       "opened": "2026-10-13",
-      "cost": 3482.93,
-      "sector": "Capital Goods"
+      "cost": 2411.2592307692307,
+      "sector": "Capital Goods",
+      "stop_threshold": 0.131,
+      "stop_level": 232.54
     },
     "AEROFLEX.NS": {
       "qty": 3,
@@ -24,7 +28,9 @@
       "entry_price": 553.75,
       "opened": "2026-10-13",
       "cost": 1663.22,
-      "sector": "Unclassified (ETF / other)"
+      "sector": "Unclassified (ETF / other)",
+      "stop_threshold": 0.1579,
+      "stop_level": 466.3
     },
     "AETHER.NS": {
       "qty": 2,
@@ -32,7 +38,9 @@
       "entry_price": 1730.0,
       "opened": "2026-10-13",
       "cost": 3464.11,
-      "sector": "Chemicals"
+      "sector": "Chemicals",
+      "stop_threshold": 0.129,
+      "stop_level": 1506.83
     },
     "BRIGADE.NS": {
       "qty": 9,
@@ -40,7 +48,9 @@
       "entry_price": 584.75,
       "opened": "2026-10-13",
       "cost": 5269.0,
-      "sector": "Realty"
+      "sector": "Realty",
+      "stop_threshold": 0.0902,
+      "stop_level": 531.99
     },
     "DCBBANK.NS": {
       "qty": 22,
@@ -48,15 +58,19 @@
       "entry_price": 211.03,
       "opened": "2026-10-13",
       "cost": 4648.17,
-      "sector": "Financial Services"
+      "sector": "Financial Services",
+      "stop_threshold": 0.1043,
+      "stop_level": 189.02
     },
     "DEVYANI.NS": {
-      "qty": 46,
+      "qty": 32,
       "avg_price": 122.55,
       "entry_price": 122.55,
       "opened": "2026-10-13",
-      "cost": 5643.99,
-      "sector": "Consumer Services"
+      "cost": 3926.253913043478,
+      "sector": "Consumer Services",
+      "stop_threshold": 0.0814,
+      "stop_level": 112.58
     },
     "ENGINERSIN.NS": {
       "qty": 12,
@@ -64,7 +78,9 @@
       "entry_price": 288.85,
       "opened": "2026-10-13",
       "cost": 3470.32,
-      "sector": "Construction"
+      "sector": "Construction",
+      "stop_threshold": 0.1426,
+      "stop_level": 247.67
     },
     "INOXGREEN.NS": {
       "qty": 18,
@@ -72,7 +88,9 @@
       "entry_price": 121.8,
       "opened": "2026-10-13",
       "cost": 2195.0,
-      "sector": "Services"
+      "sector": "Services",
+      "stop_threshold": 0.2355,
+      "stop_level": 93.12
     },
     "JAMNAAUTO.NS": {
       "qty": 23,
@@ -80,31 +98,39 @@
       "entry_price": 142.77,
       "opened": "2026-10-13",
       "cost": 3287.61,
-      "sector": "Automobile and Auto Components"
+      "sector": "Automobile and Auto Components",
+      "stop_threshold": 0.1383,
+      "stop_level": 123.02
     },
     "JUBLFOOD.NS": {
-      "qty": 10,
+      "qty": 7,
       "avg_price": 420.55,
       "entry_price": 420.55,
       "opened": "2026-10-13",
-      "cost": 4210.49,
-      "sector": "Consumer Services"
+      "cost": 2947.343,
+      "sector": "Consumer Services",
+      "stop_threshold": 0.1138,
+      "stop_level": 372.67
     },
     "LIQUIDBETF.NS": {
-      "qty": 7,
+      "qty": 5,
       "avg_price": 1102.82,
       "entry_price": 1102.82,
       "opened": "2026-10-13",
-      "cost": 7728.91,
-      "sector": "Unclassified (ETF / other)"
+      "cost": 5520.65,
+      "sector": "Unclassified (ETF / other)",
+      "stop_threshold": 0.05,
+      "stop_level": 1047.68
     },
     "LIQUIDPLUS.NS": {
-      "qty": 7,
+      "qty": 5,
       "avg_price": 1107.39,
       "entry_price": 1107.39,
       "opened": "2026-10-13",
-      "cost": 7760.93,
-      "sector": "Unclassified (ETF / other)"
+      "cost": 5543.521428571428,
+      "sector": "Unclassified (ETF / other)",
+      "stop_threshold": 0.05,
+      "stop_level": 1052.02
     },
     "LUMAXTECH.NS": {
       "qty": 2,
@@ -112,7 +138,9 @@
       "entry_price": 1817.3,
       "opened": "2026-10-13",
       "cost": 3638.92,
-      "sector": "Automobile and Auto Components"
+      "sector": "Automobile and Auto Components",
+      "stop_threshold": 0.1385,
+      "stop_level": 1565.59
     },
     "MOTILALOFS.NS": {
       "qty": 4,
@@ -120,7 +148,9 @@
       "entry_price": 1045.95,
       "opened": "2026-10-13",
       "cost": 4188.77,
-      "sector": "Financial Services"
+      "sector": "Financial Services",
+      "stop_threshold": 0.116,
+      "stop_level": 924.65
     },
     "OMNI.NS": {
       "qty": 3,
@@ -128,15 +158,19 @@
       "entry_price": 660.0,
       "opened": "2026-10-13",
       "cost": 1982.35,
-      "sector": "Unclassified (ETF / other)"
+      "sector": "Unclassified (ETF / other)",
+      "stop_threshold": 0.1404,
+      "stop_level": 567.36
     },
     "POONAWALLA.NS": {
-      "qty": 8,
+      "qty": 6,
       "avg_price": 441.35,
       "entry_price": 441.35,
       "opened": "2026-10-13",
-      "cost": 3534.99,
-      "sector": "Financial Services"
+      "cost": 2651.2425,
+      "sector": "Financial Services",
+      "stop_threshold": 0.1375,
+      "stop_level": 380.67
     },
     "RELIGARE.NS": {
       "qty": 26,
@@ -144,7 +178,9 @@
       "entry_price": 221.85,
       "opened": "2026-10-13",
       "cost": 5774.95,
-      "sector": "Financial Services"
+      "sector": "Financial Services",
+      "stop_threshold": 0.0776,
+      "stop_level": 204.64
     },
     "SBC.NS": {
       "qty": 33,
@@ -152,7 +188,9 @@
       "entry_price": 64.96,
       "opened": "2026-10-13",
       "cost": 2146.23,
-      "sector": "Unclassified (ETF / other)"
+      "sector": "Unclassified (ETF / other)",
+      "stop_threshold": 0.1291,
+      "stop_level": 56.57
     },
     "TATACHEM.NS": {
       "qty": 4,
@@ -160,7 +198,9 @@
       "entry_price": 632.7,
       "opened": "2026-10-13",
       "cost": 2533.81,
-      "sector": "Chemicals"
+      "sector": "Chemicals",
+      "stop_threshold": 0.1703,
+      "stop_level": 524.96
     },
     "TDPOWERSYS.NS": {
       "qty": 4,
@@ -168,7 +208,9 @@
       "entry_price": 820.9,
       "opened": "2026-10-13",
       "cost": 3287.5,
-      "sector": "Capital Goods"
+      "sector": "Capital Goods",
+      "stop_threshold": 0.1451,
+      "stop_level": 701.76
     },
     "TFCILTD.NS": {
       "qty": 16,
@@ -176,31 +218,156 @@
       "entry_price": 155.55,
       "opened": "2026-10-13",
       "cost": 2491.76,
-      "sector": "Unclassified (ETF / other)"
+      "sector": "Unclassified (ETF / other)",
+      "stop_threshold": 0.1146,
+      "stop_level": 137.73
     },
     "WELSPUNLIV.NS": {
-      "qty": 19,
+      "qty": 13,
       "avg_price": 223.0,
       "entry_price": 223.0,
       "opened": "2026-10-13",
-      "cost": 4242.03,
-      "sector": "Textiles"
+      "cost": 2902.441578947368,
+      "sector": "Textiles",
+      "stop_threshold": 0.1054,
+      "stop_level": 199.49
     },
     "YATHARTH.NS": {
-      "qty": 4,
+      "qty": 3,
       "avg_price": 969.1,
       "entry_price": 969.1,
       "opened": "2026-10-13",
-      "cost": 3881.0,
-      "sector": "Healthcare"
+      "cost": 2910.75,
+      "sector": "Healthcare",
+      "stop_threshold": 0.1606,
+      "stop_level": 813.45
     },
     "ZEEL.NS": {
-      "qty": 59,
+      "qty": 42,
       "avg_price": 74.48,
       "entry_price": 74.48,
       "opened": "2026-10-13",
-      "cost": 4399.54,
-      "sector": "Media Entertainment & Publication"
+      "cost": 3131.87593220339,
+      "sector": "Media Entertainment & Publication",
+      "stop_threshold": 0.1028,
+      "stop_level": 66.82
+    },
+    "BORORENEW.NS": {
+      "qty": 4,
+      "avg_price": 422.65,
+      "entry_price": 422.65,
+      "opened": "2026-10-16",
+      "cost": 1692.61,
+      "sector": "Capital Goods",
+      "buy_today": {
+        "date": "2026-10-16",
+        "qty": 4,
+        "px": 422.65
+      }
+    },
+    "TATACAP.NS": {
+      "qty": 5,
+      "avg_price": 322.25,
+      "entry_price": 322.25,
+      "opened": "2026-10-16",
+      "cost": 1613.16,
+      "sector": "Financial Services",
+      "buy_today": {
+        "date": "2026-10-16",
+        "qty": 5,
+        "px": 322.25
+      }
+    },
+    "REDINGTON.NS": {
+      "qty": 4,
+      "avg_price": 388.35,
+      "entry_price": 388.35,
+      "opened": "2026-10-16",
+      "cost": 1555.24,
+      "sector": "Services",
+      "buy_today": {
+        "date": "2026-10-16",
+        "qty": 4,
+        "px": 388.35
+      }
+    },
+    "KWIL.NS": {
+      "qty": 38,
+      "avg_price": 36.64,
+      "entry_price": 36.64,
+      "opened": "2026-10-16",
+      "cost": 1393.97,
+      "sector": "Unclassified (ETF / other)",
+      "buy_today": {
+        "date": "2026-10-16",
+        "qty": 38,
+        "px": 36.64
+      }
+    },
+    "E2E.NS": {
+      "qty": 2,
+      "avg_price": 682.05,
+      "entry_price": 682.05,
+      "opened": "2026-10-16",
+      "cost": 1365.72,
+      "sector": "Unclassified (ETF / other)",
+      "buy_today": {
+        "date": "2026-10-16",
+        "qty": 2,
+        "px": 682.05
+      }
+    },
+    "SWSOLAR.NS": {
+      "qty": 8,
+      "avg_price": 167.8,
+      "entry_price": 167.8,
+      "opened": "2026-10-16",
+      "cost": 1343.99,
+      "sector": "Construction",
+      "buy_today": {
+        "date": "2026-10-16",
+        "qty": 8,
+        "px": 167.8
+      }
+    },
+    "EDELWEISS.NS": {
+      "qty": 10,
+      "avg_price": 133.3,
+      "entry_price": 133.3,
+      "opened": "2026-10-16",
+      "cost": 1334.58,
+      "sector": "Financial Services",
+      "buy_today": {
+        "date": "2026-10-16",
+        "qty": 10,
+        "px": 133.3
+      }
+    },
+    "POCL.NS": {
+      "qty": 3,
+      "avg_price": 433.35,
+      "entry_price": 433.35,
+      "opened": "2026-10-16",
+      "cost": 1301.59,
+      "sector": "Unclassified (ETF / other)",
+      "buy_today": {
+        "date": "2026-10-16",
+        "qty": 3,
+        "px": 433.35
+      }
+    },
+    "WEBELSOLAR.NS": {
+      "qty": 15,
+      "avg_price": 68.27,
+      "entry_price": 68.27,
+      "opened": "2026-10-16",
+      "cost": 1025.27,
+      "sector": "Capital Goods",
+      "buy_today": {
+        "date": "2026-10-16",
+        "qty": 15,
+        "px": 68.27
+      }
     }
   },
   "deployed": {
@@ -220,9 +387,11 @@
       "STLTECH.NS"
     ]
   },
-  "last_rebalance": "2026-10-13",
-  "realised_rs": 0.0,
-  "charges_rs": 118.12,
+  "last_rebalance": "2026-10-16",
+  "realised_rs": -248.62502292048373,
+  "charges_rs": 284.47718538040004,
   "pending_stops": [],
-  "cooldown": {}
+  "cooldown": {},
+  "last_close_mark": "2026-10-15",
+  "last_trade_day": "2026-10-16"
 }
