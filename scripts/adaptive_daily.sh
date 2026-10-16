@@ -33,6 +33,11 @@ stamp(){ echo "$(date -u +%FT%TZ) $*" | tee -a "$STATUS"; }
 fail(){ stamp "FAIL $*"; exit 1; }
 maxdate(){ uv run python -c "import polars as pl;print(pl.scan_parquet('$1').select(pl.col('date').max()).collect().item())"; }
 
+# 0 restitch first, before any early exit: a refit run after the 21:40 replay
+#   (e.g. a late host refit) must still reach the next morning's live trade
+uv run python scripts/adaptive_signal.py > "$LOGS/adaptive_signal_$TODAY.log" 2>&1 || fail "adaptive_signal"
+stamp "signal OK ($(head -1 "$LOGS/adaptive_signal_$TODAY.log"))"
+
 BARS=$(maxdate data/ext/bhavcopy.parquet)
 DATA_DATE=$(maxdate data/panels_forward/full.parquet)
 [ "$BARS" = "$DATA_DATE" ] || { stamp "forward panel ends $DATA_DATE, bhavcopy $BARS: P2's run has not built today's panel -- waiting"; exit 0; }
@@ -44,9 +49,7 @@ if [ -d "$SNAPS/$DATA_DATE" ] && [ -z "${DRY:-}" ]; then
 fi
 stamp "start data=$DATA_DATE"
 
-# 1 the stitched signal (newest refit per date, no lookahead)
-uv run python scripts/adaptive_signal.py > "$LOGS/adaptive_signal_$TODAY.log" 2>&1 || fail "adaptive_signal"
-stamp "signal OK ($(head -1 "$LOGS/adaptive_signal_$TODAY.log"))"
+# 1 the stitched signal (newest refit per date, no lookahead) -- built in step 0
 
 # 2 its own paper panel: first traded session = ADAPT_FROM
 uv run python scripts/make_paper_panel.py --src data/panels_forward/full.parquet \

@@ -174,6 +174,16 @@ the top-up spread their cash over the other 25 names (99.47% invested). Fixed
 the same day in `scripts/live_paper.py` (`_live_prices` retries SYMBOL-BE);
 the 16 Oct rebalance buys them if they are still in the target.
 
+**2026-10-16 — second refit, run late.** `adaptive_20261015` was due on the
+evening of Thu 15 Oct and was not run then (the agent session that runs host
+refits by hand had ended). It was run on the owner's go-ahead at 07:17 IST on
+16 Oct, on data through 2026-10-15 exactly as scheduled, before the 08:10
+signal build: 927 s on MPS, gate FAIL (recorded, not used). MLflow runs
+`454e03a74faf4975be420c5f6e313905`, `27a849639ea6454883b4e547f6eb559c`;
+encoder SHA `fec10e8a…`. Serves the 2026-10-16 rebalance. The 08:10 job did not pick it up (it exits early once the session is recorded, and 15 Oct had been recorded at 21:40 on the 30 Sep model), so the stitched signal was rebuilt by hand at 08:12, before the 09:17 trade; its 15 Oct rows match the refit's own predictions to 9e-7. `adaptive_daily.sh` now restitches before any early exit. The new model's top 30 shares 9 names with the old model's for 15 Oct; the 0.30 turnover budget bounds how much of that the rebalance can act on. The same morning the
+owner considered a weekly-refit variant and decided against it (three sessions
+of live record is noise; refitting weekly adds ~5 sessions to a 5-year window).
+
 ## Results
 
 *(appended at the read)*
