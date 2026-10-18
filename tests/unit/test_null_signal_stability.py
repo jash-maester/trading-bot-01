@@ -42,3 +42,18 @@ def test_support_mask_applies() -> None:
     sup[0, 0] = np.nan
     out = stable_null_signal(DATES, UNI, seed=3, support=sup)
     assert np.isnan(out[0, 0]) and np.isfinite(out[1, 0])
+
+
+def test_pre_anchor_dates_are_stable_and_leave_post_anchor_cells_unchanged():
+    """2011-24 tests (audit/P7) need pre-2020 cells; adding them must not move
+    a single post-anchor cell, or every forward record would re-roll."""
+    from datetime import date as _d
+
+    pre = [_d(2011, 7, 4), _d(2015, 3, 2), _d(2019, 12, 31)]
+    post = [_d(2020, 1, 1), _d(2024, 7, 2), _d(2026, 10, 16)]
+    both = stable_null_signal(pre + post, UNI, seed=7)
+    only_post = stable_null_signal(post, UNI, seed=7)
+    np.testing.assert_array_equal(both[3:], only_post)
+    np.testing.assert_array_equal(both[:3], stable_null_signal(pre, UNI, seed=7))
+    assert np.isfinite(both).all()
+    assert not np.array_equal(both[2], both[3])

@@ -11,6 +11,11 @@ Here each cell is a function of ``(seed, ticker, calendar day)``: a per-ticker
 generator seeded by a stable hash of the seed and the ticker name, indexed by
 days since a fixed anchor. Appending a session, adding a ticker, or moving the
 panel start leaves every other cell identical.
+
+Dates before the anchor (the 2011-2024 historical tests, added 2026-10-18 for
+audit/P7) come from a SEPARATE per-ticker stream seeded with ``":pre"``,
+indexed by days before the anchor. Cells on or after the anchor are drawn
+exactly as before, so every forward record (P2, P3) reproduces unchanged.
 """
 from __future__ import annotations
 
@@ -21,13 +26,14 @@ import numpy as np
 
 ANCHOR = date(2020, 1, 1)
 SPAN_DAYS = 6000          # ~16 years of calendar days from the anchor
+PRE_SPAN_DAYS = 9200      # ~25 years before it (back to ~1994-10)
 SIGMA = 0.02              # matches the historical control's scale
 
 
 def _ordinal(d: date | datetime) -> int:
     dd = d.date() if isinstance(d, datetime) else d
     k = (dd - ANCHOR).days
-    if not 0 <= k < SPAN_DAYS:
+    if not -PRE_SPAN_DAYS <= k < SPAN_DAYS:
         raise ValueError(f"{dd} is outside the null signal's anchor span")
     return k
 
@@ -47,7 +53,13 @@ def stable_null_signal(
     out = np.empty((len(dates), len(universe)), dtype=np.float64)
     for j, t in enumerate(universe):
         h = int.from_bytes(hashlib.sha256(f"{seed}:{t}".encode()).digest()[:8], "little")
-        out[:, j] = np.random.default_rng(h).normal(0.0, SIGMA, SPAN_DAYS)[k]
+        post = k >= 0
+        if post.any():
+            out[post, j] = np.random.default_rng(h).normal(0.0, SIGMA, SPAN_DAYS)[k[post]]
+        if not post.all():
+            hp = int.from_bytes(hashlib.sha256(f"{seed}:{t}:pre".encode()).digest()[:8], "little")
+            pre = np.random.default_rng(hp).normal(0.0, SIGMA, PRE_SPAN_DAYS)
+            out[~post, j] = pre[-k[~post] - 1]
     if support is not None:
         if support.shape != out.shape:
             raise ValueError(f"support {support.shape} does not match {out.shape}")

@@ -117,7 +117,45 @@ pre-registered, 1.19 years is low power: this is weak evidence for, not a
 validation (CLAUDE.md rule 2). Observed, not acted on: on this period the
 volstop arm earned the least of the four signal arms.
 
-**`oos_r4_pit_long` (2011–2024): not yet run.** The info-only momentum runs
-are not yet run either.
+**`oos_r4_pit_long` (2011–2024): FAIL.** NAVs 2011-09-28 → 2024-07-01
+(12.76 y). Regenerate with `uv run python scripts/p7_score.py
+audit/navs_p7/oos_composite3`, from the same 20-seed command with
+`+split=oos_r4_pit_long +signal_tag=composite3_oos
+'++allocator.nav_dir=audit/navs_p7/oos_composite3'`. MLflow experiment
+`allocator`: volstop arm `35138ab6b94542c1beabbcba7d3b9b39`, equal-weight
+`a03cbce3a42447bc924bd1806fcada5e`. Log `logs/retrain/p7_oos_20261018.log`.
+
+| arm | cum log | CAGR | MDD | rank / 21 | random median | vs EW |
+|---|---|---|---|---|---|---|
+| **volstop (verdict)** | **+1.6131** | +13.48% | −35.8% | **4** | +1.5702 | **−0.2243** |
+| none | +1.8458 | +15.57% | −38.5% | 2 | +1.7465 | +0.0084 |
+| stop10 | +1.6340 | +13.66% | −33.2% | 4 | +1.5618 | −0.2034 |
+| stop15 | +1.7279 | +14.50% | −34.8% | 1 | +1.6036 | −0.1095 |
+| equal-weight | +1.8375 | +15.49% | −51.2% | | | |
+
+**Criterion: FAIL** (rank 4/21, and 0.22 log below equal-weight). Recorded
+plainly. As registered, the book stays live and nothing is re-tuned. Observed,
+not acted on:
+- Over 13 years the signal sits only modestly above its own random books
+  (+0.04 log over the random median in the verdict arm).
+- Every stopped arm trails equal-weight. Equal-weight's −51.2% drawdown is
+  the cost of that return; the stops cut drawdown to about −33 to −36%.
+- The holdout PASS above is therefore one short period against a 13-year
+  FAIL: weak evidence either way, and the longer period does not support it.
+
+**First attempt failed to run (14:24, 15 s):** `stable_null_signal` raised
+"2011-07-04 is outside the null signal's anchor span". Its anchor is
+2020-01-01, so **no random-book test could run on any pre-2020 period** after
+2026-09-10. The registered test was not runnable as written (CLAUDE.md
+rule 4). Fixed in `src/trader/allocator/null_signal.py`: pre-anchor dates
+draw from a separate `":pre"` stream. Every cell on or after the anchor was
+checked bit-identical to the old code (3 seeds × 827 dates × 400 names), so
+P2 and P3 reproduce unchanged. Test:
+`tests/unit/test_null_signal_stability.py::test_pre_anchor_dates_are_stable_and_leave_post_anchor_cells_unchanged`.
+Peak RSS of the successful run: about 30 MB sampled from the parent process,
+which UNDERSTATES the true peak if work ran in child processes. Wall time
+7.3 min (14:26:16 → 14:33:32).
+
+The info-only momentum runs are not yet run.
 
 *(live read at 2027-10-19)*
