@@ -87,6 +87,14 @@ OBEROIRLTY, LAURUSLABS, INDHOTEL, LT, ICICIBANK …).
 1.4 GB, was a timing probe only. Its output is superseded by the 20-seed run
 below and is not a result. With 20 seeds the holdout took 62 s.
 
+**Timestamp correction (2026-10-18, appended).** The header says this was
+pre-registered "~14:30 IST". The pre-registration commit `b909994` is dated
+2026-10-18 14:05:02 +0530 and the holdout result commit `5f3a7aa` 14:11:49
++0530, so "~14:30" is wrong. The ordering it claims still holds: the rules
+were committed before the result. The holdout NAVs start 2025-06-27 rather
+than the registered 2025-04-01 because of the 60-session lookback; the window
+is otherwise as registered.
+
 ## Results
 
 **Holdout (`holdout`, NAVs 2025-06-27 → 2026-09-03, 1.19 y; 60-session
