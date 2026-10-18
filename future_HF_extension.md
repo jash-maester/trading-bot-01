@@ -255,3 +255,28 @@ worthwhile.
   closed-form evaluations of the committed cost model, not backtests
   (CLAUDE.md rule 3). They are reproducible from `trader.env.costs`, and that
   is the only claim made for them.
+
+---
+
+## 9. Corrections found 2026-10-18 (not silently edited above; CLAUDE.md rule 4)
+
+Found by the 16 Oct research passes (`14_weekend_scoping_notes.md` §A5, with
+sources). The text above is left as written; these supersede it.
+
+1. **§4, minute history "~60 days".** Kite staff say NSE minute candles go
+   back to about 2015 for listed names. 60 days is the per-request window,
+   not the depth. Delisted tokens are retired, so that history is
+   survivorship-biased. H0 measures it.
+2. **§4, "already documented in `CLAUDE.md`".** These Kite constraints are
+   not in CLAUDE.md.
+3. **§4, "order-book depth … not available on this subscription".** Live
+   5-level depth is available in WebSocket `full` mode. Only *historical*
+   depth is missing. A recorder has captured it since 2026-10-19
+   (`scripts/tick_recorder.py`).
+4. **§3, square-off "~3:20pm".** Now 15:25, or 15:12 for CAS stocks (Zerodha,
+   2026).
+5. **§1, "the current allocator grosses about 46%".** This predates the
+   survivorship findings (`audit/S5_TURNOVER_SELECTION.md:91`: about 12 of
+   about 26 CAGR points) and the null control (`audit/S4_NULL_CONTROL.md`).
+   Do not reuse it as a benchmark; the 23-point break-even built on it is
+   stale.

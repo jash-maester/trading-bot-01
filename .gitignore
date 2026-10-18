@@ -142,3 +142,8 @@ secrets/
 data/panels_refit/
 data/signal/adaptive_*/
 data/signal/_adaptive_scratch/
+
+# Intraday Phase 0 captures (14_weekend_scoping_notes.md): ticks are ~GB/day,
+# announcements are a forward-only log. Data, not source.
+data/intraday/
+data/news/

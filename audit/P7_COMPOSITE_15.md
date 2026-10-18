@@ -76,6 +76,40 @@ rule; pausing or resetting after a loss.
 
 *(appended as it runs; not part of the pre-registration)*
 
+**2026-10-18 wiring.** The live signal (`scripts/composite_signal.py`, forward
+panel, through 2026-10-16) is built nightly at 21:55 and 08:25. The book is in
+`docker/paper.crontab` and on the dashboard as "composite". A rehearsal on
+16 Oct closing prices (`trade --prices panel --dry`, nothing written) bought
+15 names, 99.5% invested, ₹118 charges, mostly large caps (GRASIM,
+OBEROIRLTY, LAURUSLABS, INDHOTEL, LT, ICICIBANK …).
+
+**Probe.** A first holdout run with a single random book (seed 42), 14 s and
+1.4 GB, was a timing probe only. Its output is superseded by the 20-seed run
+below and is not a result. With 20 seeds the holdout took 62 s.
+
 ## Results
 
-*(historical test appended when run; live read at 2027-10-19)*
+**Holdout (`holdout`, NAVs 2025-06-27 → 2026-09-03, 1.19 y; 60-session
+lookback).** Regenerate with `uv run python scripts/p7_score.py
+audit/navs_p7/holdout_composite3`, from the 20-seed `run_allocator.py`
+command in "Historical test". MLflow experiment `allocator`: volstop arm
+`104ba1fc52d9459ba555c29b160bb69d`, equal-weight
+`f900fa08f4ee4316ae3f0807d5673337`.
+
+| arm | cum log | rank / 21 | random median | vs EW |
+|---|---|---|---|---|
+| **volstop (verdict)** | **+0.0874** | **1** | +0.0369 | **+0.0164** |
+| none | +0.1560 | 1 | +0.0670 | +0.0850 |
+| stop10 | +0.1032 | 1 | +0.0304 | +0.0322 |
+| stop15 | +0.1151 | 1 | +0.0554 | +0.0441 |
+| equal-weight | +0.0710 | | | |
+
+**Holdout criterion: PASS** (rank 1/21 and above equal-weight). As
+pre-registered, 1.19 years is low power: this is weak evidence for, not a
+validation (CLAUDE.md rule 2). Observed, not acted on: on this period the
+volstop arm earned the least of the four signal arms.
+
+**`oos_r4_pit_long` (2011–2024): not yet run.** The info-only momentum runs
+are not yet run either.
+
+*(live read at 2027-10-19)*

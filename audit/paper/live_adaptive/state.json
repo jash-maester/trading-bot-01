@@ -9,8 +9,8 @@
       "opened": "2026-10-13",
       "cost": 4665.53,
       "sector": "Chemicals",
-      "stop_threshold": 0.0932,
-      "stop_level": 422.59
+      "stop_threshold": 0.0937,
+      "stop_level": 422.35
     },
     "AEQUS.NS": {
       "qty": 9,
@@ -19,8 +19,8 @@
       "opened": "2026-10-13",
       "cost": 2411.2592307692307,
       "sector": "Capital Goods",
-      "stop_threshold": 0.131,
-      "stop_level": 232.54
+      "stop_threshold": 0.1331,
+      "stop_level": 231.97
     },
     "AEROFLEX.NS": {
       "qty": 3,
@@ -29,8 +29,8 @@
       "opened": "2026-10-13",
       "cost": 1663.22,
       "sector": "Unclassified (ETF / other)",
-      "stop_threshold": 0.1579,
-      "stop_level": 466.3
+      "stop_threshold": 0.1857,
+      "stop_level": 450.93
     },
     "AETHER.NS": {
       "qty": 2,
@@ -39,8 +39,8 @@
       "opened": "2026-10-13",
       "cost": 3464.11,
       "sector": "Chemicals",
-      "stop_threshold": 0.129,
-      "stop_level": 1506.83
+      "stop_threshold": 0.1401,
+      "stop_level": 1487.58
     },
     "BRIGADE.NS": {
       "qty": 9,
@@ -49,8 +49,8 @@
       "opened": "2026-10-13",
       "cost": 5269.0,
       "sector": "Realty",
-      "stop_threshold": 0.0902,
-      "stop_level": 531.99
+      "stop_threshold": 0.086,
+      "stop_level": 534.43
     },
     "DCBBANK.NS": {
       "qty": 22,
@@ -59,8 +59,8 @@
       "opened": "2026-10-13",
       "cost": 4648.17,
       "sector": "Financial Services",
-      "stop_threshold": 0.1043,
-      "stop_level": 189.02
+      "stop_threshold": 0.1041,
+      "stop_level": 189.06
     },
     "DEVYANI.NS": {
       "qty": 32,
@@ -69,8 +69,8 @@
       "opened": "2026-10-13",
       "cost": 3926.253913043478,
       "sector": "Consumer Services",
-      "stop_threshold": 0.0814,
-      "stop_level": 112.58
+      "stop_threshold": 0.0809,
+      "stop_level": 112.63
     },
     "ENGINERSIN.NS": {
       "qty": 12,
@@ -79,8 +79,8 @@
       "opened": "2026-10-13",
       "cost": 3470.32,
       "sector": "Construction",
-      "stop_threshold": 0.1426,
-      "stop_level": 247.67
+      "stop_threshold": 0.1508,
+      "stop_level": 245.29
     },
     "INOXGREEN.NS": {
       "qty": 18,
@@ -89,8 +89,8 @@
       "opened": "2026-10-13",
       "cost": 2195.0,
       "sector": "Services",
-      "stop_threshold": 0.2355,
-      "stop_level": 93.12
+      "stop_threshold": 0.2353,
+      "stop_level": 93.15
     },
     "JAMNAAUTO.NS": {
       "qty": 23,
@@ -99,8 +99,8 @@
       "opened": "2026-10-13",
       "cost": 3287.61,
       "sector": "Automobile and Auto Components",
-      "stop_threshold": 0.1383,
-      "stop_level": 123.02
+      "stop_threshold": 0.1488,
+      "stop_level": 121.53
     },
     "JUBLFOOD.NS": {
       "qty": 7,
@@ -109,8 +109,8 @@
       "opened": "2026-10-13",
       "cost": 2947.343,
       "sector": "Consumer Services",
-      "stop_threshold": 0.1138,
-      "stop_level": 372.67
+      "stop_threshold": 0.1127,
+      "stop_level": 373.14
     },
     "LIQUIDBETF.NS": {
       "qty": 5,
@@ -139,8 +139,8 @@
       "opened": "2026-10-13",
       "cost": 3638.92,
       "sector": "Automobile and Auto Components",
-      "stop_threshold": 0.1385,
-      "stop_level": 1565.59
+      "stop_threshold": 0.1364,
+      "stop_level": 1569.49
     },
     "MOTILALOFS.NS": {
       "qty": 4,
@@ -149,8 +149,8 @@
       "opened": "2026-10-13",
       "cost": 4188.77,
       "sector": "Financial Services",
-      "stop_threshold": 0.116,
-      "stop_level": 924.65
+      "stop_threshold": 0.1162,
+      "stop_level": 924.46
     },
     "OMNI.NS": {
       "qty": 3,
@@ -159,8 +159,8 @@
       "opened": "2026-10-13",
       "cost": 1982.35,
       "sector": "Unclassified (ETF / other)",
-      "stop_threshold": 0.1404,
-      "stop_level": 567.36
+      "stop_threshold": 0.146,
+      "stop_level": 563.65
     },
     "POONAWALLA.NS": {
       "qty": 6,
@@ -169,8 +169,8 @@
       "opened": "2026-10-13",
       "cost": 2651.2425,
       "sector": "Financial Services",
-      "stop_threshold": 0.1375,
-      "stop_level": 380.67
+      "stop_threshold": 0.1376,
+      "stop_level": 380.6
     },
     "RELIGARE.NS": {
       "qty": 26,
@@ -179,8 +179,8 @@
       "opened": "2026-10-13",
       "cost": 5774.95,
       "sector": "Financial Services",
-      "stop_threshold": 0.0776,
-      "stop_level": 204.64
+      "stop_threshold": 0.0777,
+      "stop_level": 204.62
     },
     "SBC.NS": {
       "qty": 33,
@@ -189,8 +189,8 @@
       "opened": "2026-10-13",
       "cost": 2146.23,
       "sector": "Unclassified (ETF / other)",
-      "stop_threshold": 0.1291,
-      "stop_level": 56.57
+      "stop_threshold": 0.1287,
+      "stop_level": 56.6
     },
     "TATACHEM.NS": {
       "qty": 4,
@@ -200,7 +200,7 @@
       "cost": 2533.81,
       "sector": "Chemicals",
       "stop_threshold": 0.1703,
-      "stop_level": 524.96
+      "stop_level": 524.92
     },
     "TDPOWERSYS.NS": {
       "qty": 4,
@@ -209,8 +209,8 @@
       "opened": "2026-10-13",
       "cost": 3287.5,
       "sector": "Capital Goods",
-      "stop_threshold": 0.1451,
-      "stop_level": 701.76
+      "stop_threshold": 0.1542,
+      "stop_level": 694.29
     },
     "TFCILTD.NS": {
       "qty": 16,
@@ -219,8 +219,8 @@
       "opened": "2026-10-13",
       "cost": 2491.76,
       "sector": "Unclassified (ETF / other)",
-      "stop_threshold": 0.1146,
-      "stop_level": 137.73
+      "stop_threshold": 0.1176,
+      "stop_level": 137.26
     },
     "WELSPUNLIV.NS": {
       "qty": 13,
@@ -229,8 +229,8 @@
       "opened": "2026-10-13",
       "cost": 2902.441578947368,
       "sector": "Textiles",
-      "stop_threshold": 0.1054,
-      "stop_level": 199.49
+      "stop_threshold": 0.1232,
+      "stop_level": 195.52
     },
     "YATHARTH.NS": {
       "qty": 3,
@@ -239,8 +239,8 @@
       "opened": "2026-10-13",
       "cost": 2910.75,
       "sector": "Healthcare",
-      "stop_threshold": 0.1606,
-      "stop_level": 813.45
+      "stop_threshold": 0.1608,
+      "stop_level": 813.28
     },
     "ZEEL.NS": {
       "qty": 42,
@@ -249,8 +249,8 @@
       "opened": "2026-10-13",
       "cost": 3131.87593220339,
       "sector": "Media Entertainment & Publication",
-      "stop_threshold": 0.1028,
-      "stop_level": 66.82
+      "stop_threshold": 0.0982,
+      "stop_level": 67.16
     },
     "BORORENEW.NS": {
       "qty": 4,
@@ -263,7 +263,9 @@
         "date": "2026-10-16",
         "qty": 4,
         "px": 422.65
-      }
+      },
+      "stop_threshold": 0.0749,
+      "stop_level": 390.98
     },
     "TATACAP.NS": {
       "qty": 5,
@@ -276,7 +278,9 @@
         "date": "2026-10-16",
         "qty": 5,
         "px": 322.25
-      }
+      },
+      "stop_threshold": 0.0909,
+      "stop_level": 292.95
     },
     "REDINGTON.NS": {
       "qty": 4,
@@ -289,7 +293,9 @@
         "date": "2026-10-16",
         "qty": 4,
         "px": 388.35
-      }
+      },
+      "stop_threshold": 0.1068,
+      "stop_level": 346.89
     },
     "KWIL.NS": {
       "qty": 38,
@@ -302,7 +308,9 @@
         "date": "2026-10-16",
         "qty": 38,
         "px": 36.64
-      }
+      },
+      "stop_threshold": 0.1032,
+      "stop_level": 32.86
     },
     "E2E.NS": {
       "qty": 2,
@@ -315,7 +323,9 @@
         "date": "2026-10-16",
         "qty": 2,
         "px": 682.05
-      }
+      },
+      "stop_threshold": 0.1289,
+      "stop_level": 594.11
     },
     "SWSOLAR.NS": {
       "qty": 8,
@@ -328,7 +338,9 @@
         "date": "2026-10-16",
         "qty": 8,
         "px": 167.8
-      }
+      },
+      "stop_threshold": 0.1148,
+      "stop_level": 148.53
     },
     "EDELWEISS.NS": {
       "qty": 10,
@@ -341,7 +353,9 @@
         "date": "2026-10-16",
         "qty": 10,
         "px": 133.3
-      }
+      },
+      "stop_threshold": 0.113,
+      "stop_level": 118.23
     },
     "POCL.NS": {
       "qty": 3,
@@ -354,7 +368,9 @@
         "date": "2026-10-16",
         "qty": 3,
         "px": 433.35
-      }
+      },
+      "stop_threshold": 0.1083,
+      "stop_level": 386.42
     },
     "WEBELSOLAR.NS": {
       "qty": 15,
@@ -367,7 +383,9 @@
         "date": "2026-10-16",
         "qty": 15,
         "px": 68.27
-      }
+      },
+      "stop_threshold": 0.1006,
+      "stop_level": 61.4
     }
   },
   "deployed": {
@@ -392,6 +410,6 @@
   "charges_rs": 284.47718538040004,
   "pending_stops": [],
   "cooldown": {},
-  "last_close_mark": "2026-10-15",
+  "last_close_mark": "2026-10-16",
   "last_trade_day": "2026-10-16"
 }

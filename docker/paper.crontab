@@ -19,6 +19,19 @@
 18,22,32 9 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_momentum TRADER_LIVE_SIGNAL=data/signal/momentum_12_1/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=momentum bash /app/scripts/live_paper_cron.sh trade
 */15 9-15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_momentum TRADER_LIVE_SIGNAL=data/signal/momentum_12_1/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=momentum bash /app/scripts/live_paper_cron.sh mark
 37 15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_momentum TRADER_LIVE_SIGNAL=data/signal/momentum_12_1/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=momentum bash /app/scripts/live_paper_cron.sh mark --close
+# Fourth live book (owner, 2026-10-18): P7, momentum + low vol + 52-week high,
+# z-scored within sector, 15 names, monthly (audit/P7_COMPOSITE_15.md).
+55 21 * * * cd /app && uv run python scripts/composite_signal.py >> logs/paper/composite_signal.log 2>&1
+25 8 * * * cd /app && uv run python scripts/composite_signal.py >> logs/paper/composite_signal.log 2>&1
+19,23,33 9 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_composite TRADER_LIVE_SIGNAL=data/signal/composite3/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=composite bash /app/scripts/live_paper_cron.sh trade
+*/15 9-15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_composite TRADER_LIVE_SIGNAL=data/signal/composite3/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=composite bash /app/scripts/live_paper_cron.sh mark
+38 15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_composite TRADER_LIVE_SIGNAL=data/signal/composite3/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=composite bash /app/scripts/live_paper_cron.sh mark --close
+# Intraday Phase 0 (owner, 2026-10-18): DATA ONLY, no trading. Tick + 5-level
+# depth recorder for ~230 liquid/held names (09:00-15:35; retried every 10 min so
+# a late Kite login still gets the rest of the day; one instance via pid lock),
+# and a forward-only NSE announcement log with our own first-seen time.
+0,10,20,30,40,50 9-14 * * 1-5 bash /app/scripts/intraday_cron.sh recorder
+*/15 7-23 * * * bash /app/scripts/intraday_cron.sh announcements
 # P3 adaptive shadow book (audit/P3_ADAPTIVE_SHADOW.md): end-of-day replay after
 # each P2 run. Separate script so it can never affect the P2 record; waits if
 # P2 has not built today's panel. Refits themselves run on the host GPU.
