@@ -95,6 +95,41 @@ Not permitted before the read:
 
 *(appended as it runs; not part of the pre-registration)*
 
+**2026-10-19.**
+- **Timestamp.** The header says "~10:30 IST". The pre-registration commit
+  `1a3ba3c` is dated 2026-10-19 10:20:28 +0530; the signal was first computed
+  at about 10:21, and the tests started at 10:21:06.
+- **Delivery data.** `data/ext/delivery.parquet` ended 2026-09-04. It was
+  brought to 2026-10-16 with `scripts/delivery_update.py --days 45`
+  (+87,038 rows). A pre-update copy was kept outside the repo.
+- **The `oos_deliv` panel** is `data/panels_bhav/oos_r4_pit_long.parquet`
+  filtered to dates ≥ 2020-10-15 (1,441,365 rows). The signal starts
+  2020-11-18 (339 names), once 100 of 120 sessions exist.
+- **Rehearsal** on 16 Oct closing prices (`trade --prices panel --dry`,
+  nothing written): **14** names, not 15, 99.45% invested, ₹118 charges. Why
+  one name dropped is not yet checked.
+
 ## Results
 
-*(historical test appended when run; live read at 2027-10-19)*
+Regenerate with `uv run python scripts/p7_score.py audit/navs_p8/<dir>`, from
+the registered command (logs `logs/retrain/p8_{oos,holdout}_20261019.log`).
+MLflow experiment `allocator`.
+
+| period | volstop cum log | CAGR | MDD | rank / 21 | vs EW | verdict | MLflow volstop / EW |
+|---|---|---|---|---|---|---|---|
+| `oos_deliv` 2021-01-08 → 2024-07-01 (3.48 y) | +0.7901 | +25.51% | −13.2% | **11** | **−0.1838** | **FAIL** | `3ccfd3a1dfa942538d2d37871052e12e` / `e71846b40c564e008b56d1dc747af159` |
+| `holdout` 2025-06-27 → 2026-09-03 (1.19 y) | +0.0815 | +7.11% | −6.5% | **1** | +0.0105 | **PASS** | `3f7492cc8ef54762b91d5a8530612904` / `1b136c98eb67441b9796e7013003bc56` |
+
+Other arms, reported only:
+- `oos_deliv`: none 17/21, stop10 4/21, stop15 5/21. Every arm is below
+  equal-weight (+32.33% CAGR).
+- holdout: none 1/21, stop10 3/21, stop15 8/21.
+
+**Reading.** On the longer period the signal sits at the middle of its random
+books (11/21, +0.79 against a random median of +0.80). It shows no
+selection value there. The holdout pass is the shortest window, a narrow
+margin (+0.01 over equal-weight), and not repeated across arms. Together
+this is no demonstrated edge. As registered, the book still goes live on
+20 Oct as a descriptive comparison, and nothing is re-tuned.
+
+*(live read at 2027-10-19)*
