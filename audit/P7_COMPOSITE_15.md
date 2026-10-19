@@ -156,6 +156,22 @@ Peak RSS of the successful run: about 30 MB sampled from the parent process,
 which UNDERSTATES the true peak if work ran in child processes. Wall time
 7.3 min (14:26:16 → 14:33:32).
 
-The info-only momentum runs are not yet run.
+**Information only (never used to select): momentum alone (Book 3's 12-1
+signal), K=15, same command and machinery.** Run 2026-10-19 07:18–07:27 IST;
+logs `logs/retrain/p7_mom_holdout_20261019.log`, `p7_mom_oos_20261019.log`;
+regenerate with `scripts/p7_score.py audit/navs_p7/{holdout,oos}_mom12_1`.
+
+| period | volstop cum log | CAGR | MDD | rank / 21 | vs EW | MLflow volstop / EW |
+|---|---|---|---|---|---|---|
+| holdout 2025-06 → 2026-09 | +0.1287 | +11.47% | −9.9% | 1 | +0.0577 | `699910c64c634735ad9fc55ec2068158` / `a564a603333f4c7bba72e56496bf68ff` |
+| 2011-09 → 2024-07 | +2.1183 | +18.06% | −45.0% | 1 | +0.2809 | `22a843e38c1a463695934c4780208a30` / `127b7dd3460541bdbac42c5308a0a8c0` |
+
+Momentum alone ranked 1st of 21 in every risk arm on both periods. It beat
+equal-weight in every arm, and beat the composite. **This does not change
+Book 4**: its mix was fixed in advance, and this run was registered as
+ineligible for any decision. Switching Book 4 to momentum now would be
+selecting on a result. Book 3 already trades this signal. The result belongs
+to Book 3's record as its first historical evidence, which was not
+pre-registered for P6 (see `audit/P6_MOMENTUM_15.md` Operations).
 
 *(live read at 2027-10-19)*

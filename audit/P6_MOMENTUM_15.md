@@ -79,6 +79,24 @@ rule 2).
 
 *(appended as it runs; not part of the pre-registration)*
 
+**2026-10-19 — first historical evidence for this signal (not pre-registered
+for P6).** It was run as the information-only arm of `audit/P7_COMPOSITE_15.md`:
+12-1 momentum, K=15, monthly, the same machinery, 20 random books. Volstop arm:
+- 2011-09 → 2024-07: rank **1/21**, +0.28 log over equal-weight, CAGR
+  +18.06%, max drawdown −45.0%.
+- 2025-06 → 2026-09 holdout: rank **1/21**, +0.06 log over equal-weight.
+
+Numbers and MLflow runs are in P7's Results. Caveats:
+- One look, not a registered criterion.
+- Delisting bias is unrecoverable (`audit/P4_survivorship.md:15`).
+- The 12-year drawdown is about −45% even with the stop.
+- Capital in the backtest is ₹10L (`initial_cash`), not this book's ₹1L, so
+  costs are lighter than live.
+
+This is the strongest result in the repo for any signal against its own
+random books. It does not make the live book a test, and nothing in P6
+changes.
+
 ## Results
 
 *(appended at the read)*
