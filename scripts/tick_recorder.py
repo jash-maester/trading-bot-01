@@ -43,7 +43,7 @@ STOP_AT = (15, 35)
 HOLIDAY_GIVE_UP = (9, 45)
 BOOK_DIRS = ["audit/paper/live", "audit/paper/live_adaptive",
              "audit/paper/live_momentum", "audit/paper/live_composite",
-             "audit/paper/live_delivery"]
+             "audit/paper/live_delivery", "audit/paper/live_momentum10"]
 
 
 def _now() -> datetime:

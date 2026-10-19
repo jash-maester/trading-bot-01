@@ -58,6 +58,14 @@ BOOKS = {
         "freq": "monthly",
         "k": 15,
     },
+    # Sixth (owner, 2026-10-19): P9, Book 3 with a 10-session re-entry ban.
+    "momentum10": {
+        "dir": PAPER / "live_momentum10",
+        "label": "Monthly · 12-1 momentum, 15 names, 10-day stop ban",
+        "freq": "monthly",
+        "k": 15,
+        "cooldown": 10,
+    },
 }
 LOGS = ROOT / "logs/paper"
 DASH_HEALTH = ROOT / os.environ.get("DASHBOARD_HEALTH_OUT", "logs/dashboard/health.json")
@@ -284,6 +292,7 @@ def portfolio(book: str = "monthly") -> dict:
                 "book_label": cfg["label"],
                 "freq": cfg["freq"],
                 "k": cfg.get("k", 30),
+                "cooldown": cfg.get("cooldown", 21),
             }
         marks = _marks(live)
         days = sorted({m["ts"][:10] for m in marks})
@@ -313,6 +322,7 @@ def portfolio(book: str = "monthly") -> dict:
                 next_semimonthly if cfg["freq"] == "semimonthly" else next_rebalance
             )(state.get("last_rebalance"), datetime.now(IST).date()).isoformat(),
             "k": cfg.get("k", 30),
+            "cooldown": cfg.get("cooldown", 21),
             "book": book,
             "book_label": cfg["label"],
             "freq": cfg["freq"],

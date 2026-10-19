@@ -76,7 +76,10 @@ MIN_TRADE = 500.0
 K = int(os.environ.get("TRADER_LIVE_K", "30"))
 BAND, MAX_W = 0.010, 0.10
 TURNOVER_BUDGET = 0.30                    # every rebalance after the first funding
-STOP_MULT, STOP_H, STOP_MIN, STOP_MAX, COOLDOWN = 1.0, 20, 0.05, 0.30, 21
+STOP_MULT, STOP_H, STOP_MIN, STOP_MAX = 1.0, 20, 0.05, 0.30
+# Sessions a stopped name is barred from re-entry. 21 for Books 1-5; Book 6
+# (audit/P9_MOMENTUM_15_CD10.md) uses 10, from audit/S7_COOLDOWN_MOMENTUM.md.
+COOLDOWN = int(os.environ.get("TRADER_LIVE_COOLDOWN", "21"))
 MAX_SIGNAL_AGE_DAYS = 4                   # a Friday signal still serves a Monday open
 
 
