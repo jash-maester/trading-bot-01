@@ -1,0 +1,174 @@
+{
+  "as_of": "2026-10-19T09:18:01+05:30",
+  "cash": 426.11,
+  "holdings": {
+    "ACUTAAS.NS": {
+      "qty": 2,
+      "avg_price": 3323.7,
+      "entry_price": 3323.7,
+      "opened": "2026-10-19",
+      "cost": 6655.29,
+      "sector": "Healthcare",
+      "stop_threshold": 0.1101,
+      "stop_level": 2957.61
+    },
+    "AEROFLEX.NS": {
+      "qty": 8,
+      "avg_price": 522.5,
+      "entry_price": 522.5,
+      "opened": "2026-10-19",
+      "cost": 4184.96,
+      "sector": "Unclassified (ETF / other)",
+      "stop_threshold": 0.1849,
+      "stop_level": 425.91
+    },
+    "ATHERENERG.NS": {
+      "qty": 5,
+      "avg_price": 1463.6,
+      "entry_price": 1463.6,
+      "opened": "2026-10-19",
+      "cost": 7326.69,
+      "sector": "Automobile and Auto Components",
+      "stop_threshold": 0.1189,
+      "stop_level": 1289.51
+    },
+    "BLISSGVS.NS": {
+      "qty": 12,
+      "avg_price": 645.75,
+      "entry_price": 645.75,
+      "opened": "2026-10-19",
+      "cost": 7758.2,
+      "sector": "Unclassified (ETF / other)",
+      "stop_threshold": 0.1085,
+      "stop_level": 575.67
+    },
+    "CPPLUS.NS": {
+      "qty": 2,
+      "avg_price": 4033.3,
+      "entry_price": 4033.3,
+      "opened": "2026-10-19",
+      "cost": 8076.18,
+      "sector": "Capital Goods",
+      "stop_threshold": 0.1525,
+      "stop_level": 3418.34
+    },
+    "CUPID.NS": {
+      "qty": 13,
+      "avg_price": 351.8,
+      "entry_price": 351.8,
+      "opened": "2026-10-19",
+      "cost": 4578.83,
+      "sector": "Fast Moving Consumer Goods",
+      "stop_threshold": 0.1781,
+      "stop_level": 289.15
+    },
+    "DIACABS.NS": {
+      "qty": 20,
+      "avg_price": 357.5,
+      "entry_price": 357.5,
+      "opened": "2026-10-19",
+      "cost": 7158.49,
+      "sector": "Capital Goods",
+      "stop_threshold": 0.1157,
+      "stop_level": 316.14
+    },
+    "HFCL.NS": {
+      "qty": 21,
+      "avg_price": 261.0,
+      "entry_price": 261.0,
+      "opened": "2026-10-19",
+      "cost": 5487.51,
+      "sector": "Telecommunication",
+      "stop_threshold": 0.1573,
+      "stop_level": 219.94
+    },
+    "MTARTECH.NS": {
+      "qty": 1,
+      "avg_price": 6882.0,
+      "entry_price": 6882.0,
+      "opened": "2026-10-19",
+      "cost": 6890.17,
+      "sector": "Capital Goods",
+      "stop_threshold": 0.119,
+      "stop_level": 6063.22
+    },
+    "SANSERA.NS": {
+      "qty": 2,
+      "avg_price": 4173.0,
+      "entry_price": 4173.0,
+      "opened": "2026-10-19",
+      "cost": 8355.91,
+      "sector": "Automobile and Auto Components",
+      "stop_threshold": 0.1416,
+      "stop_level": 3582.06
+    },
+    "SHREEJISPG.NS": {
+      "qty": 11,
+      "avg_price": 845.6,
+      "entry_price": 845.6,
+      "opened": "2026-10-19",
+      "cost": 9312.64,
+      "sector": "Unclassified (ETF / other)",
+      "stop_threshold": 0.05,
+      "stop_level": 803.32
+    },
+    "SKYGOLD.NS": {
+      "qty": 8,
+      "avg_price": 1063.0,
+      "entry_price": 1063.0,
+      "opened": "2026-10-19",
+      "cost": 8514.1,
+      "sector": "Consumer Durables",
+      "stop_threshold": 0.0971,
+      "stop_level": 959.83
+    },
+    "STLTECH.NS": {
+      "qty": 6,
+      "avg_price": 846.1,
+      "entry_price": 846.1,
+      "opened": "2026-10-19",
+      "cost": 5082.63,
+      "sector": "Telecommunication",
+      "stop_threshold": 0.1519,
+      "stop_level": 717.55
+    },
+    "THANGAMAYL.NS": {
+      "qty": 1,
+      "avg_price": 5087.0,
+      "entry_price": 5087.0,
+      "opened": "2026-10-19",
+      "cost": 5093.04,
+      "sector": "Consumer Durables",
+      "stop_threshold": 0.1328,
+      "stop_level": 4411.36
+    },
+    "WELCORP.NS": {
+      "qty": 2,
+      "avg_price": 2546.6,
+      "entry_price": 2546.6,
+      "opened": "2026-10-19",
+      "cost": 5099.25,
+      "sector": "Capital Goods",
+      "stop_threshold": 0.19,
+      "stop_level": 2062.75
+    }
+  },
+  "deployed": {
+    "trade_date": "2026-10-19",
+    "signal_date": "2026-10-16",
+    "prices": "live",
+    "capital": 100000.0,
+    "names": 15,
+    "invested": 99455.8,
+    "charges": 118.09,
+    "cash": 426.11,
+    "invested_pct": 0.9946,
+    "unpriced": []
+  },
+  "last_rebalance": "2026-10-19",
+  "realised_rs": 0.0,
+  "charges_rs": 118.09,
+  "pending_stops": [],
+  "cooldown": {},
+  "last_close_mark": "2026-10-19"
+}

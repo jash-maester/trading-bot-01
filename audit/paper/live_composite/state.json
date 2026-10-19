@@ -1,0 +1,174 @@
+{
+  "as_of": "2026-10-19T09:19:01+05:30",
+  "cash": 568.27,
+  "holdings": {
+    "ANANDRATHI.NS": {
+      "qty": 2,
+      "avg_price": 2155.0,
+      "entry_price": 2155.0,
+      "opened": "2026-10-19",
+      "cost": 4315.12,
+      "sector": "Financial Services",
+      "stop_threshold": 0.0701,
+      "stop_level": 2003.87
+    },
+    "FEDERALBNK.NS": {
+      "qty": 16,
+      "avg_price": 326.95,
+      "entry_price": 326.95,
+      "opened": "2026-10-19",
+      "cost": 5237.41,
+      "sector": "Financial Services",
+      "stop_threshold": 0.0646,
+      "stop_level": 305.84
+    },
+    "GRASIM.NS": {
+      "qty": 3,
+      "avg_price": 2940.3,
+      "entry_price": 2940.3,
+      "opened": "2026-10-19",
+      "cost": 8831.37,
+      "sector": "Construction Materials",
+      "stop_threshold": 0.0647,
+      "stop_level": 2750.01
+    },
+    "ICICIBANK.NS": {
+      "qty": 4,
+      "avg_price": 1409.0,
+      "entry_price": 1409.0,
+      "opened": "2026-10-19",
+      "cost": 5642.69,
+      "sector": "Financial Services",
+      "stop_threshold": 0.0614,
+      "stop_level": 1322.45
+    },
+    "INDHOTEL.NS": {
+      "qty": 10,
+      "avg_price": 769.15,
+      "entry_price": 769.15,
+      "opened": "2026-10-19",
+      "cost": 7700.63,
+      "sector": "Consumer Services",
+      "stop_threshold": 0.0763,
+      "stop_level": 710.44
+    },
+    "KOTAKBANK.NS": {
+      "qty": 12,
+      "avg_price": 446.1,
+      "entry_price": 446.1,
+      "opened": "2026-10-19",
+      "cost": 5359.56,
+      "sector": "Financial Services",
+      "stop_threshold": 0.0643,
+      "stop_level": 417.41
+    },
+    "KTKBANK.NS": {
+      "qty": 11,
+      "avg_price": 332.2,
+      "entry_price": 332.2,
+      "opened": "2026-10-19",
+      "cost": 3658.54,
+      "sector": "Financial Services",
+      "stop_threshold": 0.0989,
+      "stop_level": 299.34
+    },
+    "LAURUSLABS.NS": {
+      "qty": 4,
+      "avg_price": 2085.7,
+      "entry_price": 2085.7,
+      "opened": "2026-10-19",
+      "cost": 8352.71,
+      "sector": "Healthcare",
+      "stop_threshold": 0.0727,
+      "stop_level": 1934.02
+    },
+    "LT.NS": {
+      "qty": 2,
+      "avg_price": 3666.0,
+      "entry_price": 3666.0,
+      "opened": "2026-10-19",
+      "cost": 7340.71,
+      "sector": "Construction",
+      "stop_threshold": 0.0657,
+      "stop_level": 3425.2
+    },
+    "NYKAA.NS": {
+      "qty": 20,
+      "avg_price": 345.75,
+      "entry_price": 345.75,
+      "opened": "2026-10-19",
+      "cost": 6923.21,
+      "sector": "Consumer Services",
+      "stop_threshold": 0.0863,
+      "stop_level": 315.9
+    },
+    "OBEROIRLTY.NS": {
+      "qty": 5,
+      "avg_price": 1703.0,
+      "entry_price": 1703.0,
+      "opened": "2026-10-19",
+      "cost": 8525.11,
+      "sector": "Realty",
+      "stop_threshold": 0.0769,
+      "stop_level": 1572.02
+    },
+    "PHOENIXLTD.NS": {
+      "qty": 4,
+      "avg_price": 1917.5,
+      "entry_price": 1917.5,
+      "opened": "2026-10-19",
+      "cost": 7679.11,
+      "sector": "Realty",
+      "stop_threshold": 0.0876,
+      "stop_level": 1749.57
+    },
+    "SHYAMMETL.NS": {
+      "qty": 6,
+      "avg_price": 1216.7,
+      "entry_price": 1216.7,
+      "opened": "2026-10-19",
+      "cost": 7308.87,
+      "sector": "Capital Goods",
+      "stop_threshold": 0.0827,
+      "stop_level": 1116.1
+    },
+    "SONACOMS.NS": {
+      "qty": 9,
+      "avg_price": 798.4,
+      "entry_price": 798.4,
+      "opened": "2026-10-19",
+      "cost": 7194.13,
+      "sector": "Automobile and Auto Components",
+      "stop_threshold": 0.087,
+      "stop_level": 728.91
+    },
+    "TECHM.NS": {
+      "qty": 3,
+      "avg_price": 1785.4,
+      "entry_price": 1785.4,
+      "opened": "2026-10-19",
+      "cost": 5362.56,
+      "sector": "Information Technology",
+      "stop_threshold": 0.1178,
+      "stop_level": 1575.06
+    }
+  },
+  "deployed": {
+    "trade_date": "2026-10-19",
+    "signal_date": "2026-10-16",
+    "prices": "live",
+    "capital": 100000.0,
+    "names": 15,
+    "invested": 99313.8,
+    "charges": 117.93,
+    "cash": 568.27,
+    "invested_pct": 0.9931,
+    "unpriced": []
+  },
+  "last_rebalance": "2026-10-19",
+  "realised_rs": 0.0,
+  "charges_rs": 117.93,
+  "pending_stops": [],
+  "cooldown": {},
+  "last_close_mark": "2026-10-19"
+}
