@@ -280,3 +280,28 @@ sources). The text above is left as written; these supersede it.
    about 26 CAGR points) and the null control (`audit/S4_NULL_CONTROL.md`).
    Do not reuse it as a benchmark; the 23-point break-even built on it is
    stale.
+
+## 10. H0 result (2026-10-19): PASS on depth, with two data traps
+
+**Probe**, 10:08 IST, 56 read-only `historical_data` calls. RELIANCE, INFY,
+HDFCBANK and TMPV (renamed from TATAMOTORS, history kept under the token) had
+full minute days in 2015, 2017, 2019, 2021, 2023 and 2025, and **none in
+2012**. Minute history therefore begins in about 2015, about 11.5 years. The
+§6 kill criterion ("< 2 years → stop") does not fire.
+
+**Backfill**, `scripts/kite_minute_backfill.py`:
+- Run 10:18–10:38 and 15:43–17:33 IST.
+- All **243** names of the recorder's universe (top 200 by traded value,
+  plus every book's holdings), 2015 → 2026-10-19.
+- **2,371** name-year files, **205,633,728** one-minute bars, **2.2 GB** zstd,
+  in `data/intraday/minute/`. Raw and keyed by instrument token.
+
+Traps found:
+1. **Kite reuses instrument tokens.** IRCTC listed in Oct 2019, yet its token
+   returns 2015 bars at about ₹33, from another instrument. **Every name must
+   be clipped to its own listing date before use.** Not done yet.
+2. **Junk volume values.** Kite served volume = 2⁶³ in some minutes. The
+   first run crashed on it after 39 names. Four such values in three
+   name-years are now nulled, with their prices kept.
+
+Delisted names are absent, as in the daily data.

@@ -26,6 +26,19 @@
 19,23,33 9 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_composite TRADER_LIVE_SIGNAL=data/signal/composite3/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=composite bash /app/scripts/live_paper_cron.sh trade
 */15 9-15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_composite TRADER_LIVE_SIGNAL=data/signal/composite3/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=composite bash /app/scripts/live_paper_cron.sh mark
 38 15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_composite TRADER_LIVE_SIGNAL=data/signal/composite3/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=composite bash /app/scripts/live_paper_cron.sh mark --close
+# Fifth live book (owner, 2026-10-19): P8, rising delivery %, z-scored within
+# sector, 15 names, monthly (audit/P8_DELIVERY_15.md). Delivery data is merged
+# into data/ext/delivery.parquet by delivery_update.py (fetch_nse_flows.py alone
+# OVERWRITES its output for the range asked; never call it directly here). The
+# update fetches through yesterday: NSE 404s are cached as permanent .missing
+# markers, so today's file is never asked for before it exists.
+30 21 * * * cd /app && uv run python scripts/delivery_update.py >> logs/paper/delivery_update.log 2>&1
+15 8 * * * cd /app && uv run python scripts/delivery_update.py >> logs/paper/delivery_update.log 2>&1
+58 21 * * * cd /app && uv run python scripts/delivery_signal.py >> logs/paper/delivery_signal.log 2>&1
+28 8 * * * cd /app && uv run python scripts/delivery_signal.py >> logs/paper/delivery_signal.log 2>&1
+20,24,34 9 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_delivery TRADER_LIVE_SIGNAL=data/signal/delivery_rise/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=delivery bash /app/scripts/live_paper_cron.sh trade
+*/15 9-15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_delivery TRADER_LIVE_SIGNAL=data/signal/delivery_rise/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=delivery bash /app/scripts/live_paper_cron.sh mark
+39 15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_delivery TRADER_LIVE_SIGNAL=data/signal/delivery_rise/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_TAG=delivery bash /app/scripts/live_paper_cron.sh mark --close
 # Intraday Phase 0 (owner, 2026-10-18): DATA ONLY, no trading. Tick + 5-level
 # depth recorder for ~230 liquid/held names (09:00-15:35; retried every 10 min so
 # a late Kite login still gets the rest of the day; one instance via pid lock),

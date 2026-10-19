@@ -51,6 +51,13 @@ BOOKS = {
         "freq": "monthly",
         "k": 15,
     },
+    # Fifth (owner, 2026-10-19): P8, rising delivery %, within sector, 15 names.
+    "delivery": {
+        "dir": PAPER / "live_delivery",
+        "label": "Monthly · rising delivery %, 15 names",
+        "freq": "monthly",
+        "k": 15,
+    },
 }
 LOGS = ROOT / "logs/paper"
 DASH_HEALTH = ROOT / os.environ.get("DASHBOARD_HEALTH_OUT", "logs/dashboard/health.json")

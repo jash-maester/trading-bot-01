@@ -60,7 +60,17 @@ def _fetch_year(k, token: int, year: int, today: date) -> pl.DataFrame:
         a = b + timedelta(days=1)
     if not rows:
         return pl.DataFrame()
-    return (pl.DataFrame(rows)
+    # Kite occasionally serves a junk volume (seen 2026-10-19: exactly 2**63,
+    # which overflowed int64 and crashed the run after 39 names). Null it and
+    # say so; the price fields of that minute are kept.
+    bad = 0
+    for r in rows:
+        v = r.get("volume")
+        if not isinstance(v, int) or not 0 <= v < 2**62:
+            r["volume"], bad = None, bad + 1
+    if bad:
+        print(f"    {token} {year}: {bad} junk volume value(s) nulled", flush=True)
+    return (pl.DataFrame(rows, schema_overrides={"volume": pl.Int64})
             .with_columns(pl.col("date").dt.convert_time_zone("Asia/Kolkata")
                           .dt.replace_time_zone(None),
                           pl.lit(token).alias("instrument_token"))
