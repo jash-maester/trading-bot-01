@@ -64,9 +64,7 @@ neither variant to win on both periods.
 
 Run 2026-10-19 20:20–20:26 IST. Logs `logs/retrain/s7_{holdout,oos}_20261019.log`,
 NAVs `audit/navs_s7/`. MLflow experiment `allocator`. Cumulative log return,
-CAGR, MDD and rank are computed from the NAV parquets (scoring snippet in the
-session; the numbers reproduce from the NAVs with the same formulas as
-`scripts/p7_score.py`).
+CAGR, MDD and rank regenerate with `uv run python scripts/s7_score.py`.
 
 | period | arm | cum log | CAGR | MDD | rank / 21 | MLflow |
 |---|---|---|---|---|---|---|
