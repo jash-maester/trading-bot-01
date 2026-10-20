@@ -133,6 +133,11 @@ def main() -> None:
     if now.weekday() >= 5 and a.max_seconds is None:
         print("weekend -- not recording")
         return
+    from trader.data import market_calendar as mc  # noqa: PLC0415
+
+    if a.max_seconds is None and mc.covered(now.date()) and not mc.is_trading_day(now.date()):
+        print(f"NSE holiday ({mc.holiday_name(now.date())}) -- not recording")
+        return
     if (now.hour, now.minute) >= STOP_AT:
         print("after the close -- not recording")
         return

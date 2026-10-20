@@ -45,6 +45,10 @@
 21,25,35 9 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_momentum10 TRADER_LIVE_SIGNAL=data/signal/momentum_12_1/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_COOLDOWN=10 TRADER_LIVE_TAG=momentum10 bash /app/scripts/live_paper_cron.sh trade
 */15 9-15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_momentum10 TRADER_LIVE_SIGNAL=data/signal/momentum_12_1/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_COOLDOWN=10 TRADER_LIVE_TAG=momentum10 bash /app/scripts/live_paper_cron.sh mark
 40 15 * * 1-5 TRADER_LIVE_DIR=audit/paper/live_momentum10 TRADER_LIVE_SIGNAL=data/signal/momentum_12_1/predictions.parquet TRADER_LIVE_K=15 TRADER_LIVE_FREQ=monthly TRADER_LIVE_COOLDOWN=10 TRADER_LIVE_TAG=momentum10 bash /app/scripts/live_paper_cron.sh mark --close
+# NSE trading-holiday list (owner, 2026-10-20), read by live_paper.py, the tick
+# recorder and the dashboard so a holiday needs no login and logs no failures.
+# Weekly; NSE adds next year's list in December.
+5 8 * * 1 cd /app && uv run python scripts/fetch_market_holidays.py >> logs/paper/market_holidays.log 2>&1
 # Intraday Phase 0 (owner, 2026-10-18): DATA ONLY, no trading. Tick + 5-level
 # depth recorder for ~230 liquid/held names (09:00-15:35; retried every 10 min so
 # a late Kite login still gets the rest of the day; one instance via pid lock),

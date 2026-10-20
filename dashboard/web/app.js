@@ -82,7 +82,7 @@ function renderChrome() {
   const theme = store.get('pb-theme', 'auto');
   const themeIcon = { auto: '◐', light: '☀', dark: '☾' }[theme];
   if (!s) { $('#chips').innerHTML = `<span class="chip"><span class="dot ${OFFLINE ? 'fail' : ''}"></span>${OFFLINE ? 'Server unreachable' : 'Connecting…'}</span>`; return; }
-  const ph = { open: ['ok', 'Market open'], pre_open: ['warn', 'Pre-open'], closed: ['', 'Market closed'], weekend: ['', 'Weekend'] }[s.phase] || ['', s.phase];
+  const ph = { open: ['ok', 'Market open'], pre_open: ['warn', 'Pre-open'], closed: ['', 'Market closed'], weekend: ['', 'Weekend'], holiday: ['', 'NSE holiday'] }[s.phase] || ['', s.phase];
   const k = s.kite || {};
   const kd = k.state === 'valid' ? 'ok' : k.state === 'error' ? 'warn' : 'fail';
   const kt = k.state === 'valid' ? `Kite connected<small>· until ${hm(k.expires_at)}</small>` : k.state === 'error' ? 'Kite: could not verify' : 'Kite login needed';

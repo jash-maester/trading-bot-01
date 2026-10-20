@@ -626,6 +626,19 @@ def main() -> None:
     m.add_argument("--close", action="store_true",
                    help="15:35 close mark: tick cooldowns and run the volstop check")
     a = ap.parse_args()
+    if a.prices == "live" and not getattr(a, "dry", False):
+        # NSE's official holiday list (scripts/fetch_market_holidays.py). On a
+        # listed holiday or a weekend, stop before touching Kite, so no login is
+        # needed and no cooldown ticks. In a year the list does not cover, fall
+        # through to the quote check (_session_open), as before.
+        from trader.data import market_calendar as mc  # noqa: PLC0415
+
+        today = _now().date()
+        if mc.covered(today) and not mc.is_trading_day(today):
+            why = mc.holiday_name(today) or "weekend"
+            print(f"NSE closed {today} ({why}) -- nothing to {a.cmd}; next session "
+                  f"{mc.next_trading_day(today, inclusive=False)}")
+            return
     {"trade": trade, "deploy": trade, "mark": mark}[a.cmd](a)
 
 

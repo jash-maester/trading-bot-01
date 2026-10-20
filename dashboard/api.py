@@ -148,10 +148,34 @@ def _thin(xs: list, n: int = MAX_POINTS) -> list:
 # ── market clock ─────────────────────────────────────────────────────────────
 
 
+def _mc():
+    """NSE holiday calendar (src/trader/data/market_calendar.py), or None if unavailable."""
+    try:
+        from trader.data import market_calendar  # noqa: PLC0415
+    except ImportError:
+        return None
+    return market_calendar
+
+
+HOLIDAYS = ROOT / "data/ext/market_holidays.json"
+
+
+def holiday_today(d: date) -> str | None:
+    mc = _mc()
+    return mc.holiday_name(d, HOLIDAYS) if mc else None
+
+
+def is_session_day(d: date) -> bool:
+    mc = _mc()
+    return mc.is_trading_day(d, HOLIDAYS) if mc else d.weekday() < 5
+
+
 def phase(now: datetime) -> str:
-    """weekend | pre_open (09:00-09:15) | open (09:15-15:30) | closed. Holidays unknown."""
+    """weekend | holiday | pre_open (09:00-09:15) | open (09:15-15:30) | closed."""
     if now.weekday() >= 5:
         return "weekend"
+    if holiday_today(now.date()):
+        return "holiday"
     t = now.hour * 60 + now.minute
     if 9 * 60 <= t < 9 * 60 + 15:
         return "pre_open"
@@ -161,13 +185,16 @@ def phase(now: datetime) -> str:
 
 
 def next_weekday(d: date) -> date:
-    while d.weekday() >= 5:
+    """First NSE session on or after d (weekends and listed holidays skipped)."""
+    for _ in range(30):
+        if is_session_day(d):
+            return d
         d += timedelta(days=1)
     return d
 
 
 def next_rebalance(last: str | None, today: date) -> date:
-    """First weekday of the month after the last rebalance (NSE holidays not known)."""
+    """First NSE session of the month after the last rebalance."""
     base = date.fromisoformat(last) if last else today
     first = date(base.year + (base.month == 12), base.month % 12 + 1, 1)
     return next_weekday(first)
@@ -177,7 +204,7 @@ def next_live_event(now: datetime) -> dict:
     """The next job in docker/paper.crontab's live-book section."""
     for add in range(8):
         d = (now + timedelta(days=add)).date()
-        if d.weekday() >= 5:
+        if not is_session_day(d):
             continue
         slots = [(9, 16, "trade"), (15, 35, "close mark and stop check")]
         slots += [(h, m, "price update") for h in range(9, 16) for m in (0, 15, 30, 45)]
@@ -411,8 +438,19 @@ def attention(now: datetime, kite: dict, pipe: dict, pf: dict) -> list[dict]:
     """Things that need the user, most urgent first. level: urgent | warn | info."""
     out = []
     ph = phase(now)
-    trading_day = now.weekday() < 5
+    trading_day = is_session_day(now.date())
     t = now.hour * 60 + now.minute
+    hol = holiday_today(now.date())
+    if hol:
+        out.append(
+            {
+                "id": f"holiday-{now.date()}",
+                "level": "info",
+                "title": f"NSE closed today: {hol}",
+                "message": "No trades, price updates or Kite login today. Next session "
+                f"{next_weekday(now.date() + timedelta(days=1)):%a %d %b}.",
+            }
+        )
     if kite.get("state") != "valid":
         before_trade = trading_day and 6 * 60 <= t < 9 * 60 + 16
         during = ph == "open"
@@ -505,7 +543,7 @@ def status() -> dict:
         # 30 s from 06:00 (when the Kite token expires and a login is due) through
         # the close, and whenever something urgent is showing; 5 min otherwise.
         "poll_s": 30
-        if (now.weekday() < 5 and 6 * 60 <= now.hour * 60 + now.minute <= 15 * 60 + 50)
+        if (is_session_day(now.date()) and 6 * 60 <= now.hour * 60 + now.minute <= 15 * 60 + 50)
         or any(a["level"] == "urgent" for a in attention(now, kite, pipe, pf))
         else 300,
         "version": version,
